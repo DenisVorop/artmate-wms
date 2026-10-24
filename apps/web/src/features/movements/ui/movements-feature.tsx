@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -29,7 +30,16 @@ import { MovementDetail } from "./movement-detail";
 import styles from "./movements.module.css";
 
 export function MovementsFeature() {
-  const { data, isPending, isError, refetch } = useWorkspace();
+  const { user, isManager } = useSession();
+  const { data: snapshot, isPending, isError, refetch } = useWorkspace();
+  const data = snapshot
+    ? {
+        ...snapshot,
+        movements: snapshot.movements.filter(
+          (movement) => isManager || movement.employeeId === user?.employeeId,
+        ),
+      }
+    : undefined;
   const commands = useMovements();
   const ui = useMovementsState();
   if (isPending) return <LoadingState />;

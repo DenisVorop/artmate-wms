@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import Link from "next/link";
 import { ArrowRight, Check, Search, UserRound } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
@@ -9,12 +10,12 @@ import {
   ErrorState,
   Input,
   LoadingState,
-  Select,
 } from "@/shared/ui";
 import { number } from "@/shared/lib/format";
 import type { PutawayScanValues } from "../lib/putaway-form";
 import {
   isActivePutaway,
+  putawayTaskVisible,
   putawayQueue,
   putawayStatusLabels,
   type PutawayTab,
@@ -33,22 +34,26 @@ const tabs: { value: PutawayTab; label: string }[] = [
   { value: "completed", label: "История" },
 ];
 export function PutawayFeature() {
+  const { user, isManager } = useSession();
+  const actorId = user?.employeeId ?? "";
   const workspace = useWorkspace();
   const commands = usePutaway();
   const ui = usePutawayState();
   if (workspace.isPending) return <LoadingState />;
   if (!workspace.data)
     return <ErrorState onRetry={() => void workspace.refetch()} />;
-  const data = workspace.data;
-  const actor = data.employees.find((employee) => employee.id === ui.actorId);
-  const working = data.employees.filter(
-    (employee) => employee.status === "working",
-  );
-  const tasks = putawayQueue(data, ui.tab, ui.actorId, ui.search);
+  const data = {
+    ...workspace.data,
+    putawayTasks: workspace.data.putawayTasks.filter(
+      (task) => isManager || putawayTaskVisible(task, actorId),
+    ),
+  };
+  const actor = data.employees.find((employee) => employee.id === actorId);
+  const tasks = putawayQueue(data, ui.tab, actorId, ui.search);
   const selected =
     data.putawayTasks.find((task) => task.id === ui.selectedId) ?? tasks[0];
   const mine = data.putawayTasks.filter(
-    (task) => task.employeeId === ui.actorId && isActivePutaway(task),
+    (task) => task.employeeId === actorId && isActivePutaway(task),
   );
   const execute = async (
     action: PutawayAction,
@@ -123,64 +128,37 @@ export function PutawayFeature() {
       </div>
       <section
         className={`glass-panel ${styles.actor}`}
-        aria-label="Выбор исполнителя"
+        aria-label="Текущий исполнитель"
       >
         <div className={styles.actorIntro}>
           <strong>
             <UserRound size={16} />
-            Работаем как
+            {actor?.name ?? user?.name ?? "Текущий сотрудник"}
           </strong>
           <p className={styles.help}>
-            Локальный деморежим: выбор сотрудника на смене для добровольного
-            размещения. Основную сборку при необходимости сначала поставьте на
-            паузу.
+            Операции выполняются от вашей учётной записи.
           </p>
-          {!working.length && (
+          {actor?.status !== "working" && (
             <p className={styles.help}>
-              Нет сотрудников на смене.{" "}
-              <Link href="/team" target="_blank" rel="noopener noreferrer">
-                Открыть команду и смены ↗
-              </Link>
+              Для выполнения задания начните свою смену.{" "}
+              <Link href="/team">Моя смена →</Link>
             </p>
           )}
         </div>
-        <label className={`field ${styles.actorControl}`}>
-          Сотрудник на смене
-          <Select
-            value={ui.actorId}
-            aria-label="Работаем как"
-            disabled={commands.pending}
-            onChange={(event) => {
-              ui.setActorId(event.target.value);
-              commands.clearError();
-            }}
-          >
-            <option value="">Выберите сотрудника</option>
-            {actor && actor.status !== "working" && (
-              <option value={actor.id} disabled>
-                {actor.name} · вне смены
-              </option>
-            )}
-            {working.map((employee) => (
-              <option value={employee.id} key={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </Select>
-        </label>
         {mine[0] && selected?.id !== mine[0].id && (
           <Button
             size="sm"
             variant="secondary"
             disabled={commands.pending}
-            onClick={() => {
-              ui.setTab("mine");
-              ui.setSearch("");
-              ui.setSelectedId(mine[0].id);
-              commands.clearError();
-            }}
+            onClick={() =>
+              (() => {
+                ui.setTab("mine");
+                ui.setSelectedId(mine[0].id);
+                ui.setSearch("");
+              })()
+            }
           >
-            К моему коробу
+            К моему заданию
           </Button>
         )}
       </section>
@@ -240,8 +218,7 @@ export function PutawayFeature() {
                     commands.clearError();
                   }}
                 >
-                  {tab.label} ·{" "}
-                  {putawayQueue(data, tab.value, ui.actorId).length}
+                  {tab.label} · {putawayQueue(data, tab.value, actorId).length}
                 </button>
               ))}
             </div>
@@ -326,7 +303,7 @@ export function PutawayFeature() {
                     : ui.tab === "mine"
                       ? actor
                         ? "Выберите короб в очереди и возьмите его по желанию."
-                        : "Выберите сотрудника на смене, чтобы увидеть его активное размещение."
+                        : "Начните свою смену, чтобы взять размещение."
                       : "Здесь сохранятся подтверждённые доставки коробов на хранение."
               }
             />

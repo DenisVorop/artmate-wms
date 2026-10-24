@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  AuthUserDto,
   CreateMovementDto,
   PalletDto,
   WorkspaceDto,
@@ -36,9 +37,13 @@ export const movementStatuses: Record<string, string> = {
   completed: "Завершено",
   cancelled: "Отменено",
 };
-export function toMovement(values: MovementValues): CreateMovementDto {
+export function toMovement(
+  values: MovementValues,
+  user?: Pick<AuthUserDto, "employeeId" | "role"> | null,
+): CreateMovementDto {
   return {
     ...values,
+    ...(user?.role === "employee" ? { employeeId: user.employeeId } : {}),
     requestId: crypto.randomUUID(),
     keepSourceReserved: values.kind === "lower" && values.keepSourceReserved,
   };
@@ -58,7 +63,10 @@ export function canReturn(data: WorkspaceDto, pallet: PalletDto): boolean {
 
 // Hints only. The API rechecks every condition transactionally at command time.
 export function targetHint(
-  data: WorkspaceDto,
+  data: Pick<
+    WorkspaceDto,
+    "locations" | "pallets" | "movements" | "putawayTasks" | "addressHolds"
+  >,
   locationId: string,
   pallet?: PalletDto,
   kind?: string,
@@ -68,6 +76,9 @@ export function targetHint(
   if (pallet.kind === "assembly")
     return "разместите короба через второстепенные задания";
   if (
+    data.addressHolds?.some(
+      (hold) => hold.kind === "putaway" && hold.locationId === locationId,
+    ) ||
     data.putawayTasks.some(
       (task) =>
         ["claimed", "in_transit"].includes(task.status) &&
@@ -95,6 +106,9 @@ export function targetHint(
   )
     return "занято паллетой";
   if (
+    data.addressHolds?.some(
+      (hold) => hold.kind === "movement" && hold.locationId === locationId,
+    ) ||
     data.movements.some(
       (item) =>
         ["planned", "in_transit"].includes(item.status) &&
@@ -103,6 +117,10 @@ export function targetHint(
   )
     return "зарезервировано перемещением";
   if (
+    (pallet.returnLocationId !== locationId &&
+      data.addressHolds?.some(
+        (hold) => hold.kind === "return" && hold.locationId === locationId,
+      )) ||
     data.pallets.some(
       (item) => item.id !== pallet.id && item.returnLocationId === locationId,
     )
@@ -139,11 +157,15 @@ export function movementTime(value: string) {
 }
 
 export function wholePalletMovementAllowed(
-  data: Pick<WorkspaceDto, "putawayTasks">,
+  data: Pick<WorkspaceDto, "putawayTasks" | "addressHolds">,
   pallet: Pick<PalletDto, "id" | "kind" | "locationId">,
 ): boolean {
   return (
     pallet.kind !== "assembly" &&
+    !data.addressHolds?.some(
+      (hold) =>
+        hold.kind === "putaway" && hold.locationId === pallet.locationId,
+    ) &&
     !data.putawayTasks.some(
       (task) => task.fromPalletId === pallet.id && task.status !== "completed",
     ) &&

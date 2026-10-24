@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import Link from "next/link";
 import { Package, Layers, Search, ArrowUpRight, ScanLine } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
@@ -17,6 +18,7 @@ export function InventoryFeature({
 }: {
   onCorrection?: () => void;
 }) {
+  const { isManager } = useSession();
   const { data, isPending, isError, refetch } = useWorkspace();
   const { search, setSearch, view, setView } = useInventoryFilter();
   if (isPending) return <LoadingState />;
@@ -38,10 +40,12 @@ export function InventoryFeature({
           </p>
         </div>
         <div className={styles.actions}>
-          <Link href="/stock-ledger" className="button button--secondary">
-            Журнал учёта
-          </Link>
-          {onCorrection && (
+          {isManager && (
+            <Link href="/stock-ledger" className="button button--secondary">
+              Журнал учёта
+            </Link>
+          )}
+          {isManager && onCorrection && (
             <Button variant="secondary" onClick={onCorrection}>
               Корректировка
             </Button>

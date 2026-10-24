@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useEffect, useMemo, useRef } from "react";
 import {
   ArchiveRestore,
@@ -55,14 +56,17 @@ import styles from "./warehouse-layout.module.css";
 import scaleStyles from "./scale-controls.module.css";
 
 export function WarehouseLayoutFeature() {
+  const { isManager } = useSession();
   const workspace = useWorkspace();
   const commands = useLocationActions();
   const ui = useLayoutState();
   const copying = useRef(false);
   const data = workspace.data;
-  const copySection = data?.sections.find(
-    (section) => section.id === ui.sectionCopyId && !section.archived,
-  );
+  const copySection = isManager
+    ? data?.sections.find(
+        (section) => section.id === ui.sectionCopyId && !section.archived,
+      )
+    : undefined;
   useEffect(() => {
     if (data && ui.sectionCopyId && !copySection) ui.setSectionCopyId(null);
   }, [data, ui.sectionCopyId, copySection, ui.setSectionCopyId]);
@@ -114,11 +118,16 @@ export function WarehouseLayoutFeature() {
     bounds: room ?? { width: 1, depth: 1 },
     enabled: !!room,
     dragEnabled:
-      !ui.drawKind && !ui.sectionCopyId && !formIsOpen && !commands.pending,
+      isManager &&
+      !ui.drawKind &&
+      !ui.sectionCopyId &&
+      !formIsOpen &&
+      !commands.pending,
     onMove: commands.move,
     onMoveEntrance: commands.moveEntrance,
     onResizeSpace: commands.resizeSpace,
   });
+  const editing = isManager && map.editing;
   if (workspace.isPending)
     return <LoadingState label="Загружаем план склада…" />;
   if (!data || !room)
@@ -179,13 +188,15 @@ export function WarehouseLayoutFeature() {
     ui.setSelectedAddressId(null);
   };
   const saved = map.saveState === "saved" && !commands.error;
-  const saveText = busy
-    ? "Сохраняем изменения…"
-    : commands.error || map.saveState === "error"
-      ? "Изменения не сохранены"
-      : saved
-        ? "Изменения сохранены"
-        : "Изменения сохраняются автоматически";
+  const saveText = !isManager
+    ? "Просмотр схемы · изменение доступно руководителю"
+    : busy
+      ? "Сохраняем изменения…"
+      : commands.error || map.saveState === "error"
+        ? "Изменения не сохранены"
+        : saved
+          ? "Изменения сохранены"
+          : "Изменения сохраняются автоматически";
   const openSettings = () => {
     clear();
     ui.setDrawKind(null);
@@ -282,7 +293,7 @@ export function WarehouseLayoutFeature() {
             коридоры и места хранения на одном плане.
           </p>
         </div>
-        {!map.editing && (
+        {isManager && !editing && (
           <Button onClick={() => map.setEditing(true)} disabled={busy}>
             <Move size={17} />
             Открыть конструктор
@@ -332,8 +343,8 @@ export function WarehouseLayoutFeature() {
             <div className={styles.modeSwitch} aria-label="Режим карты">
               <button
                 type="button"
-                className={!map.editing ? styles.modeActive : ""}
-                aria-pressed={!map.editing}
+                className={!editing ? styles.modeActive : ""}
+                aria-pressed={!editing}
                 disabled={busy}
                 onClick={() => {
                   cancelSectionCopy();
@@ -344,16 +355,18 @@ export function WarehouseLayoutFeature() {
                 <MousePointer2 size={15} />
                 Обзор
               </button>
-              <button
-                type="button"
-                className={map.editing ? styles.modeActive : ""}
-                aria-pressed={map.editing}
-                disabled={busy}
-                onClick={() => map.setEditing(true)}
-              >
-                <Move size={15} />
-                Конструктор
-              </button>
+              {isManager && (
+                <button
+                  type="button"
+                  className={editing ? styles.modeActive : ""}
+                  aria-pressed={editing}
+                  disabled={busy}
+                  onClick={() => map.setEditing(true)}
+                >
+                  <Move size={15} />
+                  Конструктор
+                </button>
+              )}
             </div>
             <div className={styles.zoomControls}>
               <button
@@ -415,7 +428,7 @@ export function WarehouseLayoutFeature() {
               </button>
             </div>
           </div>
-          {map.editing && (
+          {editing && (
             <div
               className={styles.toolPalette}
               role="toolbar"
@@ -563,7 +576,7 @@ export function WarehouseLayoutFeature() {
               </button>
             </div>
           )}
-          {map.editing && (
+          {editing && (
             <div
               className={resizeStyles.fieldToolbar}
               role="group"
@@ -621,7 +634,7 @@ export function WarehouseLayoutFeature() {
               </button>
             </div>
           )}
-          {map.editing && !ui.drawKind && !ui.sectionCopyId && !map.panMode && (
+          {editing && !ui.drawKind && !ui.sectionCopyId && !map.panMode && (
             <div className={styles.dragHint}>
               <Move size={16} aria-hidden="true" />
               <p>
@@ -646,7 +659,7 @@ export function WarehouseLayoutFeature() {
               </p>
             </div>
           )}
-          {map.editing && ui.drawKind && (
+          {editing && ui.drawKind && (
             <div className={styles.layoutWarning} role="status">
               Нарисуйте {ui.drawKind === "room" ? "помещение" : "коридор"}:
               зажмите кнопку мыши и потяните по сетке. Шаг 0,5 м. После рисунка
@@ -661,7 +674,7 @@ export function WarehouseLayoutFeature() {
               </button>
             </div>
           )}
-          {map.editing &&
+          {editing &&
             !ui.drawKind &&
             (!suggestion || !aisleSuggestion) &&
             !(room.layoutMode === "spaces" && spaces.length === 0) && (
@@ -681,10 +694,10 @@ export function WarehouseLayoutFeature() {
             objects={objects}
             aisles={aisles}
             entrances={entrances}
-            interaction={map}
+            interaction={{ ...map, editing }}
             selectedId={selectedKey}
             pending={busy}
-            drawKind={map.editing && !formIsOpen ? ui.drawKind : null}
+            drawKind={editing && !formIsOpen ? ui.drawKind : null}
             selectedSpaceId={selectedSpace?.id ?? null}
             onClearSelection={clearSelection}
             onRequestSpaceResize={openSpaceResize}
@@ -746,7 +759,7 @@ export function WarehouseLayoutFeature() {
                 ? "Тяните карту для перемещения"
                 : copySection
                   ? "Клик — разместить копию"
-                  : map.editing
+                  : editing
                     ? ui.drawKind
                       ? "Рисование — шаг 0,5 м"
                       : "Перетаскивание — шаг 0,1 м"
@@ -767,7 +780,8 @@ export function WarehouseLayoutFeature() {
             )}
             {saveText}
           </div>
-          {!ui.drawKind &&
+          {isManager &&
+            !ui.drawKind &&
             spaces.length === 0 &&
             objects.length === 0 &&
             aisles.length === 0 &&
@@ -819,7 +833,7 @@ export function WarehouseLayoutFeature() {
           <SpaceDetails
             data={data}
             space={selectedSpace}
-            editing={map.editing}
+            editing={editing}
             pending={busy}
             error={formIsOpen ? null : commands.error}
             onEdit={(id) => {
@@ -835,7 +849,7 @@ export function WarehouseLayoutFeature() {
             aisle={selectedAisle}
             entrance={selectedEntrance}
             warehouse={room}
-            editing={map.editing}
+            editing={editing}
             pending={busy}
             error={formIsOpen ? null : commands.error}
             onEdit={onEditPlanObject}
@@ -847,7 +861,7 @@ export function WarehouseLayoutFeature() {
             data={data}
             object={selected}
             selectedAddressId={ui.selectedAddressId}
-            editing={map.editing}
+            editing={editing}
             pending={busy}
             error={formIsOpen ? null : commands.error}
             onSelectAddress={ui.setSelectedAddressId}
@@ -871,7 +885,7 @@ export function WarehouseLayoutFeature() {
         )}
       </div>
       <SpaceResizeForm
-        open={!!ui.spaceResizeId}
+        open={isManager && !!ui.spaceResizeId}
         space={resizeSpace}
         warehouse={room}
         pending={busy}
@@ -883,7 +897,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <SpaceForm
-        open={!!ui.spaceFormId}
+        open={isManager && !!ui.spaceFormId}
         space={editSpace}
         draft={ui.spaceDraft}
         warehouse={room}
@@ -913,7 +927,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <LocationForm
-        open={!!ui.locationFormId}
+        open={isManager && !!ui.locationFormId}
         location={editLocation}
         sections={data.sections}
         allLocations={data.locations}
@@ -938,7 +952,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <RackSectionForm
-        open={!!ui.sectionFormId}
+        open={isManager && !!ui.sectionFormId}
         section={editSection}
         sections={data.sections}
         allLocations={data.locations}
@@ -967,7 +981,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <RackLevelForm
-        section={addLevelSection}
+        section={isManager ? addLevelSection : undefined}
         locations={data.locations.filter(
           (address) => address.sectionId === addLevelSection?.id,
         )}
@@ -988,7 +1002,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <WarehousePlanForm
-        open={ui.planSettingsOpen}
+        open={isManager && ui.planSettingsOpen}
         warehouse={room}
         onClose={() => ui.setPlanSettingsOpen(false)}
         pending={busy}
@@ -999,7 +1013,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <AisleForm
-        open={!!ui.aisleFormId}
+        open={isManager && !!ui.aisleFormId}
         aisle={data.aisles.find((item) => item.id === ui.aisleFormId)}
         suggestedPosition={aisleSuggestion ?? { x: 0, y: 0 }}
         onClose={() => ui.setAisleFormId(null)}
@@ -1026,7 +1040,7 @@ export function WarehouseLayoutFeature() {
       />
       <EntranceForm
         entrances={data.entrances}
-        open={!!ui.entranceFormId}
+        open={isManager && !!ui.entranceFormId}
         entrance={data.entrances.find((item) => item.id === ui.entranceFormId)}
         warehouse={room}
         onClose={() => ui.setEntranceFormId(null)}
@@ -1051,7 +1065,7 @@ export function WarehouseLayoutFeature() {
         }}
       />
       <LayoutTrash
-        open={ui.trashOpen}
+        open={isManager && ui.trashOpen}
         data={data}
         onClose={() => ui.setTrashOpen(false)}
         pending={busy}

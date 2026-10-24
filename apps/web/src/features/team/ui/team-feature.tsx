@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { Users, Play, Pause, LogOut, UserPlus } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import {
@@ -13,37 +14,46 @@ import { useTeamState } from "../lib/use-team-state";
 import { EmployeeForm } from "./employee-form";
 import styles from "./team.module.css";
 export function TeamFeature() {
+  const { user, isManager } = useSession();
   const { data, isPending, isError, refetch } = useWorkspace();
   const c = useShift();
   const ui = useTeamState();
   if (isPending) return <LoadingState />;
   if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
+  const employees = data.employees.filter(
+    (employee) => isManager || employee.id === user?.employeeId,
+  );
   return (
     <>
       <div className="page-header">
         <div>
           <p className="eyebrow">ЛЮДИ И РЕЗУЛЬТАТЫ</p>
-          <h1 className="page-heading">Команда</h1>
+          <h1 className="page-heading">
+            {isManager ? "Команда" : "Моя смена"}
+          </h1>
           <p className="page-description">
-            Сотрудники, текущие задания и накопленный результат сборки.
+            {isManager
+              ? "Сотрудники, текущие задания и накопленный результат сборки."
+              : "Ваша смена, текущее задание и результат сборки."}
           </p>
         </div>
         <div className={styles.actions}>
           <Badge>
             <Users size={14} />{" "}
-            {data.employees.filter((e) => e.status === "working").length} на
-            смене
+            {employees.filter((e) => e.status === "working").length} на смене
           </Badge>
-          <Button
-            onClick={() => {
-              c.clearError();
-              ui.setCreateOpen(true);
-            }}
-            disabled={c.pending}
-          >
-            <UserPlus size={16} />
-            Добавить сотрудника
-          </Button>
+          {isManager && (
+            <Button
+              onClick={() => {
+                c.clearError();
+                ui.setCreateOpen(true);
+              }}
+              disabled={c.pending}
+            >
+              <UserPlus size={16} />
+              Добавить сотрудника
+            </Button>
+          )}
         </div>
       </div>
       {c.error && !ui.createOpen && (
@@ -60,7 +70,7 @@ export function TeamFeature() {
           чтобы назначать приёмку и задания.
         </div>
       )}
-      {data.employees.length === 0 && (
+      {isManager && employees.length === 0 && (
         <section className="glass-panel">
           <EmptyState
             title="Добавьте первого сотрудника"
@@ -80,7 +90,7 @@ export function TeamFeature() {
         </section>
       )}
       <div className="ops-employee-grid">
-        {data.employees.map((e) => {
+        {employees.map((e) => {
           const task = data.tasks.find(
             (t) => t.employeeId === e.id && t.status === "active",
           );
@@ -169,26 +179,30 @@ export function TeamFeature() {
           );
         })}
       </div>
-      <EmployeeForm
-        open={ui.createOpen}
-        pending={c.pending}
-        error={c.error}
-        onClose={() => ui.setCreateOpen(false)}
-        onCreate={async (values) => {
-          const beforeIds = new Set(
-            data.employees.map((employee) => employee.id),
-          );
-          const updated = await c.create(values);
-          const created =
-            updated.employees.find((employee) => !beforeIds.has(employee.id)) ??
-            updated.employees.find(
-              (employee) =>
-                employee.name.toLocaleLowerCase("ru-RU") ===
-                values.name.trim().toLocaleLowerCase("ru-RU"),
+      {isManager && (
+        <EmployeeForm
+          open={ui.createOpen}
+          pending={c.pending}
+          error={c.error}
+          onClose={() => ui.setCreateOpen(false)}
+          onCreate={async (values) => {
+            const beforeIds = new Set(
+              data.employees.map((employee) => employee.id),
             );
-          ui.setCreatedEmployeeId(created?.id ?? null);
-        }}
-      />
+            const updated = await c.create(values);
+            const created =
+              updated.employees.find(
+                (employee) => !beforeIds.has(employee.id),
+              ) ??
+              updated.employees.find(
+                (employee) =>
+                  employee.name.toLocaleLowerCase("ru-RU") ===
+                  values.name.trim().toLocaleLowerCase("ru-RU"),
+              );
+            ui.setCreatedEmployeeId(created?.id ?? null);
+          }}
+        />
+      )}
     </>
   );
 }

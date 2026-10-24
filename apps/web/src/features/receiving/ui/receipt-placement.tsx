@@ -1,10 +1,12 @@
 "use client";
+import { useSession } from "@/entities/session";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { MapPin, ScanLine } from "lucide-react";
 import type { ReceiptDto, WorkspaceDto } from "@/shared/api/generated/model";
-import { Button, Input, Modal, Select } from "@/shared/ui";
+import { Button, Input, Modal } from "@/shared/ui";
 import { placementSchema, type PlacementValues } from "../lib/receipt-form";
 import { usePlacementOptions } from "../model/use-placement-options";
 import styles from "./receiving.module.css";
@@ -25,6 +27,10 @@ export function ReceiptPlacement({
   onClose: () => void;
   onPlace: (values: PlacementValues) => Promise<void>;
 }) {
+  const { user } = useSession();
+  const actor = data.employees.find(
+    (employee) => employee.id === user?.employeeId,
+  );
   const row = receipt.pallets.find((item) => item.palletId === palletId);
   const pallet = data.pallets.find((item) => item.id === palletId);
   const sku = data.skus.find((item) => item.id === row?.skuId);
@@ -33,18 +39,23 @@ export function ReceiptPlacement({
     palletId,
     !!row && !row.placedAt,
   );
-  const staff = data.employees.filter(
-    (employee) => employee.status === "working",
-  );
   const suggested = options.data?.locations.find(
     (location) => location.id === options.data?.suggestedLocationId,
   );
   const form = useForm<PlacementValues>({
     resolver: zodResolver(placementSchema),
-    defaultValues: { employeeId: "", palletCode: "", locationCode: "" },
+    defaultValues: {
+      employeeId: user?.employeeId ?? "",
+      palletCode: "",
+      locationCode: "",
+    },
   });
+  useEffect(() => {
+    form.setValue("employeeId", user?.employeeId ?? "");
+  }, [user?.employeeId, form.setValue]);
   const submit = form.handleSubmit(async (values) => {
-    if (!pending && row && !row.placedAt) await onPlace(values);
+    if (!pending && actor?.status === "working" && row && !row.placedAt)
+      await onPlace({ ...values, employeeId: user?.employeeId ?? "" });
   });
   return (
     <Modal
@@ -131,34 +142,16 @@ export function ReceiptPlacement({
             </p>
           )}
           <fieldset disabled={pending} className={styles.fieldset}>
-            <label className="field">
-              Кто размещает
-              <Select
-                {...form.register("employeeId")}
-                aria-invalid={!!form.formState.errors.employeeId}
-              >
-                <option value="">Выберите сотрудника на смене</option>
-                {staff.map((employee) => (
-                  <option value={employee.id} key={employee.id}>
-                    {employee.name}
-                  </option>
-                ))}
-              </Select>
-              {form.formState.errors.employeeId && (
-                <span className={styles.error}>
-                  {form.formState.errors.employeeId.message}
-                </span>
+            <input type="hidden" {...form.register("employeeId")} />
+            <p className={styles.info}>
+              Размещает: <strong>{actor?.name ?? user?.name}</strong>.{" "}
+              {actor?.status !== "working" && (
+                <>
+                  Начните свою смену в{" "}
+                  <Link href="/team">разделе «Команда»</Link>.
+                </>
               )}
-            </label>
-            {!staff.length && (
-              <p className={styles.info}>
-                Нет сотрудников на смене.{" "}
-                <Link href="/team" target="_blank" rel="noopener noreferrer">
-                  Добавьте сотрудника и начните смену ↗
-                </Link>
-                , затем вернитесь к этой паллете.
-              </p>
-            )}
+            </p>
             <label className="field">
               <span className={styles.scanSteps}>
                 <span>1</span>Код паллеты
@@ -226,7 +219,7 @@ export function ReceiptPlacement({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !staff.length}
+              disabled={pending || actor?.status !== "working"}
               aria-busy={pending}
             >
               Подтвердить размещение

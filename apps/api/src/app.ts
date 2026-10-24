@@ -17,9 +17,17 @@ import {
   ExceptionFilter,
   HttpException,
 } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
+import { AuthController, cookieName } from "./auth.controller";
+import { AuthService } from "./auth.service";
+import { AuthGuard } from "./auth.guard";
+import { requestAuth } from "./auth-context";
+import { hashToken } from "./auth-storage";
+import { requireAuth } from "./auth-policy";
 import { NestFactory } from "@nestjs/core";
 import {
   ApiBody,
+  ApiCookieAuth,
   ApiQuery,
   ApiParam,
   ApiOkResponse,
@@ -31,6 +39,7 @@ import {
 import * as D from "./dto";
 import { WarehouseService } from "./warehouse.service";
 
+@ApiCookieAuth()
 @ApiTags("warehouse")
 @Controller("api")
 export class WarehouseController {
@@ -1054,12 +1063,68 @@ class JsonExceptionFilter implements ExceptionFilter {
     });
   }
 }
-@Module({ controllers: [WarehouseController], providers: [WarehouseService] })
+@Module({
+  controllers: [WarehouseController, AuthController],
+  providers: [
+    WarehouseService,
+    AuthService,
+    { provide: APP_GUARD, useClass: AuthGuard },
+  ],
+})
 export class AppModule {}
 export async function createApp() {
   const app = await NestFactory.create(AppModule, {
     logger: process.env.NODE_ENV === "test" ? false : ["error", "warn", "log"],
   });
+  app.use((request: any, response: any, next: () => void) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("Referrer-Policy", "same-origin");
+    response.setHeader("X-Frame-Options", "DENY");
+    response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    const value = (request.headers.cookie ?? "")
+      .split(";")
+      .map((p: string) => p.trim())
+      .find((p: string) => p.startsWith(`${cookieName()}=`))
+      ?.slice(cookieName().length + 1);
+    const token =
+      typeof value === "string" && /^[a-zA-Z0-9_-]{43}$/.test(value)
+        ? value
+        : null;
+    requestAuth.run(
+      {
+        http: true,
+        tokenHash: token ? hashToken(token) : null,
+        csrfToken:
+          typeof request.headers["x-wms-csrf"] === "string"
+            ? request.headers["x-wms-csrf"]
+            : null,
+        origin:
+          typeof request.headers.origin === "string"
+            ? request.headers.origin
+            : null,
+      },
+      next,
+    );
+  });
+  app.use(
+    ["/api/docs", "/api/docs-json", "/api/docs-yaml"],
+    async (_request: any, response: any, next: () => void) => {
+      try {
+        await app.get(WarehouseService).authTransaction(async (tx) => {
+          const row = await requireAuth(tx);
+          if (row.role !== "manager")
+            throw new HttpException("Нужны права руководителя", 403);
+        });
+        next();
+      } catch (error) {
+        response
+          .status(error instanceof HttpException ? error.getStatus() : 500)
+          .json({ message: "Войдите как руководитель" });
+      }
+    },
+  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -1070,9 +1135,12 @@ export async function createApp() {
   app.useGlobalFilters(new JsonExceptionFilter());
   app.enableCors({
     origin: process.env.WEB_ORIGIN?.split(",") ?? [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3080",
+      "http://127.0.0.1:3081",
+      "http://localhost:3080",
+      "http://localhost:3081",
     ],
+    credentials: true,
   });
   app.enableShutdownHooks();
   return app;
@@ -1083,8 +1151,9 @@ export function buildOpenApi(app: Awaited<ReturnType<typeof createApp>>) {
     new DocumentBuilder()
       .setTitle("Artmate WMS API")
       .setDescription(
-        "Warehouse operations; FIFO by receipt date; every command requires an idempotency requestId.",
+        "Локальная WMS: FIFO по дате поступления, складские команды идемпотентны по requestId. Вход: непрозрачная HttpOnly SameSite=Strict cookie; getAuthSession возвращает собственный CSRF-токен. Все аутентифицированные записи требуют разрешённый Origin и X-WMS-CSRF. Login/setup дополнительно требуют JSON и X-WMS-Request: 1. Аккаунты и количественный журнал доступны руководителю; рабочие операции проверяют текущего сотрудника и назначение. Пароли и session tokens не возвращаются в JSON.",
       )
+      .addCookieAuth(cookieName(), { type: "apiKey", in: "cookie" }, "cookie")
       .setVersion("0.1.0")
       .build(),
   );

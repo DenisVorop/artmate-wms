@@ -57,7 +57,7 @@ export function putawayClaimBlocked(
 ): ClaimBlock | null {
   if (!actor || actor.status !== "working")
     return {
-      message: "Выберите сотрудника на смене в поле «Работаем как».",
+      message: "Начните смену в своей учётной записи.",
       href: "/team",
       linkLabel: "Команда и смены",
     };
@@ -123,4 +123,15 @@ export function putawayDate(value: string): string {
     minute: "2-digit",
     timeZone: "Europe/Moscow",
   }).format(new Date(value));
+}
+
+export function putawayTaskVisible(
+  task: Pick<PutawayTaskDto, "employeeId" | "status">,
+  employeeId: string,
+): boolean {
+  return (
+    !!employeeId &&
+    (task.employeeId === employeeId ||
+      (task.status === "queued" && task.employeeId === null))
+  );
 }

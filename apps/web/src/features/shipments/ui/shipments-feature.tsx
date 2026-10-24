@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Truck, CheckCircle2, Package } from "lucide-react";
@@ -18,7 +19,7 @@ import { ShipmentCard } from "./shipment-card";
 import { ShipmentPreparationForm } from "./shipment-preparation-form";
 import styles from "./shipments.module.css";
 
-export function ShipmentsFeature() {
+function ManagerShipmentsFeature() {
   const { data, isPending, isError, refetch } = useWorkspace();
   const commands = useShipments();
   const ui = useShipmentState();
@@ -171,5 +172,17 @@ export function ShipmentsFeature() {
         }}
       />
     </>
+  );
+}
+
+export function ShipmentsFeature() {
+  const { isManager } = useSession();
+  return isManager ? (
+    <ManagerShipmentsFeature />
+  ) : (
+    <EmptyState
+      title="Отгрузки доступны менеджеру"
+      description="Для работы с заданиями откройте сборку или размещение коробов."
+    />
   );
 }

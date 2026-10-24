@@ -39,17 +39,21 @@ import type {
   RetireEmptyPalletDto,
 } from "./generated/model";
 import { workspaceQueryKey, stockLedgerQueryKey } from "./query-keys";
+import { getAuthEpoch } from "./auth-memory";
+import { ApiError } from "./api-error";
 import { runWarehouseCommand } from "./run-warehouse-command";
 export function useWarehouseCommands() {
   const client = useQueryClient();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function run(command: () => Promise<WorkspaceDto>) {
+    const epoch = getAuthEpoch();
     setPending(true);
     setError(null);
     try {
       const result = await runWarehouseCommand({
         command,
+        isScopeCurrent: () => getAuthEpoch() === epoch,
         cancelRead: () => client.cancelQueries({ queryKey: workspaceQueryKey }),
         readCurrent: () => api.getWorkspace(),
         getCached: () => client.getQueryData(workspaceQueryKey),
@@ -62,6 +66,11 @@ export function useWarehouseCommands() {
             refetchType: "none",
           }),
       });
+      if (getAuthEpoch() !== epoch)
+        throw new ApiError(
+          "Сессия изменилась. Результат прежнего пользователя отклонён.",
+          409,
+        );
       void client.invalidateQueries({ queryKey: stockLedgerQueryKey });
       return result;
     } catch (e) {

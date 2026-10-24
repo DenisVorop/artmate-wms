@@ -7,6 +7,7 @@ import type {
   TaskDto,
 } from "@/shared/api/generated/model";
 import {
+  putawayTaskVisible,
   canReleasePutaway,
   canWorkPutaway,
   isActivePutaway,
@@ -224,4 +225,33 @@ test("Вернуть в очередь можно только своё claimed 
     false,
   );
   assert.equal(isActivePutaway(task()), false);
+});
+
+test("Сотрудник видит свои размещения и свободную очередь; чужие сканы и освобождение недоступны", () => {
+  for (const status of [
+    "queued",
+    "claimed",
+    "in_transit",
+    "completed",
+  ] as const) {
+    assert.equal(
+      putawayTaskVisible(task({ status, employeeId: "actor" }), "actor"),
+      true,
+    );
+    assert.equal(
+      putawayTaskVisible(task({ status, employeeId: "other" }), "actor"),
+      false,
+    );
+  }
+  assert.equal(putawayTaskVisible(task(), "actor"), true);
+  assert.equal(putawayTaskVisible(task({ status: "claimed" }), "actor"), false);
+  assert.equal(putawayTaskVisible(task(), ""), false);
+  assert.equal(
+    canWorkPutaway(task({ status: "claimed", employeeId: "other" }), actor),
+    false,
+  );
+  assert.equal(
+    canReleasePutaway(task({ status: "claimed", employeeId: "other" }), actor),
+    false,
+  );
 });

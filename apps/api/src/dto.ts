@@ -279,6 +279,12 @@ export class ShipmentDto {
   @ApiProperty({ type: [String] }) boxIds!: string[];
 }
 export class ActivityDto {
+  @ApiPropertyOptional({ type: String, nullable: true }) actorEmployeeId?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) actorName?:
+    | string
+    | null;
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) title!: string;
   @ApiProperty({ type: String }) description!: string;
@@ -364,7 +370,14 @@ export class PutawayPlacementOptionsDto {
     | null;
   @ApiProperty({ type: String, nullable: true }) reason!: string | null;
 }
+export class AddressHoldDto {
+  @ApiProperty({ type: String }) locationId!: string;
+  @ApiProperty({ type: String, enum: ["movement", "putaway", "return"] })
+  kind!: "movement" | "putaway" | "return";
+}
 export class WorkspaceDto {
+  @ApiPropertyOptional({ type: [AddressHoldDto] })
+  addressHolds?: AddressHoldDto[];
   @ApiProperty({ type: [PutawayTaskDto] }) putawayTasks!: PutawayTaskDto[];
   @ApiProperty({ type: [ReceiptDto] }) receipts!: ReceiptDto[];
   @ApiProperty({ type: BalanceDto }) balance!: BalanceDto;
@@ -1276,4 +1289,116 @@ export class AdjustStockDto extends CommandDto {
   @MinLength(5)
   @MaxLength(500)
   reason!: string;
+}
+
+export class AuthUserDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String }) login!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, enum: ["manager", "employee"] }) role!:
+    | "manager"
+    | "employee";
+  @ApiProperty({ type: Boolean }) mustChangePassword!: boolean;
+}
+export class AuthSessionDto {
+  @ApiProperty({ type: Boolean }) needsSetup!: boolean;
+  @ApiProperty({ type: AuthUserDto, nullable: true }) user!: AuthUserDto | null;
+  @ApiProperty({ type: String, nullable: true }) csrfToken!: string | null;
+  @ApiProperty({ type: String, nullable: true }) expiresAt!: string | null;
+}
+export class SetupAuthDto {
+  @ApiProperty({ type: String, minLength: 2, maxLength: 100 })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name!: string;
+  @ApiProperty({ type: String, minLength: 3, maxLength: 64 })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9._-]{2,63}$/)
+  login!: string;
+  @ApiProperty({ type: String, minLength: 12, maxLength: 128 })
+  @IsString()
+  @MinLength(12)
+  @MaxLength(128)
+  password!: string;
+}
+export class LoginDto {
+  @ApiProperty({ type: String })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  login!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  password!: string;
+}
+export class ChangePasswordDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  currentPassword!: string;
+  @ApiProperty({ type: String, minLength: 12, maxLength: 128 })
+  @IsString()
+  @MinLength(12)
+  @MaxLength(128)
+  newPassword!: string;
+}
+export class AuthAccountDto extends AuthUserDto {
+  @ApiProperty({ type: Boolean }) blocked!: boolean;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) lastLoginAt!: string | null;
+  @ApiProperty({ type: Number }) activeSessions!: number;
+}
+export class AuthAccountsDto {
+  @ApiProperty({ type: [AuthAccountDto] }) items!: AuthAccountDto[];
+}
+export class CreateAuthAccountDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  employeeId!: string;
+  @ApiProperty({ type: String, minLength: 3, maxLength: 64 })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9._-]{2,63}$/)
+  login!: string;
+  @ApiProperty({ type: String, enum: ["manager", "employee"] })
+  @IsIn(["manager", "employee"])
+  role!: "manager" | "employee";
+  @ApiProperty({ type: String, minLength: 12, maxLength: 128 })
+  @IsString()
+  @MinLength(12)
+  @MaxLength(128)
+  password!: string;
+}
+export class UpdateAuthAccountDto {
+  @ApiPropertyOptional({ type: String, enum: ["manager", "employee"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["manager", "employee"])
+  role?: "manager" | "employee";
+  @ApiPropertyOptional({ type: Boolean })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsBoolean()
+  blocked?: boolean;
+}
+export class ResetAuthPasswordDto {
+  @ApiProperty({ type: String, minLength: 12, maxLength: 128 })
+  @IsString()
+  @MinLength(12)
+  @MaxLength(128)
+  password!: string;
 }

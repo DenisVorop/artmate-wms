@@ -1,0 +1,35 @@
+.profile {
+  position: relative;
+}
+.profile > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.profile > summary::-webkit-details-marker {
+  display: none;
+}
+.profile > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.menu {
+  display: grid;
+  gap: 7px;
+  padding: 9px 0;
+}
+.menu button {
+  width: 100%;
+  justify-content: flex-start;
+}
+.error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.role {
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}

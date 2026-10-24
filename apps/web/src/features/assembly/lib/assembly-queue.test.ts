@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { EmployeeDto, TaskDto } from "@/shared/api/generated/model";
 import {
+  assemblyTaskVisible,
   assemblyStep,
   assignmentBlocked,
   claimBlocked,
@@ -185,4 +186,21 @@ test("Физическая подсказка 2×10 появляется тол�
   assert.match(preparationHint(20), /2 упаковки по 10/);
   assert.match(preparationHint(12), /12 раскрасок/);
   assert.doesNotMatch(preparationHint(12), /2 упаковки/);
+});
+
+test("Сотрудник видит свои задания и свободную очередь, но не чужое назначение/паузу/историю", () => {
+  for (const status of ["queued", "active", "paused", "completed"] as const) {
+    assert.equal(
+      assemblyTaskVisible(task({ status, employeeId: "actor" }), "actor"),
+      true,
+    );
+    assert.equal(
+      assemblyTaskVisible(task({ status, employeeId: "other" }), "actor"),
+      false,
+    );
+  }
+  assert.equal(assemblyTaskVisible(task(), "actor"), true);
+  assert.equal(assemblyTaskVisible(task({ status: "paused" }), "actor"), false);
+  assert.equal(assemblyTaskVisible(task(), ""), false);
+  assert.ok(claimBlocked(task({ employeeId: "other" }), actor, []));
 });

@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 
 import { useEffect, useId } from "react";
 import { useForm } from "react-hook-form";
@@ -24,6 +25,7 @@ type Props = { data: WorkspaceDto; open: boolean; onClose: () => void };
 const number = (value: number) => value.toLocaleString("ru-RU");
 
 export function StockAdjustmentModal({ data, open, onClose }: Props) {
+  const { user, isManager } = useSession();
   const state = useAdjustmentState();
   const command = useStockAdjustment();
   const id = useId();
@@ -43,18 +45,19 @@ export function StockAdjustmentModal({ data, open, onClose }: Props) {
   const values = watch();
   useEffect(() => {
     if (open) {
-      reset(adjustmentDefaults);
+      reset({ ...adjustmentDefaults, employeeId: user?.employeeId ?? "" });
       state.setSnapshot(null);
       state.setConfirming(false);
       command.clearError();
     }
     // A polling snapshot must never reset an entered count or its expected base.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, reset]);
+  }, [open, reset, user?.employeeId]);
   const busy = command.pending || isSubmitting;
   const targets = eligibleAdjustmentTargets(data, values.kind);
   const workers = data.employees.filter(
-    (employee) => employee.status === "working",
+    (employee) =>
+      employee.id === user?.employeeId && employee.status === "working",
   );
   const employee = data.employees.find(
     (employee) => employee.id === values.employeeId,
@@ -111,6 +114,7 @@ export function StockAdjustmentModal({ data, open, onClose }: Props) {
   const delta = snapshot
     ? (after - snapshot.expectedQuantity) * snapshot.units
     : 0;
+  if (!isManager) return null;
   return (
     <Modal
       open={open}
@@ -213,38 +217,12 @@ export function StockAdjustmentModal({ data, open, onClose }: Props) {
                 </strong>
               </div>
             )}
-            <label className="field" htmlFor={`${id}-employee`}>
-              Исполнитель на смене
-              <Select
-                id={`${id}-employee`}
-                {...register("employeeId")}
-                disabled={busy}
-                aria-invalid={!!errors.employeeId}
-              >
-                <option value="">Выберите сотрудника</option>
-                {values.employeeId &&
-                  !workers.some((item) => item.id === values.employeeId) && (
-                    <option value={values.employeeId} disabled>
-                      {employee?.name ?? "Сотрудник"} — вне смены
-                    </option>
-                  )}
-                {workers.map((worker) => (
-                  <option key={worker.id} value={worker.id}>
-                    {worker.name}
-                  </option>
-                ))}
-              </Select>
-              {errors.employeeId && (
-                <span className={styles.error}>
-                  {errors.employeeId.message}
-                </span>
-              )}
-            </label>
-            {!workers.length && (
-              <p className={styles.hint}>
-                Сначала начните смену сотрудника на странице «Команда».
-              </p>
-            )}
+            <input type="hidden" {...register("employeeId")} />
+            <p className={styles.hint}>
+              Исполнитель: {user?.name}.{" "}
+              {employee?.status !== "working" &&
+                "Для корректировки начните свою смену в разделе «Команда»."}
+            </p>
             {values.kind === "raw_count" ? (
               <label className="field" htmlFor={`${id}-count`}>
                 Фактическое количество, шт.

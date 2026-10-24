@@ -1,9 +1,11 @@
+import { ApiError } from "./api-error";
 import type { WorkspaceDto } from "./generated/model";
 import { isCurrentWorkspace, newestWorkspace } from "./workspace-shape";
 export { isCurrentWorkspace } from "./workspace-shape";
 
 type CommandPort = {
   command: () => Promise<WorkspaceDto>;
+  isScopeCurrent?: () => boolean;
   cancelRead: () => Promise<unknown>;
   readCurrent: () => Promise<unknown>;
   getCached: () => unknown;
@@ -15,35 +17,52 @@ type CommandPort = {
 export async function runWarehouseCommand(
   port: CommandPort,
 ): Promise<WorkspaceDto> {
+  const assertScope = () => {
+    if (port.isScopeCurrent && !port.isScopeCurrent())
+      throw new ApiError(
+        "Сессия изменилась. Результат прежнего пользователя отклонён.",
+        409,
+      );
+  };
+  assertScope();
   const previous = port.getCached();
   if (!isCurrentWorkspace(previous))
     throw new Error(
       "Данные склада ещё не загружены. Обновите страницу перед изменением.",
     );
   await port.cancelRead();
+  assertScope();
   const response = await port.command();
+  assertScope();
   try {
     // A polling read may have started while the command was executing.
     await port.cancelRead();
+    assertScope();
     const current = await port.readCurrent();
+    assertScope();
     if (isCurrentWorkspace(current)) {
       const result =
         newestWorkspace(current, newestWorkspace(response, port.getCached())) ??
         previous;
+      assertScope();
       port.setCached(result);
+      assertScope();
       return result;
     }
   } catch {
     // The write is already committed; polling will recover the current state.
   }
+  assertScope();
   const cached = port.getCached();
   const fallback = isCurrentWorkspace(cached) ? cached : previous;
   const result = newestWorkspace(response, fallback) ?? fallback;
+  assertScope();
   if (result === response) port.setCached(result);
   try {
     await port.invalidate();
   } catch {
     /* Refresh failure cannot turn a commit into a failed write. */
   }
+  assertScope();
   return result;
 }

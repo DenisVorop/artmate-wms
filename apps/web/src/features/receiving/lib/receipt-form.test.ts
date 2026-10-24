@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildPlacement,
   buildReceipt,
   moscowDateTimeInput,
   newSkuSchema,
@@ -243,4 +244,18 @@ test("Подтверждение требует оба скана и сотру�
       locationCode: "RACK-01",
     },
   );
+});
+
+test("Размещение использует сотрудника сессии, сохраняя введённые сканы; пустая сессия не создаёт команду", () => {
+  const values = {
+    employeeId: "other",
+    palletCode: " PAL-1 ",
+    locationCode: " LOC-1 ",
+  };
+  const dto = buildPlacement(values, "self");
+  assert.equal(dto.employeeId, "self");
+  assert.equal(dto.palletCode, "PAL-1");
+  assert.equal(dto.locationCode, "LOC-1");
+  assert.equal(values.employeeId, "other");
+  assert.throws(() => buildPlacement(values, ""));
 });

@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 
 import Link from "next/link";
 import {
@@ -39,6 +40,7 @@ const taskLabels: Record<string, string> = {
 const taskLabel = (status: string) => taskLabels[status] || status;
 
 export function DashboardFeature() {
+  const { user, isManager } = useSession();
   const { data, isPending, isError, refetch } = useWorkspace();
   if (isPending) return <LoadingState />;
   if (isError || !data)
@@ -50,6 +52,33 @@ export function DashboardFeature() {
       />
     );
   const balance = data.balance;
+  if (!isManager)
+    return (
+      <section className="glass-panel ops-panel">
+        <p className="eyebrow">МОЯ РАБОТА</p>
+        <h1 className="page-heading">{user?.name}</h1>
+        <p className="page-description">
+          Начните свою смену и выберите задание из свободной очереди.
+        </p>
+        <div className="ops-action-row">
+          <Link className="button button--primary" href="/assembly">
+            Сборка
+          </Link>
+          <Link className="button button--secondary" href="/putaway">
+            Размещение коробов
+          </Link>
+          <Link className="button button--secondary" href="/receiving">
+            Приёмка
+          </Link>
+          <Link className="button button--secondary" href="/team">
+            Моя смена
+          </Link>
+          <Link className="button button--secondary" href="/warehouse">
+            Карта склада
+          </Link>
+        </div>
+      </section>
+    );
   const storedBoxes = data.boxes.filter((box) => box.status === "stored");
   const accountedBoxes = data.boxes.filter((box) =>
     ["stored", "in_transit"].includes(box.status),
@@ -190,7 +219,7 @@ export function DashboardFeature() {
           </div>
           <div className="metric-bottom">
             <span className="metric-indicator" />
-            <span>За всё время работы демосклада</span>
+            <span>За всё время работы склада</span>
             <Link href="/assembly" aria-label="Открыть задания сборки">
               <ArrowUpRight size={16} />
             </Link>

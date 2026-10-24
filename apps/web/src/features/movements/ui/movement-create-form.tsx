@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,6 +31,7 @@ export function MovementCreateForm({
   onClose,
   onCreate,
 }: Props) {
+  const { user, isManager } = useSession();
   const {
     register,
     watch,
@@ -41,6 +43,9 @@ export function MovementCreateForm({
     resolver: zodResolver(movementSchema),
     defaultValues: movementDefaults,
   });
+  const ownEmployee = data.employees.find(
+    (employee) => employee.id === user?.employeeId,
+  );
   const [palletId, kind] = watch(["palletId", "kind"]);
   const pallet = data.pallets.find((item) => item.id === palletId);
   const available = data.pallets.filter(
@@ -56,8 +61,12 @@ export function MovementCreateForm({
       ),
   );
   useEffect(() => {
-    if (open) reset(movementDefaults);
-  }, [open, reset]);
+    if (open)
+      reset({
+        ...movementDefaults,
+        employeeId: isManager ? "" : (user?.employeeId ?? ""),
+      });
+  }, [open, reset, isManager, user?.employeeId]);
   useEffect(() => {
     setValue("keepSourceReserved", kind === "lower");
     setValue(
@@ -185,37 +194,50 @@ export function MovementCreateForm({
             </span>
           )}
         </label>
-        <label>
-          Исполнитель
-          <select {...register("employeeId")}>
-            <option value="">Выберите сотрудника на смене</option>
-            {data.employees
-              .filter((item) => item.status === "working")
-              .map((item) => (
-                <option
-                  key={item.id}
-                  value={item.id}
-                  disabled={data.putawayTasks.some(
-                    (task) =>
-                      task.employeeId === item.id &&
-                      ["claimed", "in_transit"].includes(task.status),
-                  )}
-                >
-                  {item.name}
-                  {data.putawayTasks.some(
-                    (task) =>
-                      task.employeeId === item.id &&
-                      ["claimed", "in_transit"].includes(task.status),
-                  )
-                    ? " — размещает короб"
-                    : ""}
-                </option>
-              ))}
-          </select>
-          {errors.employeeId && (
-            <span className="ops-field-error">{errors.employeeId.message}</span>
-          )}
-        </label>
+        {isManager ? (
+          <>
+            <label>
+              Исполнитель
+              <select {...register("employeeId")}>
+                <option value="">Выберите сотрудника на смене</option>
+                {data.employees
+                  .filter((item) => item.status === "working")
+                  .map((item) => (
+                    <option
+                      key={item.id}
+                      value={item.id}
+                      disabled={data.putawayTasks.some(
+                        (task) =>
+                          task.employeeId === item.id &&
+                          ["claimed", "in_transit"].includes(task.status),
+                      )}
+                    >
+                      {item.name}
+                      {data.putawayTasks.some(
+                        (task) =>
+                          task.employeeId === item.id &&
+                          ["claimed", "in_transit"].includes(task.status),
+                      )
+                        ? " — размещает короб"
+                        : ""}
+                    </option>
+                  ))}
+              </select>
+              {errors.employeeId && (
+                <span className="ops-field-error">
+                  {errors.employeeId.message}
+                </span>
+              )}
+            </label>
+          </>
+        ) : (
+          <>
+            <input type="hidden" {...register("employeeId")} />
+            <p className={styles.hint}>
+              Исполнитель: {user?.name}. Задание будет назначено вам.
+            </p>
+          </>
+        )}
         {kind === "lower" && (
           <label className={styles.checkbox}>
             <input type="checkbox" {...register("keepSourceReserved")} />
@@ -235,7 +257,17 @@ export function MovementCreateForm({
             {error}
           </div>
         )}
-        <Button type="submit" disabled={pending}>
+        {!isManager && ownEmployee?.status !== "working" && (
+          <p className={styles.hint}>
+            Для создания своего перемещения начните смену в разделе «Команда».
+          </p>
+        )}
+        <Button
+          type="submit"
+          disabled={
+            pending || (!isManager && ownEmployee?.status !== "working")
+          }
+        >
           {pending ? "Создаём…" : "Создать перемещение"}
         </Button>
       </form>

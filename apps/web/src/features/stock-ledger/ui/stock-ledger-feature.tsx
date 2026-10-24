@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,7 +24,7 @@ import { useLedgerResults } from "../model/use-ledger-results";
 import { LedgerFilters } from "./ledger-filters";
 import { LedgerEvent } from "./ledger-event";
 import styles from "./stock-ledger.module.css";
-export function StockLedgerFeature({
+function ManagerStockLedgerFeature({
   data,
   onCorrection,
 }: {
@@ -246,5 +247,19 @@ export function StockLedgerFeature({
         )}
       </section>
     </div>
+  );
+}
+
+export function StockLedgerFeature(
+  props: Parameters<typeof ManagerStockLedgerFeature>[0],
+) {
+  const { isManager } = useSession();
+  return isManager ? (
+    <ManagerStockLedgerFeature {...props} />
+  ) : (
+    <EmptyState
+      title="Журнал доступен менеджеру"
+      description="Для работы с заданиями откройте сборку или размещение коробов."
+    />
   );
 }

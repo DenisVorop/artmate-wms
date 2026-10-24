@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Package, X } from "lucide-react";
 import type { MovementDto, WorkspaceDto } from "@/shared/api/generated/model";
@@ -31,6 +32,13 @@ export function MovementDetail({
   onPlace,
   onCancel,
 }: Props) {
+  const { user, isManager } = useSession();
+  const canExecute =
+    user?.employeeId === movement.employeeId &&
+    data.employees.some(
+      (employee) =>
+        employee.id === user.employeeId && employee.status === "working",
+    );
   const pallet = data.pallets.find((item) => item.id === movement.palletId);
   const source = data.locations.find(
     (item) => item.id === movement.fromLocationId,
@@ -151,25 +159,34 @@ export function MovementDetail({
           сохранятся.
         </p>
       )}
+      {!["completed", "cancelled"].includes(movement.status) && !canExecute && (
+        <p className={styles.hint}>
+          Сканы выполняет назначенный сотрудник в своей учётной записи на смене.
+        </p>
+      )}
       {movement.status === "planned" && (
         <>
-          <MovementConfirmForm
-            key={`${movement.id}-take`}
-            mode="take"
-            palletCode={pallet?.code ?? ""}
-            locationCode={source?.code ?? ""}
-            pending={pending}
-            onConfirm={onTake}
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={pending}
-            onClick={() => void onCancel().catch(() => {})}
-          >
-            <X size={14} />
-            Отменить до забора
-          </Button>
+          {canExecute && (
+            <MovementConfirmForm
+              key={`${movement.id}-take`}
+              mode="take"
+              palletCode={pallet?.code ?? ""}
+              locationCode={source?.code ?? ""}
+              pending={pending}
+              onConfirm={onTake}
+            />
+          )}
+          {(isManager || user?.employeeId === movement.employeeId) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => void onCancel().catch(() => {})}
+            >
+              <X size={14} />
+              Отменить до забора
+            </Button>
+          )}
         </>
       )}
       {movement.status === "in_transit" && (
@@ -178,14 +195,16 @@ export function MovementDetail({
             Паллета в пути. Исходный адрес уже снят, целевой адрес остаётся
             зарезервированным. Завершите размещение.
           </p>
-          <MovementConfirmForm
-            key={`${movement.id}-place`}
-            mode="place"
-            palletCode={pallet?.code ?? ""}
-            locationCode={target?.code ?? ""}
-            pending={pending}
-            onConfirm={onPlace}
-          />
+          {canExecute && (
+            <MovementConfirmForm
+              key={`${movement.id}-place`}
+              mode="place"
+              palletCode={pallet?.code ?? ""}
+              locationCode={target?.code ?? ""}
+              pending={pending}
+              onConfirm={onPlace}
+            />
+          )}
         </>
       )}
       {movement.status === "completed" && (
@@ -194,11 +213,14 @@ export function MovementDetail({
             <CheckCircle2 size={16} />
             Размещение подтверждено
           </div>
-          {movement.kind === "lower" && pallet && pallet.quantity > 0 && (
-            <Link href="/shipments" className="button button--secondary">
-              <Package size={16} />К отгрузкам
-            </Link>
-          )}
+          {isManager &&
+            movement.kind === "lower" &&
+            pallet &&
+            pallet.quantity > 0 && (
+              <Link href="/shipments" className="button button--secondary">
+                <Package size={16} />К отгрузкам
+              </Link>
+            )}
         </>
       )}
       {movement.status === "cancelled" && (

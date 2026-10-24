@@ -54,10 +54,11 @@ export function toStockAdjustment(
   values: AdjustmentValues,
   snapshot: AdjustmentSnapshot,
   requestId = crypto.randomUUID(),
+  employeeId = values.employeeId,
 ): AdjustStockDto {
   if (values.kind !== snapshot.kind || values.targetId !== snapshot.targetId)
     throw new Error("Повторно выберите объект корректировки");
-  const parsed = adjustmentSchemaFor(snapshot).parse(values);
+  const parsed = adjustmentSchemaFor(snapshot).parse({ ...values, employeeId });
   return {
     requestId,
     kind: parsed.kind,

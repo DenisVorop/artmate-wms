@@ -23,9 +23,13 @@ import {
   X,
 } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
-import { Modal, Input } from "@/shared/ui";
+import { Modal, Input, Button } from "@/shared/ui";
 
-const navigation = [
+import { useSession } from "@/entities/session";
+import { ChangePasswordModal, useAuthActions } from "@/features/auth";
+import sessionStyles from "./session-controls.module.css";
+
+const allNavigation = [
   { href: "/", label: "Обзор", icon: ChartNoAxesCombined },
   { href: "/warehouse", label: "Карта склада", icon: Grid2X2 },
   { href: "/inventory", label: "Остатки", icon: Layers3 },
@@ -40,13 +44,38 @@ const navigation = [
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const session = useSession();
+  const auth = useAuthActions();
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const workerPaths = [
+    "/warehouse",
+    "/receiving",
+    "/assembly",
+    "/putaway",
+    "/movements",
+    "/team",
+  ];
+  const navigation = allNavigation.filter(
+    (item) => session.isManager || workerPaths.includes(item.href),
+  );
+  const initials =
+    session.user?.name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "?";
+  const roleLabel = session.isManager ? "Руководитель" : "Сотрудник";
   const { data, isError, isPending } = useWorkspace();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const current =
-    navigation.find((item) => item.href === pathname) || navigation[0]!;
+    allNavigation.find((item) => item.href === pathname) ||
+    navigation.find((item) => item.href === "/assembly") ||
+    navigation[0]!;
   useEffect(() => {
     setMobileOpen(false);
     setSearchOpen(false);
@@ -115,7 +144,11 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
         className={`sidebar ${mobileOpen ? "sidebar--open" : ""}`}
         aria-label="Основная навигация"
       >
-        <Link href="/" className="brand" aria-label="artmate WMS, главная">
+        <Link
+          href={session.isManager ? "/" : "/assembly"}
+          className="brand"
+          aria-label="artmate WMS, главная"
+        >
           <span className="brand-symbol">
             <Package size={24} strokeWidth={1.5} />
           </span>
@@ -131,7 +164,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             <strong title={data?.warehouse.name}>
               {data?.warehouse.name ?? "Склад"}
             </strong>
-            <span>Локальный демосклад</span>
+            <span>Адресное хранение</span>
           </div>
           <span className="warehouse-selected" aria-label="Выбран">
             <Check size={14} />
@@ -156,22 +189,56 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           <div className="shift-note">
             <span className="status-dot" />
             <span>
-              {activeEmployees
-                ? `На смене: ${activeEmployees}`
-                : "Управление сменами"}
+              {session.isManager
+                ? activeEmployees
+                  ? `На смене: ${activeEmployees}`
+                  : "Управление сменами"
+                : data?.employees.find(
+                      (employee) => employee.id === session.user?.employeeId,
+                    )?.status === "working"
+                  ? "Ваша смена открыта"
+                  : "Ваша смена"}
             </span>
             <Link href="/team" aria-label="Открыть команду">
               <ArrowUpRight size={16} />
             </Link>
           </div>
-          <Link href="/team" className="sidebar-profile">
-            <span className="avatar avatar--manager">А</span>
-            <span>
-              <strong>Демонстрационный доступ</strong>
-              <small>Без авторизации</small>
-            </span>
-            <ChevronDown size={15} />
-          </Link>
+          <details className={sessionStyles.profile}>
+            <summary className="sidebar-profile">
+              <span className="avatar avatar--manager">{initials}</span>
+              <span>
+                <strong>{session.user?.name}</strong>
+                <small>
+                  {roleLabel} · {session.user?.login}
+                </small>
+              </span>
+              <ChevronDown size={15} />
+            </summary>
+            <div className={sessionStyles.menu}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={auth.pending}
+                onClick={() => setPasswordOpen(true)}
+              >
+                Сменить пароль
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={auth.pending}
+                aria-busy={auth.pending}
+                onClick={() => void auth.logout()}
+              >
+                Выйти из склада
+              </Button>
+              {auth.error && (
+                <p className={sessionStyles.error} role="alert">
+                  {auth.error}
+                </p>
+              )}
+            </div>
+          </details>
         </div>
       </aside>
       <div className="workspace-content">
@@ -190,7 +257,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             <strong>{current.label}</strong>
           </div>
           <div className="topbar-actions">
-            <span className="demo-mode">ДЕМО</span>
+            <span className={sessionStyles.role}>{roleLabel}</span>
             <button
               className="search-button"
               onClick={() => {
@@ -215,7 +282,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                   ? "Соединение…"
                   : "Склад онлайн"}
             </span>
-            <span className="topbar-avatar">А</span>
+            <span className="topbar-avatar">{initials}</span>
           </div>
         </header>
         <main id="workspace-main" className="main-content">
@@ -223,12 +290,15 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
         </main>
         <footer className="workspace-footer">
           <span>
-            artmate wms <span className="footer-dot">·</span> Локальный
-            деморежим
+            artmate wms <span className="footer-dot">·</span> Локальный склад
           </span>
           <span>Данные сохраняются на этом компьютере</span>
         </footer>
       </div>
+      <ChangePasswordModal
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+      />
       <Modal
         open={searchOpen}
         onClose={() => setSearchOpen(false)}

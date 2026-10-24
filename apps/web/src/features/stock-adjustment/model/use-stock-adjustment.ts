@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useRef } from "react";
 import type {
   AdjustStockDto,
@@ -13,6 +14,7 @@ import type { AdjustmentSnapshot } from "../lib/adjustment-targets";
 
 export function useStockAdjustment() {
   const commands = useWarehouseCommands();
+  const { user } = useSession();
   const attempt = useRef<{ key: string; dto: AdjustStockDto } | null>(null);
   const inFlight = useRef<Promise<WorkspaceDto> | null>(null);
   function apply(
@@ -20,7 +22,12 @@ export function useStockAdjustment() {
     snapshot: AdjustmentSnapshot,
   ): Promise<WorkspaceDto> {
     if (inFlight.current) return inFlight.current;
-    const proposed = toStockAdjustment(values, snapshot);
+    const proposed = toStockAdjustment(
+      values,
+      snapshot,
+      crypto.randomUUID(),
+      user?.employeeId ?? "",
+    );
     const { requestId, ...content } = proposed;
     const key = JSON.stringify(content);
     if (attempt.current?.key !== key) attempt.current = { key, dto: proposed };

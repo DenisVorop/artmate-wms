@@ -340,3 +340,20 @@ test("Схема отклоняет no-op, дроби, отрицательны�
     false,
   );
 });
+
+test("Корректировка привязана к сотруднику сессии, а не к сохранённому полю формы", () => {
+  const snapshot = captureAdjustmentSnapshot(source(), "raw_count", "raw")!;
+  const values = {
+    ...adjustmentDefaults,
+    targetId: "raw",
+    employeeId: "other",
+    countedQuantity: 90,
+    reason: "Недостача при пересчёте",
+  };
+  assert.equal(
+    toStockAdjustment(values, snapshot, "request", "self").employeeId,
+    "self",
+  );
+  assert.equal(values.employeeId, "other");
+  assert.throws(() => toStockAdjustment(values, snapshot, "request", ""));
+});

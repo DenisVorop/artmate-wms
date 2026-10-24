@@ -96,14 +96,33 @@ export function addressInventory(data: WorkspaceDto, ids: string[]) {
       task.toLocationId !== null &&
       ids.includes(task.toLocationId),
   );
+  const additionalHolds = (data.addressHolds ?? []).filter(
+    (hold, index, all) =>
+      all.findIndex(
+        (item) =>
+          item.locationId === hold.locationId && item.kind === hold.kind,
+      ) === index &&
+      ids.includes(hold.locationId) &&
+      !(hold.kind === "movement"
+        ? incoming.some((item) => item.toLocationId === hold.locationId)
+        : hold.kind === "putaway"
+          ? incomingPutaways.some(
+              (item) => item.toLocationId === hold.locationId,
+            )
+          : returnPallets.some(
+              (item) => item.returnLocationId === hold.locationId,
+            )),
+  );
   return {
     pallets,
     boxes,
     incoming,
     incomingPutaways,
+    additionalHolds,
     returnPallets,
     occupied: pallets.length > 0 || boxes.length > 0,
     reserved:
+      additionalHolds.length > 0 ||
       incoming.length > 0 ||
       incomingPutaways.length > 0 ||
       returnPallets.length > 0,
@@ -124,5 +143,10 @@ export function addressAvailability(
     return `Резерв: ${inventory.incomingPutaways.length} кор.`;
   if (inventory.incoming.length) return "Ожидает паллету";
   if (inventory.returnPallets.length) return "Резерв возврата";
+  if (inventory.additionalHolds.some((hold) => hold.kind === "putaway"))
+    return "Резерв размещения короба";
+  if (inventory.additionalHolds.some((hold) => hold.kind === "movement"))
+    return "Ожидает паллету";
+  if (inventory.additionalHolds.length) return "Резерв возврата";
   return "Свободно";
 }

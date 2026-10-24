@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { wholePalletMovementAllowed } from "./movement-form";
+import {
+  targetHint,
+  toMovement,
+  wholePalletMovementAllowed,
+} from "./movement-form";
 
 test("Общий накопитель не предлагается целиком; тематическая паллета с входящим резервом ждёт завершения размещения", () => {
   const data: Parameters<typeof wholePalletMovementAllowed>[0] = {
@@ -63,4 +67,87 @@ test("Общий накопитель не предлагается целико
     }),
     true,
   );
+});
+
+test("Менеджер назначает исполнителя; сотрудник создаёт перемещение только на себя даже со старым значением формы", () => {
+  const values = {
+    palletId: "pallet",
+    toLocationId: "target",
+    employeeId: "other",
+    kind: "transfer" as const,
+    keepSourceReserved: true,
+  };
+  assert.equal(
+    toMovement(values, { employeeId: "self", role: "employee" }).employeeId,
+    "self",
+  );
+  assert.equal(
+    toMovement(values, { employeeId: "self", role: "manager" }).employeeId,
+    "other",
+  );
+  assert.equal(
+    toMovement(values, { employeeId: "self", role: "employee" })
+      .keepSourceReserved,
+    false,
+  );
+});
+
+test("Обезличенные резервы запрещают чужие цели, но удерживаемый адрес своей паллеты доступен для возврата", () => {
+  const location = {
+    id: "target",
+    code: "A-1",
+    name: "Место",
+    kind: "floor" as const,
+    sectionId: null,
+    level: 1,
+    levels: 1,
+    x: 0,
+    y: 0,
+    width: 1.3,
+    depth: 0.9,
+    rotation: 0 as const,
+    archived: false,
+    archivedAt: null,
+    availableWidthMm: 1300,
+    availableDepthMm: 900,
+    maxHeightMm: 2000,
+    maxBoxes: 18,
+    maxWeightKg: null,
+    accessSides: 1,
+    blocked: false,
+  };
+  const pallet = {
+    id: "pallet",
+    code: "P-1",
+    skuId: "sku",
+    lotId: "lot",
+    quantity: 20,
+    locationId: "source",
+    kind: "raw" as const,
+    heightMm: 1500,
+    widthMm: 1200,
+    depthMm: 800,
+    weightKg: null,
+    status: "stored" as const,
+    returnLocationId: null as string | null,
+    packagingSnapshot: null,
+  };
+  const data: Parameters<typeof targetHint>[0] = {
+    locations: [location],
+    pallets: [pallet],
+    movements: [],
+    putawayTasks: [],
+    addressHolds: [],
+  };
+  assert.equal(targetHint(data, "target", pallet, "transfer"), null);
+  for (const kind of ["movement", "putaway", "return"] as const) {
+    data.addressHolds = [{ locationId: "target", kind }];
+    assert.ok(targetHint(data, "target", pallet, "transfer"));
+  }
+  data.addressHolds = [{ locationId: "target", kind: "return" }];
+  pallet.returnLocationId = "target";
+  assert.equal(targetHint(data, "target", pallet, "return"), null);
+  assert.ok(targetHint(data, "target", pallet, "transfer"));
+  data.addressHolds = [{ locationId: "source", kind: "putaway" }];
+  assert.equal(wholePalletMovementAllowed(data, pallet), false);
 });

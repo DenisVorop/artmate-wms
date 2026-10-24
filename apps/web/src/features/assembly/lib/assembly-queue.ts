@@ -67,7 +67,7 @@ export function claimBlocked(
   tasks: TaskDto[],
 ): string | null {
   if (!actor || actor.status !== "working")
-    return "Выберите сотрудника на смене в поле «Работаем как».";
+    return "Начните смену в своей учётной записи.";
   if (task.status === "completed") return "Задание уже завершено.";
   if (task.status === "active") return "Задание уже в работе.";
   if (task.employeeId && task.employeeId !== actor.id)
@@ -104,4 +104,15 @@ export function assemblyStep(
 }
 export function nextSource(task: TaskDto) {
   return task.reservations.find((reservation) => reservation.quantity > 0);
+}
+
+export function assemblyTaskVisible(
+  task: Pick<TaskDto, "employeeId" | "status">,
+  employeeId: string,
+): boolean {
+  return (
+    !!employeeId &&
+    (task.employeeId === employeeId ||
+      (task.status === "queued" && task.employeeId === null))
+  );
 }

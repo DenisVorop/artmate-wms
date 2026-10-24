@@ -272,10 +272,17 @@ export function LocationDetails({
               <strong>{address.accessSides}</strong>
             </div>
           </div>
-          {(inventory.incoming.length > 0 ||
-            inventory.incomingPutaways.length > 0 ||
-            inventory.returnPallets.length > 0) && (
+          {inventory.reserved && (
             <div className={styles.reservationNotice}>
+              {inventory.additionalHolds.map((hold) => (
+                <p key={`${hold.locationId}:${hold.kind}`}>
+                  {hold.kind === "movement"
+                    ? "Адрес зарезервирован для перемещения паллеты"
+                    : hold.kind === "putaway"
+                      ? "Адрес зарезервирован для размещения короба"
+                      : "Адрес удерживается для возврата паллеты"}
+                </p>
+              ))}
               {inventory.incoming.map((movement) => (
                 <p key={movement.id}>
                   Ожидает паллету{" "}

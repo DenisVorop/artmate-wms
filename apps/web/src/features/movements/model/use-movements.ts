@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
 import {
   toMovement,
@@ -7,12 +8,13 @@ import {
 } from "../lib/movement-form";
 export function useMovements() {
   const commands = useWarehouseCommands();
+  const { user } = useSession();
   return {
     pending: commands.pending,
     error: commands.error,
     clearError: commands.clearError,
     create: (values: MovementValues) =>
-      commands.createMovement(toMovement(values)),
+      commands.createMovement(toMovement(values, user)),
     take: (id: string, values: ScanValues) =>
       commands.takeMovement(id, { ...values, requestId: crypto.randomUUID() }),
     place: (id: string, values: ScanValues) =>

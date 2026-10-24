@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { Check, Plus, Search, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useWorkspace } from "@/entities/workspace";
@@ -10,11 +11,11 @@ import {
   ErrorState,
   Input,
   LoadingState,
-  Select,
 } from "@/shared/ui";
 import { number } from "@/shared/lib/format";
 import type { AssemblyValues, AssignmentValues } from "../lib/assembly-form";
 import {
+  assemblyTaskVisible,
   queueTasks,
   taskStatusLabels,
   taskTab,
@@ -33,17 +34,21 @@ const tabs: { value: QueueTab; label: string }[] = [
   { value: "completed", label: "Завершённые" },
 ];
 export function AssemblyFeature() {
+  const { user, isManager } = useSession();
+  const actorId = user?.employeeId ?? "";
   const workspace = useWorkspace();
   const commands = useAssembly();
   const ui = useAssemblyState();
   if (workspace.isPending) return <LoadingState />;
   if (!workspace.data)
     return <ErrorState onRetry={() => void workspace.refetch()} />;
-  const data = workspace.data;
-  const actor = data.employees.find((employee) => employee.id === ui.actorId);
-  const working = data.employees.filter(
-    (employee) => employee.status === "working",
-  );
+  const data = {
+    ...workspace.data,
+    tasks: workspace.data.tasks.filter(
+      (task) => isManager || assemblyTaskVisible(task, actorId),
+    ),
+  };
+  const actor = data.employees.find((employee) => employee.id === actorId);
   const tasks = queueTasks(data, ui.tab, ui.search);
   const selected =
     data.tasks.find((task) => task.id === ui.selectedId) ?? tasks[0];
@@ -57,13 +62,14 @@ export function AssemblyFeature() {
     commands.clearError();
   };
   const applyTransition = (task: TaskDto, resultTasks: TaskDto[]) => {
-    const transition = afterAssemblyCommand(task, resultTasks, ui.actorId);
+    const transition = afterAssemblyCommand(task, resultTasks, actorId);
     ui.setTab(transition.tab);
     ui.setSearch("");
     ui.setSelectedId(transition.selectedId);
     ui.setNotice(transition.notice);
   };
   const create = async (values: AssemblyValues) => {
+    if (!isManager) return;
     try {
       const before = new Set(data.tasks.map((task) => task.id));
       const result = await commands.create(values);
@@ -89,7 +95,7 @@ export function AssemblyFeature() {
       ui.setNotice(
         values.employeeId
           ? `Задание ${added?.code ?? ""} создано и назначено сотруднику ${data.employees.find((employee) => employee.id === values.employeeId)?.name ?? ""}. Для начала сборки исполнитель должен быть на смене; назначение можно изменить ниже.`
-          : `Задание ${added?.code ?? ""} создано в свободной очереди. Его можно взять от имени сотрудника на смене или назначить исполнителя ниже.`,
+          : `Задание ${added?.code ?? ""} создано в свободной очереди. Его можно взять на своей смене или назначить исполнителя ниже.`,
       );
     } catch {
       /* Preserve input and show the command error. */
@@ -151,7 +157,7 @@ export function AssemblyFeature() {
     }
   };
   const assign = async (values: AssignmentValues) => {
-    if (!selected) return;
+    if (!selected || !isManager) return;
     try {
       const result = await commands.assign(selected.id, values);
       const updated = result.tasks.find((task) => task.id === selected.id);
@@ -176,16 +182,18 @@ export function AssemblyFeature() {
             Каждый короб по сканам — на общую накопительную паллету.
           </p>
         </div>
-        <Button
-          disabled={commands.pending}
-          onClick={() => {
-            commands.clearError();
-            ui.setCreating(true);
-          }}
-        >
-          <Plus size={16} />
-          Создать задание
-        </Button>
+        {isManager && (
+          <Button
+            disabled={commands.pending}
+            onClick={() => {
+              commands.clearError();
+              ui.setCreating(true);
+            }}
+          >
+            <Plus size={16} />
+            Создать задание
+          </Button>
+        )}
       </div>
       <div className={styles.metrics}>
         <div className={`glass-panel ${styles.metric}`}>
@@ -215,50 +223,23 @@ export function AssemblyFeature() {
       </div>
       <section
         className={`glass-panel ${styles.actor}`}
-        aria-label="Выбор исполнителя"
+        aria-label="Текущий исполнитель"
       >
         <div className={styles.actorIntro}>
           <strong>
             <UserRound size={16} />
-            Работаем как
+            {actor?.name ?? user?.name ?? "Текущий сотрудник"}
           </strong>
           <p className={styles.help}>
-            Локальный деморежим: выберите сотрудника на смене для взятия
-            задания, сканов и паузы.
+            Операции выполняются от вашей учётной записи.
           </p>
-          {!working.length && (
+          {actor?.status !== "working" && (
             <p className={styles.help}>
-              Нет сотрудников на смене.{" "}
-              <Link href="/team" target="_blank" rel="noopener noreferrer">
-                Добавить сотрудника или начать смену ↗
-              </Link>
+              Для выполнения задания начните свою смену.{" "}
+              <Link href="/team">Моя смена →</Link>
             </p>
           )}
         </div>
-        <label className={`field ${styles.actorControl}`}>
-          Сотрудник на смене
-          <Select
-            aria-label="Работаем как"
-            value={ui.actorId}
-            disabled={commands.pending}
-            onChange={(event) => {
-              ui.setActorId(event.target.value);
-              commands.clearError();
-            }}
-          >
-            {<option value="">Выберите сотрудника</option>}
-            {actor && actor.status !== "working" && (
-              <option value={actor.id} disabled>
-                {actor.name} · вне смены
-              </option>
-            )}
-            {working.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </Select>
-        </label>
         {actorTask && selected?.id !== actorTask.id && (
           <Button
             size="sm"
@@ -421,7 +402,9 @@ export function AssemblyFeature() {
                 ui.search
                   ? "Попробуйте другой код или название."
                   : ui.tab === "free"
-                    ? "Создайте задание или снимите назначение с ожидающего задания."
+                    ? isManager
+                      ? "Создайте задание или снимите назначение с ожидающего задания."
+                      : "Новые свободные задания появятся после создания менеджером."
                     : "Выберите другой раздел очереди."
               }
             />
@@ -450,7 +433,7 @@ export function AssemblyFeature() {
           </section>
         )}
       </div>
-      {ui.creating && (
+      {isManager && ui.creating && (
         <TaskCreateForm
           data={data}
           pending={commands.pending}

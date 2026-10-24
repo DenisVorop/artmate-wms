@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  PlaceReceiptPalletDto,
   CreateReceiptDto,
   CreateReceiptPalletDto,
 } from "@/shared/api/generated/model";
@@ -156,3 +157,14 @@ export const placementSchema = z.object({
   locationCode: z.string().trim().min(1, "Отсканируйте код адреса"),
 });
 export type PlacementValues = z.infer<typeof placementSchema>;
+
+/** Execution actor is the session employee; a retained form value cannot impersonate another employee. */
+export function buildPlacement(
+  values: PlacementValues,
+  employeeId: string,
+): PlaceReceiptPalletDto {
+  return {
+    ...placementSchema.parse({ ...values, employeeId }),
+    requestId: crypto.randomUUID(),
+  };
+}

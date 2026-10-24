@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { ArrowDownLeft, Check, Plus, Search } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import {
@@ -24,6 +25,7 @@ import { ReceiptDetails } from "./receipt-details";
 import { ReceiptPlacement } from "./receipt-placement";
 import styles from "./receiving.module.css";
 export function ReceivingFeature() {
+  const { isManager } = useSession();
   const workspace = useWorkspace();
   const commands = useReceivePallet();
   const state = useReceivingState();
@@ -44,6 +46,7 @@ export function ReceivingFeature() {
     receipt.pallets.filter((row) => !row.placedAt),
   );
   const openCreate = () => {
+    if (!isManager) return;
     commands.clearError();
     state.setCreating(true);
   };
@@ -106,10 +109,12 @@ export function ReceivingFeature() {
             Документ → этикетки → размещение паллет на баланс.
           </p>
         </div>
-        <Button onClick={openCreate} disabled={commands.pending}>
-          <Plus size={16} />
-          Новая приёмка
-        </Button>
+        {isManager && (
+          <Button onClick={openCreate} disabled={commands.pending}>
+            <Plus size={16} />
+            Новая приёмка
+          </Button>
+        )}
       </div>
       <div className={styles.stats}>
         <div className={`glass-panel ${styles.stat}`}>
@@ -263,10 +268,12 @@ export function ReceivingFeature() {
                   ? "Попробуйте другой код или название тематики."
                   : state.view === "archive"
                     ? "Здесь появятся полностью размещённые документы."
-                    : "Создайте документ на поступившие паллеты. Места хранения можно подготовить позже."
+                    : isManager
+                      ? "Создайте документ на поступившие паллеты. Места хранения можно подготовить позже."
+                      : "Новые приёмки появятся после создания менеджером. Здесь можно разместить поступившие паллеты."
               }
               action={
-                !state.search && state.view === "active" ? (
+                isManager && !state.search && state.view === "active" ? (
                   <Button onClick={openCreate}>Создать приёмку</Button>
                 ) : undefined
               }
@@ -292,7 +299,7 @@ export function ReceivingFeature() {
           </section>
         )}
       </div>
-      {state.creating && (
+      {isManager && state.creating && (
         <ReceiptCreateForm
           data={data}
           pending={commands.pending}

@@ -142,12 +142,14 @@ export function ledgerEvent(
   lines: D.StockLedgerLineDto[],
   operation?: string,
   body?: D.CommandDto,
+  actorOverride?: string,
 ): D.StockLedgerEventDto {
   const [op, id] = (operation ?? "").split("/");
   const actor =
-    body && "employeeId" in body && typeof body.employeeId === "string"
+    actorOverride ??
+    (body && "employeeId" in body && typeof body.employeeId === "string"
       ? body.employeeId
-      : null;
+      : null);
   let kind = "opening_balance",
     referenceType: string | null = null,
     reference: { id: string; code?: string } | undefined;

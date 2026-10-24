@@ -1,33 +1,36 @@
 "use client";
+import { useSession } from "@/entities/session";
 import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
 import type { PutawayScanValues } from "../lib/putaway-form";
 export function usePutaway() {
   const commands = useWarehouseCommands();
+  const { user } = useSession();
+  const actorId = user?.employeeId ?? "";
   return {
     pending: commands.pending,
     error: commands.error,
     clearError: commands.clearError,
-    claim: (id: string, employeeId: string) =>
+    claim: (id: string, _employeeId: string) =>
       commands.claimPutawayTask(id, {
         requestId: crypto.randomUUID(),
-        employeeId,
+        employeeId: actorId,
       }),
-    take: (id: string, employeeId: string, values: PutawayScanValues) =>
+    take: (id: string, _employeeId: string, values: PutawayScanValues) =>
       commands.takePutawayTask(id, {
         requestId: crypto.randomUUID(),
-        employeeId,
+        employeeId: actorId,
         ...values,
       }),
-    place: (id: string, employeeId: string, values: PutawayScanValues) =>
+    place: (id: string, _employeeId: string, values: PutawayScanValues) =>
       commands.placePutawayTask(id, {
         requestId: crypto.randomUUID(),
-        employeeId,
+        employeeId: actorId,
         ...values,
       }),
-    release: (id: string, employeeId: string) =>
+    release: (id: string, _employeeId: string) =>
       commands.releasePutawayTask(id, {
         requestId: crypto.randomUUID(),
-        employeeId,
+        employeeId: actorId,
       }),
   };
 }

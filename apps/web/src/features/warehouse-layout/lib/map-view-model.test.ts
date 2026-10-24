@@ -338,3 +338,32 @@ test("Резерв размещения короба защищает пусту
   assert.equal(addressInventory(data, ["address-1"]).reserved, false);
   assert.equal(addressInventory(data, ["address-1"]).occupied, true);
 });
+
+test("Обезличенные резервы остаются видимыми без чужих заданий, свои и повторные holds не дублируются", () => {
+  for (const kind of ["movement", "putaway", "return"] as const) {
+    const data = workspace({
+      addressHolds: [
+        { locationId: "address-1", kind },
+        { locationId: "address-1", kind },
+      ],
+      movements: [],
+      putawayTasks: [],
+      pallets: [],
+    });
+    const state = addressInventory(data, ["address-1"]);
+    assert.equal(state.reserved, true);
+    assert.equal(state.additionalHolds.length, 1);
+    assert.notEqual(addressAvailability(data, location()), "Свободно");
+    assert.equal(state.incoming.length, 0);
+    assert.equal(addressInventory(data, ["unrelated"]).reserved, false);
+  }
+  const own = workspace({
+    addressHolds: [{ locationId: "address-1", kind: "movement" }],
+    movements: [movement()],
+  });
+  assert.equal(addressInventory(own, ["address-1"]).additionalHolds.length, 0);
+  assert.equal(addressInventory(own, ["address-1"]).incoming.length, 1);
+  const legacy = workspace({ movements: [], pallets: [] });
+  assert.equal(addressInventory(legacy, ["address-1"]).reserved, false);
+  assert.equal(addressAvailability(legacy, location()), "Свободно");
+});

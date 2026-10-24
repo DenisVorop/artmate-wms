@@ -7,6 +7,9 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { createDatabase, Database, Queryable } from "./database";
+import { requestAuth, projectWorkspace } from "./auth-context";
+import { authorizeWarehouse } from "./auth-policy";
+import { initializeAuth } from "./auth-storage";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import * as D from "./dto";
@@ -90,6 +93,15 @@ function activity(
     description,
     kind,
     createdAt: now(),
+    ...(requestAuth.getStore()?.http
+      ? {
+          actorEmployeeId: requestAuth.getStore()!.employeeId ?? null,
+          actorName:
+            state.employees.find(
+              (e) => e.id === requestAuth.getStore()!.employeeId,
+            )?.name ?? null,
+        }
+      : {}),
   });
 }
 
@@ -100,6 +112,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   private tail: Promise<unknown> = Promise.resolve();
   constructor() {
     this.ready = this._initialize();
+  }
+  async authTransaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T> {
+    await this.ready;
+    return this._enqueue(() => this.db.transaction(fn));
   }
   async onModuleInit() {
     await this.ready;
@@ -200,6 +216,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           ["schema_version", "8"],
         );
       }
+      await initializeAuth(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 9)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "9"],
+        );
     });
   }
   private _enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -233,7 +255,22 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   async snapshot() {
     await this.ready;
-    return this._enqueue(() => this.db.transaction((tx) => this._load(tx)));
+    return this._enqueue(() =>
+      this.db.transaction(async (tx) => {
+        const state = await this._load(tx);
+        if (requestAuth.getStore()?.http)
+          await authorizeWarehouse(tx, "getWorkspace", undefined, state);
+        return projectWorkspace(state);
+      }),
+    );
+  }
+  private async _readState(operation: string): Promise<D.WorkspaceDto> {
+    return this.authTransaction(async (tx) => {
+      const state = await this._load(tx);
+      if (requestAuth.getStore()?.http)
+        await authorizeWarehouse(tx, operation, undefined, state);
+      return state;
+    });
   }
   async getStockLedger(
     query: D.StockLedgerQueryDto = {},
@@ -251,6 +288,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return this._enqueue(() =>
       this.db.transaction(async (tx) => {
         const state = await this._load(tx);
+        if (requestAuth.getStore()?.http)
+          await authorizeWarehouse(tx, "getStockLedger", undefined, state);
         const params: unknown[] = [];
         const where: string[] = [];
         const parameter = (value: unknown) => {
@@ -418,11 +457,28 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     await this.ready;
     if (!body.requestId?.trim())
       fail("Для операции нужен уникальный requestId");
-    const fingerprint = createHash("sha256")
-      .update(JSON.stringify([operation, body]))
-      .digest("hex");
+    const context = requestAuth.getStore();
     return this._enqueue(() =>
       this.db.transaction(async (tx) => {
+        const state = await this._load(tx);
+        if (context?.http) await authorizeWarehouse(tx, operation, body, state);
+
+        const fingerprint = createHash("sha256")
+          .update(
+            JSON.stringify(
+              context?.http
+                ? [
+                    operation,
+                    body,
+                    {
+                      accountId: context.accountId,
+                      employeeId: context.employeeId,
+                    },
+                  ]
+                : [operation, body],
+            ),
+          )
+          .digest("hex");
         const previous = await tx.query<{
           fingerprint: string;
           response: D.WorkspaceDto;
@@ -434,9 +490,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             throw new ConflictException(
               "Этот requestId уже использован для другой операции",
             );
-          return previous.rows[0].response;
+          return projectWorkspace(previous.rows[0].response, context);
         }
-        const state = await this._load(tx);
         const before = stockPositions(state);
         mutate(state);
         this._assertIntegrity(state);
@@ -462,13 +517,19 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         if (lines.length)
           await appendStockEvent(
             tx,
-            ledgerEvent(state, lines, operation, body),
+            ledgerEvent(
+              state,
+              lines,
+              operation,
+              body,
+              context?.http ? context.employeeId : undefined,
+            ),
           );
         await tx.query(
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
           [body.requestId, fingerprint, JSON.stringify(state)],
         );
-        return state;
+        return projectWorkspace(state, context);
       }),
     );
   }
@@ -1250,7 +1311,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     id: string,
     palletId: string,
   ): Promise<D.ReceiptPlacementOptionsDto> {
-    const s = await this.snapshot();
+    const s = await this._readState(`getReceiptPlacementOptions/${id}`);
     const { pallet } = this._pendingReceiptPallet(s, id, palletId);
     const locations = s.locations
       .filter(
@@ -1307,7 +1368,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     });
   }
   async getReceiptLabels(id: string): Promise<D.ReceiptLabelsDto> {
-    const s = await this.snapshot(),
+    const s = await this._readState(`getReceiptLabels/${id}`),
       receipt = find(s.receipts, id, "Приёмка");
     const labels = await Promise.all(
       receipt.pallets.map(async (row) => {
@@ -1897,7 +1958,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     };
   }
   async getPutawayPlacementOptions(id: string) {
-    const s = await this.snapshot(),
+    const s = await this._readState(`getPutawayPlacementOptions/${id}`),
       t = find(s.putawayTasks, id, "Задание размещения");
     if (t.status === "completed") fail("Размещение уже завершено");
     return this._putawayOptions(s, t);

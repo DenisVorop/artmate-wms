@@ -8,7 +8,7 @@
     "start": "next start --hostname 127.0.0.1 --port 3080",
     "check-types": "tsc --noEmit",
     "api:generate": "orval --config orval.config.ts",
-    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/*/lib/*.test.ts src/shared/api/*.test.ts"
+    "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/*/lib/*.test.ts src/shared/api/*.test.ts src/_pages/*.test.ts src/entities/*/lib/*.test.ts"
   },
   "dependencies": {
     "next": "16.2.6",

@@ -337,3 +337,91 @@ test("a v6 replay cannot remove pending putaway tasks when refresh fails", async
   assert.equal(f.calls.set, 0);
   assert.equal((f.getCache() as WorkspaceDto).putawayTasks.length, 1);
 });
+
+test("scope change after first cancel prevents the warehouse write", async () => {
+  const f = fixture();
+  let valid = true;
+  f.port.cancelRead = async () => {
+    f.calls.cancel++;
+    valid = false;
+  };
+  await assert.rejects(
+    runWarehouseCommand({ ...f.port, isScopeCurrent: () => valid }),
+    (error) =>
+      error instanceof Error && "status" in error && error.status === 409,
+  );
+  assert.equal(f.calls.command, 0);
+  assert.equal(f.calls.set, 0);
+});
+test("scope change after committed response cannot merge an old manager result after cancelRead", async () => {
+  const f = fixture();
+  let valid = true;
+  f.response.revision = 100;
+  const worker = { ...snapshot(), revision: 1 };
+  f.port.cancelRead = async () => {
+    f.calls.cancel++;
+    if (f.calls.cancel === 2) {
+      valid = false;
+      f.setCache(worker);
+    }
+  };
+  await assert.rejects(
+    runWarehouseCommand({ ...f.port, isScopeCurrent: () => valid }),
+    /Сессия изменилась/,
+  );
+  assert.strictEqual(f.getCache(), worker);
+  assert.equal(f.calls.set, 0);
+  assert.equal(f.calls.read, 0);
+  assert.equal(f.calls.invalidate, 0);
+});
+test("scope change during readCurrent cannot be swallowed as an offline refresh fallback", async () => {
+  const f = fixture();
+  let valid = true;
+  f.response.revision = 100;
+  const worker = { ...snapshot(), revision: 1 };
+  f.port.readCurrent = async () => {
+    valid = false;
+    f.setCache(worker);
+    throw new Error("old request interrupted");
+  };
+  await assert.rejects(
+    runWarehouseCommand({ ...f.port, isScopeCurrent: () => valid }),
+    /Сессия изменилась/,
+  );
+  assert.strictEqual(f.getCache(), worker);
+  assert.equal(f.calls.set, 0);
+  assert.equal(f.calls.invalidate, 0);
+});
+test("a new user read cannot lose to a higher-revision old command response", async () => {
+  const f = fixture();
+  let valid = true;
+  f.response.revision = 100;
+  const worker = { ...snapshot(), revision: 1 };
+  f.port.readCurrent = async () => {
+    valid = false;
+    f.setCache(worker);
+    return worker;
+  };
+  await assert.rejects(
+    runWarehouseCommand({ ...f.port, isScopeCurrent: () => valid }),
+    /Сессия изменилась/,
+  );
+  assert.strictEqual(f.getCache(), worker);
+  assert.equal(f.calls.set, 0);
+});
+test("scope change during invalidate prevents returning the old commit as a new-user result", async () => {
+  const f = fixture();
+  let valid = true;
+  f.port.readCurrent = async () => {
+    throw new Error("offline");
+  };
+  f.port.invalidate = async () => {
+    valid = false;
+    f.setCache(undefined);
+  };
+  await assert.rejects(
+    runWarehouseCommand({ ...f.port, isScopeCurrent: () => valid }),
+    /Сессия изменилась/,
+  );
+  assert.equal(f.getCache(), undefined);
+});

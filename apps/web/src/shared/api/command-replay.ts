@@ -6,7 +6,8 @@ type ReplayPorts = {
   fetch: (url: string, options: RequestInit) => Promise<Response>;
   fingerprint: (value: string) => Promise<string>;
 };
-const prefix = "artmate-wms:unresolved-command:v1:";
+export const commandReplayStoragePrefix = "artmate-wms:unresolved-command:v1:";
+const prefix = commandReplayStoragePrefix;
 const inFlight = new Set<string>();
 const storageError =
   "Браузер не может сохранить защиту от повторной записи. Разрешите хранилище вкладки и повторите действие.";

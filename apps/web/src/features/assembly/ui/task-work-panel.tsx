@@ -1,4 +1,5 @@
 "use client";
+import { useSession } from "@/entities/session";
 import Link from "next/link";
 import {
   Check,
@@ -49,6 +50,7 @@ export function TaskWorkPanel({
   onRecover: (value: string) => Promise<boolean>;
   onAssign: (values: AssignmentValues) => Promise<WorkspaceDto | undefined>;
 }) {
+  const { isManager } = useSession();
   const sku = data.skus.find((item) => item.id === task.skuId);
   const owner = data.employees.find(
     (employee) => employee.id === task.employeeId,
@@ -135,7 +137,7 @@ export function TaskWorkPanel({
           <p className={styles.help}>
             {task.status === "paused"
               ? `Текущий короб сохранён: ${task.scannedUnits} из ${task.unitsPerBox} раскрасок. Продолжить может назначенный сотрудник на смене.`
-              : "Выбор карточки показывает задание. Чтобы начать сборку, возьмите его от имени сотрудника на смене."}
+              : "Выбор карточки показывает задание. Чтобы начать сборку, нажмите «Взять задание». Ваша смена должна быть открыта."}
           </p>
           <Button
             disabled={pending || !!canClaimReason}
@@ -149,9 +151,9 @@ export function TaskWorkPanel({
         </div>
       ) : !owns ? (
         <div className={styles.info} style={{ marginTop: 20 }}>
-          Сейчас задание выполняет {owner?.name ?? "другой сотрудник"}. Для
-          сканирования и паузы выберите этого сотрудника на смене в поле
-          «Работаем как».
+          Сейчас задание выполняет {owner?.name ?? "другой сотрудник"}.
+          Сканирование и пауза доступны только исполнителю задания в его учётной
+          записи.
         </div>
       ) : (
         <>
@@ -360,13 +362,15 @@ export function TaskWorkPanel({
         второстепенные задания после паузы сборки или окончания основной
         очереди.
       </div>
-      <TaskAssignment
-        key={task.id}
-        task={task}
-        employees={data.employees}
-        pending={pending}
-        onAssign={onAssign}
-      />
+      {isManager && (
+        <TaskAssignment
+          key={task.id}
+          task={task}
+          employees={data.employees}
+          pending={pending}
+          onAssign={onAssign}
+        />
+      )}
     </section>
   );
 }

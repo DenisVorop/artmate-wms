@@ -1,3 +1,4 @@
+"use client";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { DashboardFeature } from "@/features/dashboard";
 import { WarehouseLayoutFeature } from "@/features/warehouse-layout";
@@ -7,7 +8,13 @@ import { ReceivingFeature } from "@/features/receiving";
 import { AssemblyFeature } from "@/features/assembly";
 import { ShipmentsFeature } from "@/features/shipments";
 import { MovementsFeature } from "@/features/movements";
-import { TeamFeature } from "@/features/team";
+import { TeamScreen } from "./team-screen";
+import { useSession } from "@/entities/session";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { LoadingState } from "@/shared/ui";
+import { canOpenWorkspaceView, landingForRole } from "./workspace-access";
 const views = {
   overview: DashboardFeature,
   warehouse: WarehouseLayoutFeature,
@@ -16,11 +23,35 @@ const views = {
   receiving: ReceivingFeature,
   assembly: AssemblyFeature,
   shipments: ShipmentsFeature,
-  team: TeamFeature,
+  team: TeamScreen,
   movements: MovementsFeature,
 };
 export type WorkspaceView = keyof typeof views;
 export function WorkspacePage({ view }: { view: WorkspaceView }) {
+  const { user } = useSession();
+  const router = useRouter();
+  const workerLanding = user?.role === "employee" && view === "overview";
+  useEffect(() => {
+    if (workerLanding) router.replace(landingForRole("employee"));
+  }, [workerLanding, router]);
+  if (!user || workerLanding)
+    return <LoadingState label="Открываем рабочее пространство…" />;
+  if (!canOpenWorkspaceView(user.role, view))
+    return (
+      <WorkspaceShell>
+        <section className="glass-panel ops-panel">
+          <p className="eyebrow">ДОСТУП К РАЗДЕЛУ</p>
+          <h1 className="page-heading">Раздел доступен руководителю</h1>
+          <p className="page-description">
+            Ваши задания, приёмка и смена доступны в рабочем меню. Для изменения
+            прав обратитесь к руководителю.
+          </p>
+          <Link href="/assembly" className="button button--primary">
+            Перейти к заданиям сборки
+          </Link>
+        </section>
+      </WorkspaceShell>
+    );
   const Feature = views[view];
   return (
     <WorkspaceShell>
