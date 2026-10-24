@@ -1,7 +1,13 @@
 "use client";
 import Link from "next/link";
 import { ArrowLeft, Printer, RefreshCw } from "lucide-react";
-import { Button, LoadingState } from "@/shared/ui";
+import {
+  Button,
+  LoadingState,
+  RollLabelFormatSelect,
+  rollPaperClass,
+} from "@/shared/ui";
+import { rollLabelFormats } from "@/shared/lib/label-paper";
 import { useLabel, type LabelType } from "../model/use-label";
 import { useLabelPrint } from "../lib/use-label-print";
 import styles from "./label.module.css";
@@ -61,7 +67,7 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
     );
   const label = query.data;
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-print-ready={print.ready}>
       <header className={`glass-panel ${styles.screenHeader}`}>
         <div>
           <Link href={backHref} className={styles.back}>
@@ -71,7 +77,9 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
           <p className={styles.eyebrow}>{labelNames[type]}</p>
           <h1>{label.code}</h1>
           <p>
-            Макет 100 × 70 мм. Выберите этот размер бумаги в диалоге печати.
+            Макет {rollLabelFormats[print.format]}. Одна этикетка на страницу. В
+            диалоге печати выберите тот же размер, масштаб 100%, без полей и
+            колонтитулов.
           </p>
           {type === "work-zone" && (
             <p className={styles.hint}>
@@ -86,6 +94,10 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
           )}
         </div>
         <div className={styles.printActions}>
+          <RollLabelFormatSelect
+            value={print.format}
+            onChange={print.setFormat}
+          />
           {(type === "work-zone" || type === "location") && (
             <Link
               href={`/labels/a4?type=${type}&id=${encodeURIComponent(id)}`}
@@ -120,13 +132,19 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
           </Button>
         </div>
       )}
+      <p className={`${styles.printNotice} ${rollPaperClass(print.format)}`}>
+        Дождитесь загрузки QR перед печатью.
+      </p>
       <div className={styles.preview}>
         <article
-          className={styles.label}
+          className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 130 || label.code.length > 40 ? styles.denseLabel : ""}`}
+          data-format={print.format}
           aria-label={`${labelNames[type]} ${label.code}, ${label.title}`}
         >
           <header className={styles.labelHeading}>
-            <strong>{label.code}</strong>
+            <strong className={label.code.length > 28 ? styles.longCode : ""}>
+              {label.code}
+            </strong>
             <span>Artmate · {labelNames[type]}</span>
           </header>
           <div className={styles.labelBody}>
@@ -141,7 +159,9 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
               onLoad={print.markLoaded}
               onError={print.markFailed}
             />
-            <h2>{label.title}</h2>
+            <h2 className={label.title.length > 70 ? styles.longTitle : ""}>
+              {label.title}
+            </h2>
           </div>
           <p className={styles.payload}>{label.payload}</p>
         </article>

@@ -1,25 +1,37 @@
 "use client";
 import { useState } from "react";
+import type { ReceiptLabelDto } from "@/shared/api/generated/model";
+import type { RollLabelFormat } from "@/shared/lib/label-paper";
 
-export function useReceiptPrint(receiptId: string) {
-  const [loaded, setLoaded] = useState<Record<string, boolean>>({});
-  const [failed, setFailed] = useState<Record<string, boolean>>({});
-  const [version, setVersion] = useState(0);
-  const key = (palletId: string) => `${receiptId}:${version}:${palletId}`;
-  const markLoaded = (palletId: string) => {
-    setLoaded((current) => ({ ...current, [key(palletId)]: true }));
-    setFailed((current) => ({ ...current, [key(palletId)]: false }));
-  };
-  const markFailed = (palletId: string) => {
-    setFailed((current) => ({ ...current, [key(palletId)]: true }));
-  };
+type ReceiptPrintLabel = Pick<ReceiptLabelDto, "palletId" | "svg">;
+export function useReceiptPrint(
+  receiptId: string,
+  labels: ReceiptPrintLabel[],
+  enabled = true,
+) {
+  const [format, setFormat] = useState<RollLabelFormat>("75x120");
+  const [images, setImages] = useState<Record<string, "loaded" | "failed">>({});
+  const [attempt, setAttempt] = useState(0);
+  const key = (label: ReceiptPrintLabel) =>
+    JSON.stringify([receiptId, label.palletId, label.svg, format, attempt]);
+  const ready =
+    enabled &&
+    labels.length > 0 &&
+    labels.every((label) => !!label.svg && images[key(label)] === "loaded");
+  const failed = labels.some((label) => images[key(label)] === "failed");
   return {
+    format,
+    setFormat,
     key,
-    markLoaded,
-    markFailed,
-    isLoaded: (palletId: string) => loaded[key(palletId)] === true,
-    isFailed: (palletId: string) => failed[key(palletId)] === true,
-    retryImages: () => setVersion((current) => current + 1),
-    print: () => window.print(),
+    ready,
+    failed,
+    markLoaded: (imageKey: string) =>
+      setImages((current) => ({ ...current, [imageKey]: "loaded" })),
+    markFailed: (imageKey: string) =>
+      setImages((current) => ({ ...current, [imageKey]: "failed" })),
+    retryImages: () => setAttempt((value) => value + 1),
+    print: () => {
+      if (ready) window.print();
+    },
   };
 }

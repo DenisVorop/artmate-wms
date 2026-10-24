@@ -46,8 +46,8 @@
   align-items: flex-start;
 }
 .label {
-  width: 100mm;
-  height: 70mm;
+  width: var(--roll-width);
+  height: var(--roll-height);
   flex: none;
   padding: 4mm 5mm;
   overflow: hidden;
@@ -153,11 +153,81 @@
     padding-bottom: 8px;
   }
 }
+
+.printActions {
+  flex: none;
+}
+.printActions > p {
+  margin-top: 7px;
+}
+.printNotice {
+  display: none;
+}
+.label[data-format="75x120"] {
+  padding: 3mm;
+}
+.label[data-format="75x120"] .labelHeading {
+  margin-bottom: 2mm;
+  gap: 1mm;
+  text-align: center;
+}
+.label[data-format="75x120"] .labelHeading strong {
+  font-size: 18pt;
+  line-height: 1.08;
+}
+.label[data-format="75x120"] .labelHeading strong.longCode {
+  font-size: 12pt;
+  line-height: 1.12;
+}
+.label[data-format="75x120"] .labelHeading span {
+  font-size: 7pt;
+  line-height: 1.2;
+}
+.label[data-format="75x120"] .labelBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2mm;
+  text-align: center;
+}
+.label[data-format="75x120"] .labelText {
+  display: contents;
+}
+.label[data-format="75x120"] .labelText h2 {
+  order: 0;
+  font-size: 15pt;
+  line-height: 1.12;
+  max-width: 100%;
+}
+.label[data-format="75x120"] .labelText h2.longTitle {
+  font-size: 11pt;
+  line-height: 1.15;
+}
+.label[data-format="75x120"] .labelBody img {
+  order: 1;
+  width: 45mm;
+  height: 45mm;
+  flex: none;
+}
+.label[data-format="75x120"] .quantity {
+  order: 2;
+  font-size: 13pt;
+  line-height: 1.1;
+}
+.label[data-format="75x120"] .date {
+  order: 3;
+  font-size: 7.5pt;
+  line-height: 1.3;
+}
+
+.label[data-format="100x70"] .labelHeading strong.longCode {
+  font-size: 9pt;
+}
+.label[data-format="100x70"] .labelText h2.longTitle {
+  font-size: 8pt;
+}
+
 @media print {
-  @page {
-    size: 100mm 70mm;
-    margin: 0;
-  }
   .screenHeader,
   .screenOnly,
   .error {
@@ -176,8 +246,8 @@
     max-width: none;
   }
   .label {
-    width: 100mm;
-    height: 70mm;
+    width: var(--roll-width);
+    height: var(--roll-height);
     border: 0;
     border-radius: 0;
     margin: 0;
@@ -190,5 +260,18 @@
   .label:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+}
+
+@media print {
+  .page[data-print-ready="false"] .labels {
+    display: none;
+  }
+  .page[data-print-ready="false"] .printNotice {
+    display: block;
+    margin: 3mm;
+    font-size: 11pt;
+    line-height: 1.4;
+    color: black;
   }
 }

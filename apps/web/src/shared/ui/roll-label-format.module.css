@@ -1,0 +1,38 @@
+.portrait {
+  --roll-width: 75mm;
+  --roll-height: 120mm;
+}
+.landscape {
+  --roll-width: 100mm;
+  --roll-height: 70mm;
+}
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.control select {
+  min-width: 180px;
+}
+@media print {
+  @page wmsRoll75 {
+    size: 75mm 120mm;
+    margin: 0;
+  }
+  @page wmsRoll100 {
+    size: 100mm 70mm;
+    margin: 0;
+  }
+  .portrait {
+    page: wmsRoll75;
+  }
+  .landscape {
+    page: wmsRoll100;
+  }
+  .control {
+    display: none !important;
+  }
+}

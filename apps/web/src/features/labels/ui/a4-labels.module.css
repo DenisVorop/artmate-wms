@@ -327,3 +327,52 @@
     font-size: 16pt;
   }
 }
+
+/* One sign per die-cut roll label, with the same server QR and selection. */
+.sheet.rollSheet {
+  width: 75mm;
+  height: 120mm;
+  aspect-ratio: auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.rollSheet .card {
+  padding: 5mm;
+  border: none;
+}
+.rollSheet .kind {
+  font-size: 8pt;
+  margin-bottom: 3mm;
+}
+.rollSheet .card h2 {
+  font-size: 17pt;
+}
+.rollSheet .card h2.longTitle {
+  font-size: 12pt;
+}
+.rollSheet .denseCard h2.longTitle {
+  font-size: 10pt;
+}
+.rollSheet .card img {
+  width: 48mm;
+  height: 48mm;
+  padding: 2mm;
+}
+.rollSheet .card.denseCard img {
+  width: 40mm;
+  height: 40mm;
+}
+.rollSheet .code {
+  font-size: 17pt;
+}
+.rollSheet .code.longCode {
+  font-size: 10pt;
+}
+@media print {
+  .sheet.rollSheet {
+    page: wmsRoll75;
+  }
+  .page[data-output="75x120"][data-print-ready="false"] .printNotice {
+    page: wmsRoll75;
+  }
+}

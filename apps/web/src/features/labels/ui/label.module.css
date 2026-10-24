@@ -53,8 +53,8 @@
   padding-bottom: 8px;
 }
 .label {
-  width: 100mm;
-  height: 70mm;
+  width: var(--roll-width);
+  height: var(--roll-height);
   padding: 4mm 5mm;
   overflow: hidden;
   box-sizing: border-box;
@@ -109,6 +109,61 @@
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
+.label[data-format="75x120"] {
+  padding: 5mm;
+}
+.label[data-format="75x120"] .labelHeading strong {
+  font-size: 17pt;
+}
+.label[data-format="75x120"] .labelHeading strong.longCode {
+  font-size: 10pt;
+}
+.label[data-format="75x120"] .labelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  align-items: center;
+  text-align: center;
+}
+.label[data-format="75x120"] .labelBody img {
+  width: 48mm;
+  height: 48mm;
+  padding: 2mm;
+  box-sizing: border-box;
+}
+.label[data-format="75x120"] .labelBody h2 {
+  font-size: 14pt;
+}
+.label[data-format="75x120"] .labelBody h2.longTitle {
+  font-size: 10pt;
+}
+/* Maximum custom zone names/codes need more space without truncation. */
+.label.denseLabel[data-format="75x120"] .labelBody img {
+  width: 40mm;
+  height: 40mm;
+}
+.label.denseLabel[data-format="75x120"] .labelHeading strong.longCode {
+  font-size: 9pt;
+}
+.label.denseLabel[data-format="75x120"] .labelBody h2.longTitle {
+  font-size: 9pt;
+}
+.label.denseLabel[data-format="100x70"] .labelHeading strong {
+  font-size: 8pt;
+}
+.label.denseLabel[data-format="100x70"] .labelBody {
+  grid-template-columns: 32mm minmax(0, 1fr);
+}
+.label.denseLabel[data-format="100x70"] .labelBody img {
+  width: 32mm;
+  height: 32mm;
+}
+.label.denseLabel[data-format="100x70"] .labelBody h2.longTitle {
+  font-size: 7pt;
+}
+.printNotice {
+  display: none;
+}
 .error {
   padding: 32px;
   max-width: 680px;
@@ -147,10 +202,6 @@
   }
 }
 @media print {
-  @page {
-    size: 100mm 70mm;
-    margin: 0;
-  }
   .screenHeader,
   .screenOnly,
   .error {
@@ -164,13 +215,20 @@
     overflow: visible;
   }
   .label {
-    width: 100mm;
-    height: 70mm;
+    width: var(--roll-width);
+    height: var(--roll-height);
     border: 0;
     border-radius: 0;
     margin: 0;
     break-inside: avoid;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+  .page[data-print-ready="false"] .preview {
+    display: none;
+  }
+  .page[data-print-ready="false"] .printNotice {
+    display: block;
+    color: black;
   }
 }

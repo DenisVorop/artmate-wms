@@ -1,7 +1,13 @@
 "use client";
 import Link from "next/link";
 import { ArrowLeft, Printer, RefreshCw } from "lucide-react";
-import { Button, EmptyState, LoadingState } from "@/shared/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingState,
+  RollLabelFormatSelect,
+  rollPaperClass,
+} from "@/shared/ui";
 import { useReceiptLabels } from "../model/use-receipt-labels";
 import { useReceiptPrint } from "../lib/use-receipt-print";
 import styles from "./receipt-labels.module.css";
@@ -17,7 +23,11 @@ const receiptDate = (value: string) =>
   }).format(new Date(value));
 export function ReceiptLabelsFeature({ id }: { id: string }) {
   const query = useReceiptLabels(id);
-  const print = useReceiptPrint(id);
+  const print = useReceiptPrint(
+    id,
+    query.data?.labels ?? [],
+    !query.isFetching && !query.isError,
+  );
   if (query.isPending) return <LoadingState label="Готовим этикетки паллет…" />;
   if (query.isError || !query.data)
     return (
@@ -40,12 +50,10 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
       </section>
     );
   const { receiptCode, receivedAt, labels } = query.data;
-  const ready =
-    labels.length > 0 &&
-    labels.every((label) => print.isLoaded(label.palletId));
-  const hasImageError = labels.some((label) => print.isFailed(label.palletId));
+  const ready = print.ready;
+  const hasImageError = print.failed;
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-print-ready={ready}>
       <header className={`glass-panel ${styles.screenHeader}`}>
         <div>
           <Link href="/receiving" className={styles.back}>
@@ -57,14 +65,30 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
             Поступление: {receiptDate(receivedAt)} · Этикеток: {labels.length}
           </p>
           <p className={styles.hint}>
-            Макет 100 × 70 мм, одна паллета на странице. Выберите этот размер
-            бумаги в диалоге печати.
+            Одна паллета на этикетке. Выберите в драйвере{" "}
+            {print.format === "75x120" ? "75 × 120 мм" : "100 × 70 мм"}, масштаб
+            100%, без колонтитулов.
           </p>
         </div>
-        <Button onClick={print.print} disabled={!ready || hasImageError}>
-          <Printer size={17} />
-          {ready ? "Распечатать этикетки" : "Загружаем QR…"}
-        </Button>
+        <div className={styles.printActions}>
+          <RollLabelFormatSelect
+            value={print.format}
+            onChange={print.setFormat}
+          />
+          <Button
+            onClick={print.print}
+            disabled={!ready}
+            aria-busy={!ready && !hasImageError && labels.length > 0}
+          >
+            <Printer size={17} />
+            Распечатать этикетки
+          </Button>
+          {!ready && labels.length > 0 && (
+            <p role="status">
+              {hasImageError ? "QR не загружен" : "Загружаем QR…"}
+            </p>
+          )}
+        </div>
       </header>
       {hasImageError && (
         <div className={`ops-error ${styles.screenOnly}`} role="alert">
@@ -83,46 +107,66 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
           />
         </div>
       )}
+      <p className={`${styles.printNotice} ${rollPaperClass(print.format)}`}>
+        Печать недоступна. Дождитесь загрузки всех QR приёмки и повторите
+        печать.
+      </p>
       <div
         className={styles.labels}
         aria-label={`Этикетки приёмки ${receiptCode}`}
       >
-        {labels.map((label) => (
-          <article
-            className={styles.label}
-            key={label.palletId}
-            aria-label={`Паллета ${label.code}, ${label.title}, ${label.quantity} штук`}
-          >
-            <header className={styles.labelHeading}>
-              <strong>{label.code}</strong>
-              <span>{receiptCode}</span>
-            </header>
-            <div className={styles.labelBody}>
-              {/* SVG is displayed as an image and cannot execute scripts in the page. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                key={print.key(label.palletId)}
-                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(label.svg)}`}
-                width={144}
-                height={144}
-                alt={`QR паллеты ${label.code}`}
-                onLoad={() => print.markLoaded(label.palletId)}
-                onError={() => print.markFailed(label.palletId)}
-              />
-              <div className={styles.labelText}>
-                <h2>{label.title}</h2>
-                <p className={styles.quantity}>
-                  {label.quantity.toLocaleString("ru-RU")} шт.
-                </p>
-                <p className={styles.date}>
-                  Поступление
-                  <br />
-                  {receiptDate(receivedAt)}
-                </p>
+        {labels.map((label) => {
+          const imageKey = print.key(label);
+          return (
+            <article
+              className={`${styles.label} ${rollPaperClass(print.format)}`}
+              data-format={print.format}
+              key={label.palletId}
+              aria-label={`Паллета ${label.code}, ${label.title}, ${label.quantity} штук`}
+            >
+              <header className={styles.labelHeading}>
+                <strong
+                  className={
+                    label.code.length > 18 ? styles.longCode : undefined
+                  }
+                >
+                  {label.code}
+                </strong>
+                <span>{receiptCode}</span>
+              </header>
+              <div className={styles.labelBody}>
+                {/* SVG is displayed as an image and cannot execute scripts in the page. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  key={imageKey}
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(label.svg)}`}
+                  width={144}
+                  height={144}
+                  alt={`QR паллеты ${label.code}`}
+                  onLoad={() => print.markLoaded(imageKey)}
+                  onError={() => print.markFailed(imageKey)}
+                />
+                <div className={styles.labelText}>
+                  <h2
+                    className={
+                      label.title.length > 55 ? styles.longTitle : undefined
+                    }
+                  >
+                    {label.title}
+                  </h2>
+                  <p className={styles.quantity}>
+                    {label.quantity.toLocaleString("ru-RU")} шт.
+                  </p>
+                  <p className={styles.date}>
+                    Поступление
+                    <br />
+                    {receiptDate(receivedAt)}
+                  </p>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </div>
   );

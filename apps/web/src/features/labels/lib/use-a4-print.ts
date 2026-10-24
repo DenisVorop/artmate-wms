@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { LabelDto } from "@/shared/api/generated/model";
 
 export function useA4Print(labels: { key: string; label: LabelDto }[]) {
+  const [output, setOutput] = useState<"a4" | "75x120">("a4");
   const [attempt, setAttempt] = useState(0);
   const [images, setImages] = useState<Record<string, "loaded" | "failed">>({});
   const key = (item: { key: string; label: LabelDto }) =>
@@ -11,6 +12,8 @@ export function useA4Print(labels: { key: string; label: LabelDto }[]) {
     labels.length > 0 && labels.every((item) => images[key(item)] === "loaded");
   const failed = labels.some((item) => images[key(item)] === "failed");
   return {
+    output,
+    setOutput,
     key,
     ready,
     failed,

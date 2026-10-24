@@ -5,7 +5,13 @@ import { ArrowLeft, Printer, RefreshCw, Scissors } from "lucide-react";
 import { useSession, sessionScope } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  rollPaperClass,
+} from "@/shared/ui";
 import { a4LabelItems, a4Sheets, type A4LabelType } from "../lib/a4-labels";
 import { useA4Labels } from "../model/use-a4-labels";
 import { useA4Print } from "../lib/use-a4-print";
@@ -88,7 +94,8 @@ function A4LabelsEditor({
     selected.length > 0 &&
     batch.length === selected.length &&
     print.ready;
-  const sheets = a4Sheets(batch);
+  const roll = print.output === "75x120";
+  const sheets = roll ? batch.map((item) => [item]) : a4Sheets(batch);
   function toggle(key: string) {
     setSelected((current) =>
       current.includes(key)
@@ -97,17 +104,21 @@ function A4LabelsEditor({
     );
   }
   return (
-    <div className={styles.page} data-print-ready={ready}>
+    <div
+      className={styles.page}
+      data-print-ready={ready}
+      data-output={print.output}
+    >
       <header className={`${styles.header} ${styles.screenOnly}`}>
         <div>
           <Link href="/warehouse" className={styles.back}>
             <ArrowLeft size={16} />К карте склада
           </Link>
           <p className="eyebrow">МАРКИРОВКА СКЛАДА</p>
-          <h1 className="page-heading">Таблички А4</h1>
+          <h1 className="page-heading">Таблички склада</h1>
           <p className="page-description">
-            Выберите зоны и места. Четыре таблички на листе — распечатайте,
-            вырежьте и приклейте.
+            Выберите зоны и места. Печатайте на рулоне Xprinter 75 × 120 мм или
+            по четыре таблички на листе А4.
           </p>
         </div>
         <Button
@@ -117,7 +128,7 @@ function A4LabelsEditor({
           disabled={!ready}
         >
           <Printer size={17} />
-          Распечатать А4
+          {roll ? "Распечатать этикетки" : "Распечатать А4"}
         </Button>
       </header>
       <div className={styles.workspace}>
@@ -129,6 +140,19 @@ function A4LabelsEditor({
             <h2>Зоны и места</h2>
             <span>{selected.length} выбрано</span>
           </div>
+          <label className="field">
+            Формат печати
+            <select
+              className="input"
+              value={print.output}
+              onChange={(event) =>
+                print.setOutput(event.target.value as "a4" | "75x120")
+              }
+            >
+              <option value="a4">А4 · 4 таблички на листе</option>
+              <option value="75x120">Xprinter · 75 × 120 мм</option>
+            </select>
+          </label>
           <label className="field">
             Показать
             <select
@@ -198,17 +222,25 @@ function A4LabelsEditor({
             )}
           </div>
         </aside>
-        <section className={styles.preview} aria-label="Предпросмотр листов А4">
+        <section className={styles.preview} aria-label="Предпросмотр печати">
           <div className={`${styles.instructions} ${styles.screenOnly}`}>
             <Scissors size={18} />
             <p>
-              <strong>А4 · книжная ориентация · масштаб 100%</strong>
+              <strong>
+                {roll
+                  ? "75 × 120 мм · одна этикетка · масштаб 100%"
+                  : "А4 · книжная ориентация · масштаб 100%"}
+              </strong>
               <span>
-                Отключите колонтитулы браузера. Пунктир — линия вырезания.
+                {roll
+                  ? "В драйвере выберите бумагу 75 × 120 мм, без полей и колонтитулов."
+                  : "Отключите колонтитулы браузера. Пунктир — линия вырезания."}
               </span>
             </p>
             <span className={styles.pageCount}>
-              {Math.ceil(selected.length / 4)} лист.
+              {roll
+                ? `${selected.length} этик.`
+                : `${Math.ceil(selected.length / 4)} лист.`}
             </span>
           </div>
           {unavailable && (
@@ -293,7 +325,7 @@ function A4LabelsEditor({
           <div className={styles.sheets}>
             {sheets.map((sheet, index) => (
               <div
-                className={styles.sheet}
+                className={`${styles.sheet} ${roll ? `${styles.rollSheet} ${rollPaperClass("75x120")}` : ""}`}
                 key={index}
                 aria-label={`Лист ${index + 1} из ${sheets.length}`}
               >

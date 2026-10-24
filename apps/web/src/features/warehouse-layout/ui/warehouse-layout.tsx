@@ -310,7 +310,7 @@ export function WarehouseLayoutFeature() {
           {isManager && (
             <Link href="/labels/a4" className="button button--secondary">
               <Printer size={17} />
-              Таблички А4
+              Печать QR
             </Link>
           )}
           {isManager && !editing && (
