@@ -187,7 +187,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2mm;
+  gap: 1.5mm;
   text-align: center;
 }
 .label[data-format="75x120"] .labelText {
@@ -195,18 +195,18 @@
 }
 .label[data-format="75x120"] .labelText h2 {
   order: 0;
-  font-size: 15pt;
+  font-size: 24pt;
   line-height: 1.12;
   max-width: 100%;
 }
 .label[data-format="75x120"] .labelText h2.longTitle {
-  font-size: 11pt;
+  font-size: 12pt;
   line-height: 1.15;
 }
 .label[data-format="75x120"] .labelBody img {
   order: 1;
-  width: 45mm;
-  height: 45mm;
+  width: 60mm;
+  height: 60mm;
   flex: none;
 }
 .label[data-format="75x120"] .quantity {
@@ -218,6 +218,28 @@
   order: 3;
   font-size: 7.5pt;
   line-height: 1.3;
+}
+
+.label[data-format="75x120"] .labelText h2.mediumTitle {
+  font-size: 18pt;
+}
+.label.mediumLabel[data-format="75x120"] .labelBody img {
+  width: 56mm;
+  height: 56mm;
+}
+.label.longLabel[data-format="75x120"] .labelText h2.mediumTitle {
+  font-size: 12pt;
+}
+.label.longLabel[data-format="75x120"] .labelBody img {
+  width: 50mm;
+  height: 50mm;
+}
+.label.denseLabel[data-format="75x120"] .labelBody img {
+  width: 46mm;
+  height: 46mm;
+}
+.label.denseLabel[data-format="75x120"] .labelText h2.longTitle {
+  font-size: 11pt;
 }
 
 .label[data-format="100x70"] .labelHeading strong.longCode {

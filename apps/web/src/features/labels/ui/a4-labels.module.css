@@ -337,7 +337,7 @@
   grid-template-rows: minmax(0, 1fr);
 }
 .rollSheet .card {
-  padding: 5mm;
+  padding: 3mm;
   border: none;
 }
 .rollSheet .kind {
@@ -345,22 +345,36 @@
   margin-bottom: 3mm;
 }
 .rollSheet .card h2 {
-  font-size: 17pt;
+  font-size: 24pt;
+}
+.rollSheet .card h2.mediumTitle {
+  font-size: 18pt;
 }
 .rollSheet .card h2.longTitle {
   font-size: 12pt;
 }
+.rollSheet .card.longCard h2.mediumTitle {
+  font-size: 12pt;
+}
 .rollSheet .denseCard h2.longTitle {
-  font-size: 10pt;
+  font-size: 11pt;
 }
 .rollSheet .card img {
-  width: 48mm;
-  height: 48mm;
+  width: 64mm;
+  height: 64mm;
   padding: 2mm;
 }
+.rollSheet .card.mediumCard img {
+  width: 58mm;
+  height: 58mm;
+}
+.rollSheet .card.longCard img {
+  width: 52mm;
+  height: 52mm;
+}
 .rollSheet .card.denseCard img {
-  width: 40mm;
-  height: 40mm;
+  width: 44mm;
+  height: 44mm;
 }
 .rollSheet .code {
   font-size: 17pt;

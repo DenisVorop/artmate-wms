@@ -333,14 +333,18 @@ function A4LabelsEditor({
                   const imageKey = print.key(item);
                   return (
                     <article
-                      className={`${styles.card} ${item.label.title.length > 130 || item.label.code.length > 40 ? styles.denseCard : ""}`}
+                      className={`${styles.card} ${item.label.title.length > 24 ? styles.mediumCard : ""} ${item.label.title.length > 50 ? styles.longCard : ""} ${item.label.title.length > 130 || item.label.code.length > 40 ? styles.denseCard : ""}`}
                       key={item.key}
                       aria-label={`${item.category}: ${item.label.code}, ${item.label.title}`}
                     >
                       <p className={styles.kind}>{item.category}</p>
                       <h2
                         className={
-                          item.label.title.length > 70 ? styles.longTitle : ""
+                          item.label.title.length > 70
+                            ? styles.longTitle
+                            : item.label.title.length > 24
+                              ? styles.mediumTitle
+                              : ""
                         }
                       >
                         {item.label.title}

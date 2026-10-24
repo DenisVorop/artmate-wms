@@ -110,10 +110,10 @@
   overflow-wrap: anywhere;
 }
 .label[data-format="75x120"] {
-  padding: 5mm;
+  padding: 3mm;
 }
 .label[data-format="75x120"] .labelHeading strong {
-  font-size: 17pt;
+  font-size: 20pt;
 }
 .label[data-format="75x120"] .labelHeading strong.longCode {
   font-size: 10pt;
@@ -126,27 +126,42 @@
   text-align: center;
 }
 .label[data-format="75x120"] .labelBody img {
-  width: 48mm;
-  height: 48mm;
+  width: 64mm;
+  height: 64mm;
   padding: 2mm;
   box-sizing: border-box;
 }
 .label[data-format="75x120"] .labelBody h2 {
-  font-size: 14pt;
+  font-size: 24pt;
+  line-height: 1.1;
+}
+.label.mediumLabel[data-format="75x120"] .labelBody img {
+  width: 58mm;
+  height: 58mm;
+}
+.label[data-format="75x120"] .labelBody h2.mediumTitle {
+  font-size: 18pt;
+}
+.label.longLabel[data-format="75x120"] .labelBody img {
+  width: 52mm;
+  height: 52mm;
 }
 .label[data-format="75x120"] .labelBody h2.longTitle {
-  font-size: 10pt;
+  font-size: 12pt;
 }
-/* Maximum custom zone names/codes need more space without truncation. */
+.label.longLabel[data-format="75x120"] .labelBody h2.mediumTitle {
+  font-size: 12pt;
+}
+/* Keep maximum custom names and codes complete, with larger QR than before. */
 .label.denseLabel[data-format="75x120"] .labelBody img {
-  width: 40mm;
-  height: 40mm;
+  width: 44mm;
+  height: 44mm;
 }
 .label.denseLabel[data-format="75x120"] .labelHeading strong.longCode {
   font-size: 9pt;
 }
 .label.denseLabel[data-format="75x120"] .labelBody h2.longTitle {
-  font-size: 9pt;
+  font-size: 10pt;
 }
 .label.denseLabel[data-format="100x70"] .labelHeading strong {
   font-size: 8pt;

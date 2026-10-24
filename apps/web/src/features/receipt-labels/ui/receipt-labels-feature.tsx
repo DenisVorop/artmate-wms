@@ -119,7 +119,7 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
           const imageKey = print.key(label);
           return (
             <article
-              className={`${styles.label} ${rollPaperClass(print.format)}`}
+              className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 16 ? styles.mediumLabel : ""} ${label.title.length > 32 ? styles.longLabel : ""} ${label.title.length > 80 || label.code.length > 28 ? styles.denseLabel : ""}`}
               data-format={print.format}
               key={label.palletId}
               aria-label={`Паллета ${label.code}, ${label.title}, ${label.quantity} штук`}
@@ -149,7 +149,11 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
                 <div className={styles.labelText}>
                   <h2
                     className={
-                      label.title.length > 55 ? styles.longTitle : undefined
+                      label.title.length > 55
+                        ? styles.longTitle
+                        : label.title.length > 16
+                          ? styles.mediumTitle
+                          : undefined
                     }
                   >
                     {label.title}

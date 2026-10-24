@@ -137,7 +137,7 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
       </p>
       <div className={styles.preview}>
         <article
-          className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 130 || label.code.length > 40 ? styles.denseLabel : ""}`}
+          className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 24 ? styles.mediumLabel : ""} ${label.title.length > 50 ? styles.longLabel : ""} ${label.title.length > 130 || label.code.length > 40 ? styles.denseLabel : ""}`}
           data-format={print.format}
           aria-label={`${labelNames[type]} ${label.code}, ${label.title}`}
         >
@@ -159,7 +159,15 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
               onLoad={print.markLoaded}
               onError={print.markFailed}
             />
-            <h2 className={label.title.length > 70 ? styles.longTitle : ""}>
+            <h2
+              className={
+                label.title.length > 70
+                  ? styles.longTitle
+                  : label.title.length > 24
+                    ? styles.mediumTitle
+                    : ""
+              }
+            >
               {label.title}
             </h2>
           </div>
