@@ -10,6 +10,14 @@ import { createDatabase, Database, Queryable } from "./database";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import * as D from "./dto";
+import {
+  reconcileStockPositions,
+  initializeStockLedger,
+  stockPositions,
+  stockDifference,
+  ledgerEvent,
+  appendStockEvent,
+} from "./stock-ledger";
 import { generateSectionIdentity } from "./section-identity";
 import { seedWorkspace } from "./seed";
 import {
@@ -183,6 +191,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         "INSERT INTO metadata(key,value) VALUES ($1,$2) ON CONFLICT(key) DO NOTHING",
         ["workspace_revision", "0"],
       );
+      await initializeStockLedger(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 8) {
+        const state = await this._load(tx);
+        await appendStockEvent(tx, ledgerEvent(state, stockPositions(state)));
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES ($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "8"],
+        );
+      }
     });
   }
   private _enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -218,6 +235,181 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     await this.ready;
     return this._enqueue(() => this.db.transaction((tx) => this._load(tx)));
   }
+  async getStockLedger(
+    query: D.StockLedgerQueryDto = {},
+  ): Promise<D.StockLedgerPageDto> {
+    await this.ready;
+    for (const value of [query.from, query.to])
+      if (value !== undefined && !Number.isFinite(Date.parse(value)))
+        fail("Укажите корректные даты периода в ISO 8601");
+    if (
+      query.from &&
+      query.to &&
+      new Date(query.from).getTime() > new Date(query.to).getTime()
+    )
+      fail("Начало периода позже окончания");
+    return this._enqueue(() =>
+      this.db.transaction(async (tx) => {
+        const state = await this._load(tx);
+        const params: unknown[] = [];
+        const where: string[] = [];
+        const parameter = (value: unknown) => {
+          params.push(value);
+          return `$${params.length}`;
+        };
+        if (query.kind) where.push(`kind=${parameter(query.kind)}`);
+        if (query.employeeId)
+          where.push(`payload->>'employeeId'=${parameter(query.employeeId)}`);
+        if (query.skuId)
+          where.push(
+            `EXISTS (SELECT 1 FROM jsonb_array_elements(payload->'lines') l WHERE l->>'skuId'=${parameter(query.skuId)})`,
+          );
+        if (query.from)
+          where.push(
+            `created_at>=${parameter(new Date(query.from).toISOString())}::timestamptz`,
+          );
+        if (query.to)
+          where.push(
+            `created_at<=${parameter(new Date(query.to).toISOString())}::timestamptz`,
+          );
+        if (query.search) {
+          const p = parameter(`%${query.search.replace(/[\\%_]/g, "\\$&")}%`);
+          where.push(
+            `(payload->>'referenceCode' ILIKE ${p} OR payload->>'employeeName' ILIKE ${p} OR payload->>'reason' ILIKE ${p} OR EXISTS (SELECT 1 FROM jsonb_array_elements(payload->'lines') l WHERE l->>'skuCode' ILIKE ${p} OR l->>'skuName' ILIKE ${p} OR l->>'lotName' ILIKE ${p} OR l->>'containerCode' ILIKE ${p} OR l->>'palletCode' ILIKE ${p} OR l->>'locationCode' ILIKE ${p}))`,
+          );
+        }
+        const filter = where.length ? `WHERE ${where.join(" AND ")}` : "";
+        const count = await tx.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM stock_ledger ${filter}`,
+          params,
+        );
+        const page = query.page ?? 1,
+          pageSize = query.pageSize ?? 25;
+        const rows = await tx.query<{ payload: D.StockLedgerEventDto }>(
+          `SELECT payload FROM stock_ledger ${filter} ORDER BY created_at DESC,revision DESC,id DESC LIMIT ${parameter(pageSize)} OFFSET ${parameter((BigInt(page - 1) * BigInt(pageSize)).toString())}`,
+          params,
+        );
+        const summary = await tx.query<{
+          started_at: string;
+          events_count: string;
+          ledger_units: string;
+        }>(
+          "SELECT MIN(created_at)::text AS started_at,COUNT(*) AS events_count,COALESCE(SUM((payload->>'unitsDelta')::bigint),0) AS ledger_units FROM stock_ledger",
+        );
+        const result = summary.rows[0];
+        const ledgerUnits = Number(result.ledger_units),
+          onHandUnits = state.balance.totalUnits;
+        return {
+          items: rows.rows.map((r) => r.payload),
+          total: Number(count.rows[0].count),
+          page,
+          pageSize,
+          summary: {
+            startedAt: new Date(result.started_at).toISOString(),
+            eventsCount: Number(result.events_count),
+            ledgerUnits,
+            onHandUnits,
+            reconciled:
+              ledgerUnits === onHandUnits &&
+              (await reconcileStockPositions(tx, stockPositions(state))),
+          },
+        };
+      }),
+    );
+  }
+  adjustStock(b: D.AdjustStockDto) {
+    return this._command("adjustStock", b, (s) => {
+      if (find(s.employees, b.employeeId, "Сотрудник").status !== "working")
+        fail("Для корректировки сотрудник должен быть на смене");
+      if (
+        !b.reason?.trim() ||
+        b.reason.trim().length < 5 ||
+        b.reason.trim().length > 500
+      )
+        fail("Укажите причину от 5 до 500 символов");
+      if (
+        ![b.expectedQuantity, b.countedQuantity].every(
+          (n) => Number.isSafeInteger(n) && n >= 0 && n <= 100000000,
+        )
+      )
+        fail("Количество должно быть целым неотрицательным числом");
+      if (b.kind !== "raw_count" && b.kind !== "box_writeoff")
+        fail("Неизвестный вид корректировки");
+      const box =
+        b.kind === "box_writeoff" ? find(s.boxes, b.targetId, "Короб") : null;
+      const pallet = find(s.pallets, box?.palletId ?? b.targetId, "Паллета");
+      if (
+        pallet.locationId !== b.expectedLocationId ||
+        (box ? (box.status === "stored" ? 1 : 0) : pallet.quantity) !==
+          b.expectedQuantity
+      )
+        throw new ConflictException(
+          "Остаток или адрес изменились. Обновите данные и повторите пересчёт",
+        );
+      if (pallet.status !== "stored" || !pallet.locationId)
+        fail("Корректировка доступна только для размещённой паллеты");
+      const location = this._activeLocation(s, pallet.locationId);
+      if (location.blocked) fail("Адрес заблокирован");
+      if (
+        s.movements.some(
+          (m) =>
+            m.palletId === pallet.id &&
+            ["planned", "in_transit"].includes(m.status),
+        )
+      )
+        fail("Паллета участвует в перемещении");
+      if (this._incomingPutaway(s, location.id).length)
+        fail("Адрес зарезервирован для размещения короба");
+      if (b.kind === "raw_count") {
+        if (pallet.kind !== "raw" || !pallet.lotId || !pallet.skuId)
+          fail("Для пересчёта нужна сырьевая паллета с известной партией");
+        if (find(s.lots, pallet.lotId, "Партия").skuId !== pallet.skuId)
+          fail("Партия не соответствует тематике паллеты");
+        if (this._reserved(s, pallet.id) > 0)
+          fail("Остаток зарезервирован заданием сборки");
+        if (b.countedQuantity === pallet.quantity)
+          fail("Пересчитанное количество совпадает с текущим");
+        pallet.quantity = b.countedQuantity;
+      } else {
+        if (
+          !box ||
+          box.status !== "stored" ||
+          box.palletId !== pallet.id ||
+          box.locationId !== pallet.locationId ||
+          pallet.kind !== "finished" ||
+          location.kind === "assembly"
+        )
+          fail(
+            "Списать можно размещённый короб с паллеты хранения готовой продукции",
+          );
+        if (b.expectedQuantity !== 1 || b.countedQuantity !== 0)
+          fail("Для списания короба ожидается количество 1 и результат 0");
+        if (
+          s.shipments.some(
+            (x) => x.status === "draft" && x.boxIds.includes(box.id),
+          )
+        )
+          fail("Короб зарезервирован отгрузкой");
+        if (
+          s.putawayTasks.some(
+            (x) =>
+              x.status !== "completed" &&
+              (x.boxId === box.id || x.fromPalletId === pallet.id),
+          )
+        )
+          fail("Короб или паллета участвуют в размещении");
+        box.status = "written_off";
+        pallet.quantity--;
+        this._recomputePallet(s, pallet);
+      }
+      activity(
+        s,
+        "Корректировка остатка",
+        `${pallet.code}: ${b.reason.trim()}`,
+        "adjustment",
+      );
+    });
+  }
   private async _command(
     operation: string,
     body: D.CommandDto,
@@ -245,6 +437,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           return previous.rows[0].response;
         }
         const state = await this._load(tx);
+        const before = stockPositions(state);
         mutate(state);
         this._assertIntegrity(state);
         this._deriveBalance(state);
@@ -252,6 +445,25 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           fail("Достигнут предел ревизии склада");
         state.revision++;
         await this._persist(tx, state);
+        const lines = stockDifference(before, stockPositions(state));
+        if (
+          /^(scanTask|packTask|takePutawayTask|placePutawayTask|takeMovement|placeMovement)\//.test(
+            operation,
+          )
+        ) {
+          const lots = new Map<string, number>();
+          for (const line of lines) {
+            const key = JSON.stringify([line.skuId, line.lotId]);
+            lots.set(key, (lots.get(key) ?? 0) + line.quantityDelta);
+          }
+          if ([...lots.values()].some((delta) => delta !== 0))
+            throw new Error("Внутренняя операция нарушает сохранность партии");
+        }
+        if (lines.length)
+          await appendStockEvent(
+            tx,
+            ledgerEvent(state, lines, operation, body),
+          );
         await tx.query(
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
           [body.requestId, fingerprint, JSON.stringify(state)],
@@ -297,8 +509,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           p.kind !== "raw" ||
           p.skuId !== row.skuId ||
           !Number.isInteger(row.quantity) ||
-          row.quantity <= 0 ||
-          p.quantity > row.quantity
+          row.quantity <= 0
         )
           fail("Некорректный состав документа приёмки");
         if (row.placedAt === null) {

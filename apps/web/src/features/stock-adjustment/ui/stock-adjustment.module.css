@@ -1,0 +1,89 @@
+.form {
+  display: grid;
+  gap: 16px;
+}
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.base,
+.summary {
+  border: 1px solid var(--border);
+  background: oklch(0.2 0.01 260 / 0.6);
+  border-radius: 14px;
+  padding: 16px;
+}
+.base {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.base > span {
+  color: var(--muted);
+}
+.reason {
+  resize: vertical;
+  min-height: 88px;
+}
+.error,
+.serverError {
+  color: oklch(0.8 0.12 25);
+  font-size: 13px;
+}
+.serverError,
+.warning {
+  border: 1px solid oklch(0.65 0.12 65 / 0.4);
+  background: oklch(0.3 0.04 65 / 0.3);
+  border-radius: 12px;
+  padding: 12px;
+  line-height: 1.5;
+}
+.warning p {
+  margin: 0 0 8px;
+}
+.summaryTitle {
+  font-weight: 650;
+  margin-bottom: 16px;
+}
+.summary dl {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 12px;
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+.summary dt {
+  color: var(--muted);
+}
+.summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.reasonText {
+  white-space: pre-wrap;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+@media (max-width: 500px) {
+  .summary dl {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .summary dd {
+    margin-bottom: 8px;
+  }
+  .actions > button {
+    width: 100%;
+  }
+}

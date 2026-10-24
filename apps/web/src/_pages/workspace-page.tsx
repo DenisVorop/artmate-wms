@@ -1,25 +1,18 @@
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { DashboardFeature } from "@/features/dashboard";
 import { WarehouseLayoutFeature } from "@/features/warehouse-layout";
-import { PackagingFeature } from "@/features/packaging";
-import { InventoryFeature } from "@/features/inventory";
+import { InventoryScreen } from "./inventory-screen";
+import { StockLedgerScreen } from "./stock-ledger-screen";
 import { ReceivingFeature } from "@/features/receiving";
 import { AssemblyFeature } from "@/features/assembly";
 import { ShipmentsFeature } from "@/features/shipments";
 import { MovementsFeature } from "@/features/movements";
 import { TeamFeature } from "@/features/team";
-function InventoryScreen() {
-  return (
-    <>
-      <InventoryFeature />
-      <PackagingFeature />
-    </>
-  );
-}
 const views = {
   overview: DashboardFeature,
   warehouse: WarehouseLayoutFeature,
   inventory: InventoryScreen,
+  "stock-ledger": StockLedgerScreen,
   receiving: ReceivingFeature,
   assembly: AssemblyFeature,
   shipments: ShipmentsFeature,

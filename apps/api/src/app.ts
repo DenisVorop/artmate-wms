@@ -9,6 +9,7 @@ import {
   Injectable,
   Module,
   Param,
+  Query,
   Post,
   ValidationPipe,
   ArgumentsHost,
@@ -19,6 +20,7 @@ import {
 import { NestFactory } from "@nestjs/core";
 import {
   ApiBody,
+  ApiQuery,
   ApiParam,
   ApiOkResponse,
   ApiOperation,
@@ -40,6 +42,48 @@ export class WarehouseController {
   @ApiOkResponse({ type: D.WorkspaceDto })
   getWorkspace() {
     return this.warehouse.snapshot();
+  }
+  @Get("stock-ledger")
+  @ApiOperation({ operationId: "getStockLedger" })
+  @ApiOkResponse({ type: D.StockLedgerPageDto })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "pageSize", required: false, type: Number })
+  @ApiQuery({ name: "kind", required: false, enum: D.STOCK_LEDGER_KINDS })
+  @ApiQuery({ name: "skuId", required: false, type: String })
+  @ApiQuery({ name: "employeeId", required: false, type: String })
+  @ApiQuery({ name: "from", required: false, type: String })
+  @ApiQuery({ name: "to", required: false, type: String })
+  @ApiQuery({ name: "search", required: false, type: String })
+  getStockLedger(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.StockLedgerQueryDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    query: D.StockLedgerQueryDto,
+  ) {
+    return this.warehouse.getStockLedger(query);
+  }
+  @Post("stock-adjustments")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "adjustStock" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.AdjustStockDto })
+  adjustStock(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.AdjustStockDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.AdjustStockDto,
+  ) {
+    return this.warehouse.adjustStock(body);
   }
   @Post("locations")
   @HttpCode(200)

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as api from "./generated/client";
 import type {
+  AdjustStockDto,
   CreateSpaceDto,
   UpdateSpaceDto,
   ResizeSpaceDto,
@@ -37,7 +38,7 @@ import type {
   ConfirmMovementDto,
   RetireEmptyPalletDto,
 } from "./generated/model";
-import { workspaceQueryKey } from "./query-keys";
+import { workspaceQueryKey, stockLedgerQueryKey } from "./query-keys";
 import { runWarehouseCommand } from "./run-warehouse-command";
 export function useWarehouseCommands() {
   const client = useQueryClient();
@@ -47,7 +48,7 @@ export function useWarehouseCommands() {
     setPending(true);
     setError(null);
     try {
-      return await runWarehouseCommand({
+      const result = await runWarehouseCommand({
         command,
         cancelRead: () => client.cancelQueries({ queryKey: workspaceQueryKey }),
         readCurrent: () => api.getWorkspace(),
@@ -61,6 +62,8 @@ export function useWarehouseCommands() {
             refetchType: "none",
           }),
       });
+      void client.invalidateQueries({ queryKey: stockLedgerQueryKey });
+      return result;
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Не удалось сохранить изменение",
@@ -74,6 +77,7 @@ export function useWarehouseCommands() {
     pending,
     error,
     clearError: () => setError(null),
+    adjustStock: (dto: AdjustStockDto) => run(() => api.adjustStock(dto)),
     createSpace: (dto: CreateSpaceDto) => run(() => api.createSpace(dto)),
     updateSpace: (id: string, dto: UpdateSpaceDto) =>
       run(() => api.updateSpace(id, dto)),

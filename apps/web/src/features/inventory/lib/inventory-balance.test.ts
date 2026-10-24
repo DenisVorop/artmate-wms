@@ -41,6 +41,7 @@ test("Ожидающая приёмка не попадает в остатки,
     boxes: [
       { skuId: "sku", status: "stored", units: 20 },
       { skuId: "sku", status: "shipped", units: 20 },
+      { skuId: "sku", status: "written_off", units: 40 },
     ],
     tasks: [
       {

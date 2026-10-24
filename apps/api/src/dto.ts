@@ -233,7 +233,10 @@ export class BoxDto {
   @ApiProperty({ type: String }) packedAt!: string;
   @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
-  @ApiProperty({ enum: ["stored", "in_transit", "shipped"], type: String })
+  @ApiProperty({
+    enum: ["stored", "in_transit", "shipped", "written_off"],
+    type: String,
+  })
   status!: string;
 }
 export class TaskDto {
@@ -1134,4 +1137,143 @@ export class UpdateSpaceDto extends CommandDto {
   @Min(0.5)
   @Max(1000)
   depth?: number;
+}
+
+export const STOCK_LEDGER_KINDS = [
+  "opening_balance",
+  "receipt_placement",
+  "assembly",
+  "putaway",
+  "movement",
+  "shipment",
+  "adjustment",
+] as const;
+export class StockLedgerLineDto {
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: String }) skuCode!: string;
+  @ApiProperty({ type: String }) skuName!: string;
+  @ApiProperty({ type: String }) lotId!: string;
+  @ApiProperty({ type: String }) lotName!: string;
+  @ApiProperty({ type: String }) receivedAt!: string;
+  @ApiProperty({ enum: ["raw", "wip", "boxed"], type: String }) stage!: string;
+  @ApiProperty({ enum: ["pallet", "task", "box"], type: String })
+  containerType!: string;
+  @ApiProperty({ type: String }) containerId!: string;
+  @ApiProperty({ type: String }) containerCode!: string;
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) palletCode!: string | null;
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) locationCode!: string | null;
+  @ApiProperty({ type: Number }) quantityDelta!: number;
+}
+export class StockLedgerEventDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: Number }) revision!: number;
+  @ApiProperty({ type: String, nullable: true }) requestId!: string | null;
+  @ApiProperty({ enum: STOCK_LEDGER_KINDS, type: String }) kind!: string;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) employeeName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: String, nullable: true }) referenceType!: string | null;
+  @ApiProperty({ type: String, nullable: true }) referenceId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) referenceCode!: string | null;
+  @ApiProperty({ type: Number }) unitsDelta!: number;
+  @ApiProperty({ type: [StockLedgerLineDto] }) lines!: StockLedgerLineDto[];
+}
+export class StockLedgerSummaryDto {
+  @ApiProperty({ type: String }) startedAt!: string;
+  @ApiProperty({ type: Number }) eventsCount!: number;
+  @ApiProperty({ type: Number }) ledgerUnits!: number;
+  @ApiProperty({ type: Number }) onHandUnits!: number;
+  @ApiProperty({ type: Boolean }) reconciled!: boolean;
+}
+export class StockLedgerPageDto {
+  @ApiProperty({ type: [StockLedgerEventDto] }) items!: StockLedgerEventDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+  @ApiProperty({ type: StockLedgerSummaryDto }) summary!: StockLedgerSummaryDto;
+}
+export class StockLedgerQueryDto {
+  @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  page?: number;
+  @ApiPropertyOptional({ type: Number, default: 25, minimum: 1, maximum: 100 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+  @ApiPropertyOptional({ enum: STOCK_LEDGER_KINDS, type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(STOCK_LEDGER_KINDS)
+  kind?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  skuId?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  employeeId?: string;
+  @ApiPropertyOptional({ type: String, format: "date-time" })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsISO8601({ strict: true })
+  from?: string;
+  @ApiPropertyOptional({ type: String, format: "date-time" })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsISO8601({ strict: true })
+  to?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @MaxLength(200)
+  search?: string;
+}
+export class AdjustStockDto extends CommandDto {
+  @ApiProperty({ enum: ["raw_count", "box_writeoff"], type: String })
+  @IsIn(["raw_count", "box_writeoff"])
+  kind!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  targetId!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  employeeId!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  expectedLocationId!: string;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(0)
+  @Max(100000000)
+  expectedQuantity!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(0)
+  @Max(100000000)
+  countedQuantity!: number;
+  @ApiProperty({ type: String, minLength: 5, maxLength: 500 })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
 }

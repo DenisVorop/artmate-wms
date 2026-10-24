@@ -4763,3 +4763,45 @@ test("separate clients copy to different targets atomically with distinct genera
     if (other !== warehouse) await other.onModuleDestroy();
   }
 });
+
+test("full warehouse trace including mixed-lot packing, movement, partial shipping and legacy stock reconciles every ledger position", async () => {
+  const page = await warehouse.getStockLedger({});
+  assert.equal(page.summary.reconciled, true);
+  assert.equal(
+    page.summary.ledgerUnits,
+    (await warehouse.snapshot()).balance.totalUnits,
+  );
+  const events = [];
+  for (let pageNumber = 1; ; pageNumber++) {
+    const part = await warehouse.getStockLedger({
+      page: pageNumber,
+      pageSize: 100,
+    });
+    events.push(...part.items);
+    if (events.length >= part.total) break;
+  }
+  assert.equal(
+    events.some((e) => e.kind === "shipment" && e.unitsDelta < 0),
+    true,
+  );
+  assert.equal(
+    events.some(
+      (e) =>
+        e.kind === "assembly" && new Set(e.lines.map((l) => l.lotId)).size > 1,
+    ),
+    true,
+  );
+  for (const event of events.filter((e) =>
+    ["assembly", "putaway", "movement"].includes(e.kind),
+  )) {
+    const lots = new Map<string, number>();
+    for (const line of event.lines) {
+      const key = JSON.stringify([line.skuId, line.lotId]);
+      lots.set(key, (lots.get(key) ?? 0) + line.quantityDelta);
+    }
+    assert.equal(
+      [...lots.values()].every((q) => q === 0),
+      true,
+    );
+  }
+});

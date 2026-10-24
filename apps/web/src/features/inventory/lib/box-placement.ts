@@ -14,6 +14,12 @@ export function boxPlacement(
   const address = data.locations.find(
     (location) => location.id === box.locationId,
   )?.code;
+  if (box.status === "written_off")
+    return {
+      address: address ?? "—",
+      status: "Списан",
+      tone: "neutral" as const,
+    };
   if (box.status === "shipped")
     return {
       address: address ?? "—",

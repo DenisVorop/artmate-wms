@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Package, Layers, Search, ArrowUpRight, ScanLine } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
-import { Badge, Input, LoadingState, ErrorState } from "@/shared/ui";
+import { Badge, Button, Input, LoadingState, ErrorState } from "@/shared/ui";
 import { number, date } from "@/shared/lib/format";
 import { useInventoryFilter } from "../lib/use-inventory-filter";
 import {
@@ -12,7 +12,11 @@ import {
 import { palletComposition, palletMatchesSkus } from "../lib/pallet-stock";
 import { boxPlacement } from "../lib/box-placement";
 import styles from "./inventory.module.css";
-export function InventoryFeature() {
+export function InventoryFeature({
+  onCorrection,
+}: {
+  onCorrection?: () => void;
+}) {
   const { data, isPending, isError, refetch } = useWorkspace();
   const { search, setSearch, view, setView } = useInventoryFilter();
   if (isPending) return <LoadingState />;
@@ -33,9 +37,19 @@ export function InventoryFeature() {
             Общий баланс и остатки по тематикам, паллетам и коробам.
           </p>
         </div>
-        <Link href="/receiving" className="button button--primary">
-          К приёмкам <ArrowUpRight size={16} />
-        </Link>
+        <div className={styles.actions}>
+          <Link href="/stock-ledger" className="button button--secondary">
+            Журнал учёта
+          </Link>
+          {onCorrection && (
+            <Button variant="secondary" onClick={onCorrection}>
+              Корректировка
+            </Button>
+          )}
+          <Link href="/receiving" className="button button--primary">
+            К приёмкам <ArrowUpRight size={16} />
+          </Link>
+        </div>
       </div>
       <div className={`ops-metrics ${styles.metrics}`}>
         {[

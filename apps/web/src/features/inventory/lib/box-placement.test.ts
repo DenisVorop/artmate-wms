@@ -47,6 +47,14 @@ test("Статусы различают накопление, ручное ра�
   );
   assert.equal(
     boxPlacement(data, {
+      status: "written_off",
+      locationId: "storage",
+      palletId: "finished",
+    }).status,
+    "Списан",
+  );
+  assert.equal(
+    boxPlacement(data, {
       status: "shipped",
       locationId: "storage",
       palletId: "finished",
