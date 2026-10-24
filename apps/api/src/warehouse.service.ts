@@ -19,6 +19,11 @@ import {
   workHistory,
 } from "./workforce";
 import { authorizeWarehouse } from "./auth-policy";
+import {
+  initializeStocktakes,
+  cellFingerprints,
+  advanceCellVersions,
+} from "./stocktake-versions";
 import { initializeAuth } from "./auth-storage";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
@@ -238,7 +243,38 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "10"],
         );
+      await initializeStocktakes(tx, await this._load(tx));
+      if (Number(version.rows[0]?.value ?? 1) < 11)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "11"],
+        );
     });
+  }
+  stocktakeState(tx: Queryable) {
+    return this._load(tx);
+  }
+  async commitStocktake(
+    tx: Queryable,
+    before: D.WorkspaceDto,
+    state: D.WorkspaceDto,
+    body: D.ReasonStocktakeDto,
+    document: { id: string; code: string },
+  ) {
+    activity(
+      state,
+      "Инвентаризация утверждена",
+      `${document.code}: ${body.reason.trim()}`,
+      "adjustment",
+    );
+    await this._commitState(
+      tx,
+      before,
+      state,
+      "approveStocktake",
+      body,
+      document,
+    );
   }
   private _enqueue<T>(fn: () => Promise<T>): Promise<T> {
     const job = this.tail.then(fn, fn);
@@ -563,6 +599,17 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             ),
           )
           .digest("hex");
+        if (
+          (
+            await tx.query(
+              "SELECT request_id FROM stocktake_commands WHERE request_id=$1",
+              [body.requestId],
+            )
+          ).rows.length
+        )
+          throw new ConflictException(
+            "Этот requestId уже использован для другой операции",
+          );
         const previous = await tx.query<{
           fingerprint: string;
           response: D.WorkspaceDto;
@@ -576,41 +623,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             );
           return projectWorkspace(previous.rows[0].response, context);
         }
-        const before = stockPositions(state);
-        const workBefore = workforceBefore(state);
+        const before = structuredClone(state);
         mutate(state);
-        this._assertIntegrity(state);
-        this._deriveBalance(state);
-        if (state.revision >= Number.MAX_SAFE_INTEGER)
-          fail("Достигнут предел ревизии склада");
-        state.revision++;
-        await this._persist(tx, state);
-        const lines = stockDifference(before, stockPositions(state));
-        if (
-          /^(scanTask|packTask|takePutawayTask|placePutawayTask|takeMovement|placeMovement)\//.test(
-            operation,
-          )
-        ) {
-          const lots = new Map<string, number>();
-          for (const line of lines) {
-            const key = JSON.stringify([line.skuId, line.lotId]);
-            lots.set(key, (lots.get(key) ?? 0) + line.quantityDelta);
-          }
-          if ([...lots.values()].some((delta) => delta !== 0))
-            throw new Error("Внутренняя операция нарушает сохранность партии");
-        }
-        if (lines.length)
-          await appendStockEvent(
-            tx,
-            ledgerEvent(
-              state,
-              lines,
-              operation,
-              body,
-              context?.http ? context.employeeId : undefined,
-            ),
-          );
-        await recordWorkforce(tx, workBefore, state, body);
+        await this._commitState(tx, before, state, operation, body);
         await tx.query(
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
           [body.requestId, fingerprint, JSON.stringify(state)],
@@ -618,6 +633,59 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         return projectWorkspace(state, context);
       }),
     );
+  }
+  private async _commitState(
+    tx: Queryable,
+    before: D.WorkspaceDto,
+    state: D.WorkspaceDto,
+    operation: string,
+    body: D.CommandDto,
+    stocktake?: { id: string; code: string },
+  ) {
+    this._assertIntegrity(state);
+    this._deriveBalance(state);
+    if (state.revision >= Number.MAX_SAFE_INTEGER)
+      fail("Достигнут предел ревизии склада");
+    state.revision++;
+    await this._persist(tx, state);
+    const lines = stockDifference(
+      stockPositions(before),
+      stockPositions(state),
+    );
+    if (
+      /^(scanTask|packTask|takePutawayTask|placePutawayTask|takeMovement|placeMovement)\//.test(
+        operation,
+      )
+    ) {
+      const lots = new Map<string, number>();
+      for (const line of lines) {
+        const key = JSON.stringify([line.skuId, line.lotId]);
+        lots.set(key, (lots.get(key) ?? 0) + line.quantityDelta);
+      }
+      if ([...lots.values()].some((delta) => delta !== 0))
+        throw new Error("Внутренняя операция нарушает сохранность партии");
+    }
+    if (lines.length) {
+      const event = ledgerEvent(
+        state,
+        lines,
+        operation,
+        body,
+        requestAuth.getStore()?.http
+          ? requestAuth.getStore()?.employeeId
+          : undefined,
+      );
+      if (stocktake) {
+        event.kind = "adjustment";
+        event.referenceType = "stocktake";
+        event.referenceId = stocktake.id;
+        event.referenceCode = stocktake.code;
+        event.reason = (body as D.ReasonStocktakeDto).reason.trim();
+      }
+      await appendStockEvent(tx, event);
+    }
+    await advanceCellVersions(tx, cellFingerprints(before), state);
+    await recordWorkforce(tx, workforceBefore(before), state, body);
   }
   private async _persist(tx: Queryable, state: D.WorkspaceDto) {
     for (const table of tables) {

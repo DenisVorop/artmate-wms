@@ -22,19 +22,23 @@ const timestamp = (value: string) =>
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-const jobRoute = (kind: string) =>
+const jobRoute = (kind: string, id: string) =>
   kind === "assembly"
     ? "/assembly"
     : kind === "putaway"
       ? "/putaway"
-      : "/movements";
+      : kind === "stocktake"
+        ? `/stocktakes?stocktakeId=${encodeURIComponent(id)}`
+        : "/movements";
 const jobLabel = (kind: string, status: string) => {
   const task =
     kind === "assembly"
       ? "Сборка"
       : kind === "putaway"
         ? "Размещение"
-        : "Перемещение";
+        : kind === "stocktake"
+          ? "Инвентаризация"
+          : "Перемещение";
   const state =
     status === "paused"
       ? "на паузе"
@@ -119,7 +123,7 @@ export function EmployeeCard({
             <ul className={styles.jobs}>
               {performance.currentJobs.map((job) => (
                 <li key={`${job.kind}/${job.id}`}>
-                  <Link href={jobRoute(job.kind)}>
+                  <Link href={jobRoute(job.kind, job.id)}>
                     {job.code}
                     <ArrowUpRight size={12} />
                   </Link>

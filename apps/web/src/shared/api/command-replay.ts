@@ -5,6 +5,7 @@ type ReplayPorts = {
   storage: () => StoragePort;
   fetch: (url: string, options: RequestInit) => Promise<Response>;
   fingerprint: (value: string) => Promise<string>;
+  isResponseConfirmed?: (value: unknown) => boolean;
 };
 export const commandReplayStoragePrefix = "artmate-wms:unresolved-command:v1:";
 const prefix = commandReplayStoragePrefix;
@@ -128,7 +129,7 @@ export async function fetchReplaySafeCommand<T>(
         message(data) ?? "Сервер не подтвердил действие. Повторите попытку.",
       );
     }
-    if (!isWorkspaceCommandResponse(data))
+    if (!(ports.isResponseConfirmed ?? isWorkspaceCommandResponse)(data))
       throw new Error(
         "Сервер вернул неподтверждённый результат. Повторите действие — прежняя запись не продублируется.",
       );

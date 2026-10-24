@@ -42,6 +42,7 @@ import {
   workspaceQueryKey,
   stockLedgerQueryKey,
   workforceQueryKey,
+  stocktakeQueryKey,
 } from "./query-keys";
 import { getAuthEpoch } from "./auth-memory";
 import { ApiError } from "./api-error";
@@ -77,6 +78,7 @@ export function useWarehouseCommands() {
         );
       void client.invalidateQueries({ queryKey: stockLedgerQueryKey });
       void client.invalidateQueries({ queryKey: workforceQueryKey });
+      void client.invalidateQueries({ queryKey: stocktakeQueryKey });
       return result;
     } catch (e) {
       setError(

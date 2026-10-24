@@ -160,6 +160,8 @@ export function ledgerEvent(
     reference = (b.kind === "raw_count" ? s.pallets : s.boxes).find(
       (x) => x.id === b.targetId,
     );
+  } else if (op === "approveStocktake") {
+    kind = "adjustment";
   } else if (op === "placeReceiptPallet") {
     kind = "receipt_placement";
     referenceType = "receipt";

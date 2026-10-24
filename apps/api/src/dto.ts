@@ -1472,7 +1472,10 @@ export class CurrentShiftDto {
 export class WorkJobDto {
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
-  @ApiProperty({ type: String, enum: ["assembly", "putaway", "movement"] })
+  @ApiProperty({
+    type: String,
+    enum: ["assembly", "putaway", "movement", "stocktake"],
+  })
   kind!: string;
   @ApiProperty({ type: String }) status!: string;
   @ApiProperty({ type: String }) description!: string;
@@ -1571,4 +1574,244 @@ export class WorkHistoryPageDto {
   @ApiProperty({ type: Number }) total!: number;
   @ApiProperty({ type: Number }) page!: number;
   @ApiProperty({ type: Number }) pageSize!: number;
+}
+
+export const STOCKTAKE_STATUSES = [
+  "queued",
+  "counting",
+  "review",
+  "approved",
+  "cancelled",
+] as const;
+export class StocktakeRawPalletDto {
+  @ApiProperty({ type: String }) palletId!: string;
+  @ApiProperty({ type: String }) palletCode!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: String }) skuName!: string;
+  @ApiProperty({ type: String }) lotId!: string;
+  @ApiProperty({ type: String }) lotName!: string;
+  @ApiProperty({ type: String }) receivedAt!: string;
+  @ApiProperty({ type: Number }) quantity!: number;
+}
+export class StocktakeBoxDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: String }) skuName!: string;
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiProperty({ type: String }) palletId!: string;
+}
+export class StocktakeInventoryDto {
+  @ApiProperty({ type: PalletDto, nullable: true }) pallet!: PalletDto | null;
+  @ApiProperty({ type: [StocktakeRawPalletDto] })
+  rawPallets!: StocktakeRawPalletDto[];
+  @ApiProperty({ type: [StocktakeBoxDto] }) boxes!: StocktakeBoxDto[];
+}
+export class StocktakeRawCountDto {
+  @ApiProperty({ type: String })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  palletCode!: string;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(0)
+  @Max(100000000)
+  quantity!: number;
+}
+export class StocktakeCountDto {
+  @ApiProperty({ type: [StocktakeRawCountDto] })
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => StocktakeRawCountDto)
+  rawPallets!: StocktakeRawCountDto[];
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  boxCodes!: string[];
+}
+export class StocktakeRowSnapshotDto {
+  @ApiProperty({ type: String }) locationId!: string;
+  @ApiProperty({ type: String }) locationCode!: string;
+  @ApiProperty({ type: String }) locationName!: string;
+  @ApiProperty({ type: Number }) baselineVersion!: number;
+  @ApiProperty({ type: Number, nullable: true }) countVersion!: number | null;
+  @ApiProperty({ type: StocktakeInventoryDto })
+  baseline!: StocktakeInventoryDto;
+  @ApiProperty({ type: StocktakeCountDto, nullable: true })
+  count!: StocktakeCountDto | null;
+  @ApiProperty({ type: String, nullable: true }) countedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) countedByEmployeeId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) countedByName!: string | null;
+}
+export class StocktakeRowDto extends StocktakeRowSnapshotDto {
+  @ApiProperty({ type: Number }) currentVersion!: number;
+  @ApiProperty({ type: Boolean }) stale!: boolean;
+  @ApiProperty({ type: [String] }) busyReasons!: string[];
+}
+export class StocktakeIssueDto {
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) message!: string;
+  @ApiProperty({ type: [String] }) locationIds!: string[];
+  @ApiProperty({ type: String, nullable: true }) entityId!: string | null;
+}
+export class StocktakeChangeDto {
+  @ApiProperty({
+    type: String,
+    enum: [
+      "raw_count",
+      "box_writeoff",
+      "raw_pallet_relocation",
+      "box_relocation",
+    ],
+  })
+  kind!: string;
+  @ApiProperty({ type: String }) entityId!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String, nullable: true }) fromLocationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) toLocationId!: string | null;
+  @ApiProperty({ type: Number }) expectedQuantity!: number;
+  @ApiProperty({ type: Number }) countedQuantity!: number;
+  @ApiProperty({ type: Number }) unitsDelta!: number;
+}
+export class StocktakePreviewDto {
+  @ApiProperty({ type: Number }) revision!: number;
+  @ApiProperty({ type: Boolean }) canApprove!: boolean;
+  @ApiProperty({ type: [StocktakeIssueDto] }) issues!: StocktakeIssueDto[];
+  @ApiProperty({ type: [StocktakeChangeDto] }) changes!: StocktakeChangeDto[];
+  @ApiProperty({ type: Number }) unitsDelta!: number;
+  @ApiProperty({ type: [String] }) staleLocationIds!: string[];
+}
+export class StocktakeHistoryDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({
+    type: String,
+    enum: [
+      "created",
+      "claimed",
+      "counted",
+      "refreshed",
+      "submitted",
+      "approved",
+      "cancelled",
+    ],
+  })
+  kind!: string;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String }) actorEmployeeId!: string;
+  @ApiProperty({ type: String }) actorName!: string;
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String }) message!: string;
+  @ApiProperty({ type: StocktakeRowSnapshotDto, nullable: true })
+  previousRow!: StocktakeRowSnapshotDto | null;
+}
+export class StocktakeSummaryDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String, enum: STOCKTAKE_STATUSES }) status!: string;
+  @ApiProperty({ type: Number }) revision!: number;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String }) createdByEmployeeId!: string;
+  @ApiProperty({ type: String }) createdByName!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) employeeName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) approvedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) cancelledAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ type: Number }) locationsTotal!: number;
+  @ApiProperty({ type: Number }) locationsCounted!: number;
+  @ApiProperty({ type: Number }) staleLocations!: number;
+}
+export class StocktakeDto extends StocktakeSummaryDto {
+  @ApiProperty({ type: [StocktakeRowDto] }) rows!: StocktakeRowDto[];
+  @ApiProperty({ type: [StocktakeHistoryDto] }) history!: StocktakeHistoryDto[];
+  @ApiProperty({ type: StocktakePreviewDto }) preview!: StocktakePreviewDto;
+  @ApiProperty({ type: Boolean }) canClaim!: boolean;
+  @ApiProperty({ type: Boolean }) canCount!: boolean;
+  @ApiProperty({ type: Boolean }) canSubmit!: boolean;
+  @ApiProperty({ type: Boolean }) canRefresh!: boolean;
+  @ApiProperty({ type: Boolean }) canApprove!: boolean;
+  @ApiProperty({ type: Boolean }) canCancel!: boolean;
+}
+export class StocktakeListDto {
+  @ApiProperty({ type: [StocktakeSummaryDto] }) items!: StocktakeSummaryDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}
+export class StocktakeListQueryDto {
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  page?: number;
+  @ApiPropertyOptional({ type: Number, default: 25 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+  @ApiPropertyOptional({ type: String, enum: ["active", "archive"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["active", "archive"])
+  bucket?: string;
+  @ApiPropertyOptional({ type: String, enum: STOCKTAKE_STATUSES })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(STOCKTAKE_STATUSES)
+  status?: string;
+}
+export class CreateStocktakeDto extends CommandDto {
+  @ApiProperty({ type: [String], maxItems: 200 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  locationIds!: string[];
+}
+export class StocktakeCommandDto extends CommandDto {
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedRevision!: number;
+}
+export class CountStocktakeLocationDto extends StocktakeCommandDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  locationCode!: string;
+  @ApiProperty({ type: [StocktakeRawCountDto] })
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => StocktakeRawCountDto)
+  rawPallets!: StocktakeRawCountDto[];
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  boxCodes!: string[];
+}
+export class ReasonStocktakeDto extends StocktakeCommandDto {
+  @ApiProperty({ type: String, minLength: 5, maxLength: 500 })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
 }

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { ChevronDown, ArrowRightLeft } from "lucide-react";
 import type { StockLedgerEventDto } from "@/shared/api/generated/model";
 import { Badge } from "@/shared/ui";
@@ -33,7 +34,11 @@ export function LedgerEvent({
           <ArrowRightLeft size={17} />
         </span>
         <span className={styles.eventIdentity}>
-          <strong>{ledgerKindLabels[event.kind]}</strong>
+          <strong>
+            {event.referenceType === "stocktake"
+              ? "Инвентаризация"
+              : ledgerKindLabels[event.kind]}
+          </strong>
           <span>
             {ledgerDate(event.createdAt)} · {ledgerActor(event)}
           </span>
@@ -50,6 +55,14 @@ export function LedgerEvent({
       </summary>
       {expanded && (
         <div className={styles.eventBody}>
+          {event.referenceType === "stocktake" && event.referenceId && (
+            <Link
+              className="button button--secondary button--sm"
+              href={`/stocktakes?stocktakeId=${encodeURIComponent(event.referenceId)}`}
+            >
+              Открыть инвентаризацию {event.referenceCode}
+            </Link>
+          )}
           {event.reason && (
             <p className={styles.reason}>
               <strong>Причина</strong>

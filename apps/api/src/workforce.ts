@@ -405,6 +405,18 @@ export async function performanceReport(
         description:
           state.pallets.find((p) => p.id === m.palletId)?.code ?? m.code,
       });
+    const stocktakes = await tx.query<{ payload: D.StocktakeSummaryDto }>(
+      "SELECT payload FROM stocktakes WHERE payload->>'status'='counting' AND payload->>'employeeId'=$1",
+      [e.id],
+    );
+    for (const { payload: d } of stocktakes.rows)
+      currentJobs.push({
+        id: d.id,
+        code: d.code,
+        kind: "stocktake",
+        status: d.status,
+        description: `Подсчёт ${d.locationsTotal} ячеек`,
+      });
     rows.push({
       employeeId: e.id,
       employeeName: e.name,

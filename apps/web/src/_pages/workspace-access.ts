@@ -7,6 +7,7 @@ const employeeViews = new Set([
   "movements",
   "team",
   "performance",
+  "stocktakes",
 ]);
 /** UI navigation policy; the API independently authorizes every request. */
 export function canOpenWorkspaceView(role: AuthUserDto["role"], view: string) {

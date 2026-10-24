@@ -16,6 +16,7 @@ import {
   Grid2X2,
   Layers3,
   NotebookTabs,
+  ClipboardCheck,
   Menu,
   Package,
   Search,
@@ -33,6 +34,7 @@ const allNavigation = [
   { href: "/", label: "Обзор", icon: ChartNoAxesCombined },
   { href: "/warehouse", label: "Карта склада", icon: Grid2X2 },
   { href: "/inventory", label: "Остатки", icon: Layers3 },
+  { href: "/stocktakes", label: "Инвентаризация", icon: ClipboardCheck },
   { href: "/stock-ledger", label: "Журнал учёта", icon: NotebookTabs },
   { href: "/receiving", label: "Приёмка", icon: ArrowDownToLine },
   { href: "/assembly", label: "Сборка", icon: Boxes },
@@ -60,6 +62,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     "/movements",
     "/team",
     "/performance",
+    "/stocktakes",
   ];
   const navigation = allNavigation.filter(
     (item) => session.isManager || workerPaths.includes(item.href),

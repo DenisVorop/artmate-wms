@@ -83,7 +83,9 @@ export function CurrentEmployee({
                       ? "/assembly"
                       : job.kind === "putaway"
                         ? "/putaway"
-                        : "/movements"
+                        : job.kind === "stocktake"
+                          ? `/stocktakes?stocktakeId=${encodeURIComponent(job.id)}`
+                          : "/movements"
                   }
                 >
                   <strong>

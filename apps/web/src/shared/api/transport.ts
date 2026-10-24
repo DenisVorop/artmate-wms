@@ -1,3 +1,4 @@
+import { isStocktakeCommandResponse } from "./stocktake-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
 import {
   getAuthEpoch,
@@ -59,6 +60,9 @@ export function createApiFetch(ports: Ports) {
           storage: ports.storage,
           fetch: send,
           fingerprint: commandFingerprint,
+          ...(/\/api\/stocktakes(?:\/|\?|$)/.test(url)
+            ? { isResponseConfirmed: isStocktakeCommandResponse }
+            : {}),
         });
       else {
         const response = await send(url, init);

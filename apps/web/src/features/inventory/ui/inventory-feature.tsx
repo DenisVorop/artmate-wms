@@ -40,6 +40,9 @@ export function InventoryFeature({
           </p>
         </div>
         <div className={styles.actions}>
+          <Link href="/stocktakes" className="button button--secondary">
+            Инвентаризация
+          </Link>
           {isManager && (
             <Link href="/stock-ledger" className="button button--secondary">
               Журнал учёта

@@ -19,6 +19,8 @@ import {
   HttpException,
 } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { StocktakeController } from "./stocktake.controller";
+import { StocktakeService } from "./stocktake.service";
 import { AuthController, cookieName } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { AuthGuard } from "./auth.guard";
@@ -1128,10 +1130,11 @@ class JsonExceptionFilter implements ExceptionFilter {
   }
 }
 @Module({
-  controllers: [WarehouseController, AuthController],
+  controllers: [WarehouseController, AuthController, StocktakeController],
   providers: [
     WarehouseService,
     AuthService,
+    StocktakeService,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })

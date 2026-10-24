@@ -48,6 +48,7 @@ export function workforceStatus(status: string): string {
         active: "В работе",
         in_progress: "В работе",
         planned: "Запланировано",
+        counting: "Подсчёт",
         pending: "Ожидает",
         queued: "В очереди",
         assigned: "Назначено",
@@ -81,6 +82,7 @@ export function workJobTitle(kind: string): string {
         assembly: "Сборка",
         putaway: "Размещение короба",
         movement: "Перемещение паллеты",
+        stocktake: "Инвентаризация",
       } as Record<string, string>
     )[kind] ?? "Задание"
   );

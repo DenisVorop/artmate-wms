@@ -5,6 +5,9 @@ import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
   "getWorkspace",
+  "getStocktakes",
+  "getStocktake",
+  "getStocktakePreview",
   "getPerformance",
   "getShiftHistory",
   "getWorkHistory",
@@ -13,6 +16,13 @@ export const warehouseOperations = new Set([
   "getReceiptPlacementOptions",
   "getReceiptLabels",
   "getPutawayPlacementOptions",
+  "createStocktake",
+  "approveStocktake",
+  "cancelStocktake",
+  "claimStocktake",
+  "countStocktakeLocation",
+  "refreshStocktakeLocation",
+  "submitStocktake",
   "adjustStock",
   "updateWarehousePlan",
   "createSpace",
@@ -63,6 +73,9 @@ export const warehouseOperations = new Set([
 ]);
 const workerReads = new Set([
   "getWorkspace",
+  "getStocktakes",
+  "getStocktake",
+  "getStocktakePreview",
   "getPerformance",
   "getShiftHistory",
   "getWorkHistory",
@@ -72,6 +85,10 @@ const workerReads = new Set([
   "getPutawayPlacementOptions",
 ]);
 const workerWrites = new Set([
+  "claimStocktake",
+  "countStocktakeLocation",
+  "refreshStocktakeLocation",
+  "submitStocktake",
   "placeReceiptPallet",
   "claimTask",
   "updateTaskStatus",
