@@ -11,21 +11,23 @@
     "test": "TSX_TSCONFIG_PATH=tsconfig.json node --import tsx --test src/features/*/lib/*.test.ts src/shared/api/*.test.ts src/shared/lib/*.test.ts src/_pages/*.test.ts src/entities/*/lib/*.test.ts"
   },
   "dependencies": {
+    "@hookform/resolvers": "5.2.2",
+    "@tanstack/react-query": "5.100.14",
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
+    "clsx": "2.1.1",
+    "lucide-react": "1.16.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "@tanstack/react-query": "5.100.14",
-    "lucide-react": "1.16.0",
     "react-hook-form": "7.76.0",
-    "zod": "3.25.76",
-    "@hookform/resolvers": "5.2.2",
-    "clsx": "2.1.1"
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "orval": "7.13.2",
-    "typescript": "5.9.2",
     "@types/node": "22.15.3",
     "@types/react": "19.2.15",
-    "@types/react-dom": "19.2.3"
+    "@types/react-dom": "19.2.3",
+    "orval": "7.13.2",
+    "typescript": "5.9.2"
   }
 }

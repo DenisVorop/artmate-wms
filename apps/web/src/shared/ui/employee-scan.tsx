@@ -3,11 +3,12 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ScanLine, Keyboard } from "lucide-react";
+import { ScanLine, Keyboard, Camera } from "lucide-react";
 import { createScanQueue, type ScanQueueState } from "../lib/scan-queue";
 import { getAuthEpoch } from "../api/auth-memory";
 import { useEmployeeScanActivity } from "./employee-scan-activity";
 import { useEmployeeScanGateway } from "./employee-scan-gateway";
+import { EmployeeCamera } from "./employee-camera";
 import styles from "./employee-scan.module.css";
 const schema = z.object({
   code: z
@@ -43,6 +44,11 @@ export function EmployeeScan({
   const id = useId(),
     input = useRef<HTMLInputElement | null>(null);
   const [manual, setManual] = useState(false);
+  const [camera, setCamera] = useState<{
+    contextKey: string;
+    epoch: number;
+  } | null>(null);
+  const cameraSession = useRef<typeof camera>(null);
   const [queueState, setQueueState] = useState<ScanQueueState>({
     pending: 0,
     running: false,
@@ -75,6 +81,7 @@ export function EmployeeScan({
       isCurrent: () =>
         live.current.contextKey === contextKey &&
         live.current.epoch === epoch &&
+        getAuthEpoch() === epoch &&
         !live.current.disabled,
       accept: (value) => live.current.onScan(value),
       changed: setQueueState,
@@ -157,75 +164,97 @@ export function EmployeeScan({
   const field = form.register("code");
   const locked =
     disabled || gateway.pending || (!repeat && (pending || queueState.running));
+  const submitCode = (values: z.infer<typeof schema>) => {
+    if (locked || intercepting.current) return;
+    const startContext = contextKey,
+      epoch = getAuthEpoch();
+    const current = () =>
+      live.current.contextKey === startContext &&
+      getAuthEpoch() === epoch &&
+      !live.current.disabled;
+    const selectField = () => {
+      selectAfterIntercept.current = true;
+      if (
+        input.current &&
+        !input.current.disabled &&
+        !document.querySelector("dialog[open]")
+      ) {
+        input.current.focus({ preventScroll: true });
+        input.current.select();
+        selectAfterIntercept.current = false;
+      }
+    };
+    const apply = (disposition: "pass" | "handled" | "blocked") => {
+      if (!current()) return;
+      if (disposition === "blocked") {
+        if (queueState.failedCode) form.setValue("code", queueState.failedCode);
+        setLocalError(
+          "Код не применён. Завершите текущий шаг или устраните причину блокировки.",
+        );
+        selectField();
+        return;
+      }
+      if (disposition === "handled") {
+        form.reset({ code: "" });
+        setLocalError(null);
+        return;
+      }
+      if (queue.current?.enqueue(values.code)) {
+        form.reset({ code: "" });
+        setLocalError(null);
+      } else {
+        setLocalError("Дождитесь сохранения и повторите скан.");
+        selectField();
+      }
+    };
+    const fail = (failure: unknown) => {
+      if (current()) {
+        setLocalError(
+          failure instanceof Error
+            ? failure.message
+            : "Не удалось обработать код. Повторите ввод.",
+        );
+        selectField();
+      }
+    };
+    try {
+      const result = gateway.intercept(values.code);
+      if (typeof result === "string") {
+        apply(result);
+        return;
+      }
+      intercepting.current = true;
+      void result.then(apply, fail).finally(() => {
+        intercepting.current = false;
+      });
+    } catch (failure) {
+      fail(failure);
+    }
+  };
+  const cameraAllowed =
+    !locked &&
+    !pending &&
+    (!queueState.pending || (!!queueState.failedCode && !queueState.running));
+  const cameraLive = useRef({ cameraAllowed });
+  cameraLive.current = { cameraAllowed };
+  const cameraCurrent = (session: NonNullable<typeof camera>) =>
+    live.current.contextKey === session.contextKey &&
+    getAuthEpoch() === session.epoch &&
+    !live.current.disabled &&
+    cameraLive.current.cameraAllowed &&
+    !intercepting.current;
+  const closeCamera = () => {
+    cameraSession.current = null;
+    setCamera(null);
+    requestAnimationFrame(() => {
+      if (!live.current.disabled && !document.querySelector("dialog[open]"))
+        input.current?.focus({ preventScroll: true });
+    });
+  };
   return (
     <form
       className={styles.form}
-      onSubmit={form.handleSubmit((values) => {
-        if (locked || intercepting.current) return;
-        const startContext = contextKey,
-          epoch = getAuthEpoch();
-        const current = () =>
-          live.current.contextKey === startContext && getAuthEpoch() === epoch;
-        const selectField = () => {
-          selectAfterIntercept.current = true;
-          if (
-            input.current &&
-            !input.current.disabled &&
-            !document.querySelector("dialog[open]")
-          ) {
-            input.current.focus({ preventScroll: true });
-            input.current.select();
-            selectAfterIntercept.current = false;
-          }
-        };
-        const apply = (disposition: "pass" | "handled" | "blocked") => {
-          if (!current()) return;
-          if (disposition === "blocked") {
-            if (queueState.failedCode)
-              form.setValue("code", queueState.failedCode);
-            setLocalError(
-              "Код не применён. Завершите текущий шаг или устраните причину блокировки.",
-            );
-            selectField();
-            return;
-          }
-          if (disposition === "handled") {
-            form.reset({ code: "" });
-            setLocalError(null);
-            return;
-          }
-          if (queue.current?.enqueue(values.code)) {
-            form.reset({ code: "" });
-            setLocalError(null);
-          } else {
-            setLocalError("Дождитесь сохранения и повторите скан.");
-            selectField();
-          }
-        };
-        const fail = (failure: unknown) => {
-          if (current()) {
-            setLocalError(
-              failure instanceof Error
-                ? failure.message
-                : "Не удалось обработать код. Повторите ввод.",
-            );
-            selectField();
-          }
-        };
-        try {
-          const result = gateway.intercept(values.code);
-          if (typeof result === "string") {
-            apply(result);
-            return;
-          }
-          intercepting.current = true;
-          void result.then(apply, fail).finally(() => {
-            intercepting.current = false;
-          });
-        } catch (failure) {
-          fail(failure);
-        }
-      })}
+      onSubmit={form.handleSubmit(submitCode)}
       noValidate
     >
       <label className={styles.label} htmlFor={id}>
@@ -302,6 +331,39 @@ export function EmployeeScan({
         >
           Отправить код
         </button>
+      )}
+      <button
+        type="button"
+        className={`button button--secondary ${styles.camera}`}
+        disabled={!cameraAllowed}
+        onClick={() => {
+          if (!cameraAllowed || intercepting.current) return;
+          const session = { contextKey, epoch: getAuthEpoch() };
+          cameraSession.current = session;
+          setCamera(session);
+        }}
+      >
+        <Camera size={20} />
+        Сканировать камерой
+      </button>
+      {camera && (
+        <EmployeeCamera
+          label={label}
+          current={() =>
+            cameraSession.current === camera && cameraCurrent(camera)
+          }
+          onClose={closeCamera}
+          onCode={(code) => {
+            if (cameraSession.current !== camera || !cameraCurrent(camera))
+              return;
+            closeCamera();
+            form.setValue("code", code);
+            // The same resolver, zone gateway and ordered queue as HID/manual input.
+            void form.handleSubmit((values) => {
+              if (cameraCurrent(camera)) submitCode(values);
+            })();
+          }}
+        />
       )}
       <button
         type="button"
