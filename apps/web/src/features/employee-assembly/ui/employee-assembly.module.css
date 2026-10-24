@@ -1,0 +1,260 @@
+.feature {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+  max-width: 620px;
+  margin-inline: auto;
+}
+.taskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.taskHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.taskHeader span,
+.stepLabel {
+  font-size: 11px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+.taskHeader code {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.taskTitle h2 {
+  font-size: clamp(23px, 5vw, 30px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.7px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.taskTitle p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 7px 0 0;
+}
+.taskTitle p strong {
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.action {
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.action h3 {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  line-height: 1.25;
+  margin: 0;
+}
+.action > p {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 0;
+}
+.action .stepLabel {
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.destination {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.destination > svg {
+  flex: none;
+  color: var(--accent);
+}
+.destination > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.destination span,
+.codeCard > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.destination strong {
+  font-size: 35px;
+  letter-spacing: -1px;
+  line-height: 1.2;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.destination small {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.codeCard {
+  display: grid;
+  gap: 7px;
+  padding: 15px 16px;
+  background: color-mix(in oklch, var(--text) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.codeCard strong {
+  font-family: var(--font-mono), monospace;
+  font-size: 19px;
+  line-height: 1.5;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.counter {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.counter strong {
+  font-size: clamp(76px, 18vw, 108px);
+  font-weight: 500;
+  letter-spacing: -5px;
+  color: var(--accent);
+}
+.counter > span {
+  font-size: 30px;
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: -1px;
+}
+.progress {
+  height: 7px;
+  background: color-mix(in oklch, var(--text) 8%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.progress span {
+  height: 100%;
+  display: block;
+  background: var(--accent);
+  border-radius: 8px;
+  transition: width 0.12s ease;
+}
+.barcodeHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.barcodeHint code {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.print,
+.mainButton {
+  width: 100%;
+  min-height: 52px;
+  white-space: normal;
+  text-align: center;
+}
+.feature .help {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.feature .error {
+  color: var(--danger);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklch, var(--danger) 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--danger) 4%, transparent);
+}
+.success {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--accent);
+  margin: 0;
+  padding: 12px 14px;
+  background: color-mix(in oklch, var(--accent) 5%, var(--surface));
+  border: 1px solid color-mix(in oklch, var(--accent) 25%, var(--border));
+  border-radius: 12px;
+}
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  padding: 32px 22px;
+  text-align: center;
+}
+.center > svg {
+  color: var(--accent);
+}
+.center h2 {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+.center p {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 0;
+}
+.center > button {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 6px;
+}
+@media (max-width: 380px) {
+  .action {
+    padding: 18px;
+    gap: 16px;
+  }
+  .action h3 {
+    font-size: 21px;
+  }
+  .destination strong {
+    font-size: 30px;
+  }
+  .taskHeader > div {
+    gap: 6px;
+  }
+  .taskHeader code {
+    font-size: 11px;
+  }
+  .counter strong {
+    font-size: 82px;
+  }
+  .codeCard strong {
+    font-size: 17px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress span {
+    transition: none;
+  }
+}

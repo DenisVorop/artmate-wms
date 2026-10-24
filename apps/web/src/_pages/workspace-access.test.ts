@@ -17,6 +17,6 @@ test("Рабочие прямые ссылки доступны сотрудни
     assert.equal(canOpenWorkspaceView("employee", route), false, route);
     assert.equal(canOpenWorkspaceView("manager", route), true, route);
   }
-  assert.equal(landingForRole("employee"), "/assembly");
+  assert.equal(landingForRole("employee"), "/work");
   assert.equal(landingForRole("manager"), "/");
 });

@@ -618,3 +618,136 @@
 .rowContent[hidden] {
   display: none;
 }
+
+.employeeFeature {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+}
+.employeeHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.employeeHeader h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+}
+.employeeSummary {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.employeeSummary strong {
+  font-size: 18px;
+  font-weight: 500;
+}
+.employeeSummary p,
+.employeeEmpty p {
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+  margin: 6px 0;
+}
+.employeeEmpty {
+  padding: 24px;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-width: 0;
+}
+.employeeEmpty > svg {
+  color: var(--accent);
+}
+.employeeEmpty h3 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+}
+.employeeEmpty details {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.employeeEmpty summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+.employeeJobs,
+.employeeCells {
+  display: grid;
+  gap: 10px;
+}
+.employeeCells {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+.employeeCellChoice {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.employeeCellChoice select {
+  min-height: 48px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+}
+.employeeFeature button,
+.employeeFeature input {
+  min-height: 44px;
+}
+.employeeFeature input[type="checkbox"] {
+  min-height: auto;
+  width: 20px;
+  height: 20px;
+}
+.employeeFeature button:focus-visible,
+.employeeFeature select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.compactRow .rowButton:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.compactRow .rowContent {
+  padding: 16px;
+}
+.compactForm {
+  gap: 20px;
+}
+.compactForm .rawRow {
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 120px) auto;
+}
+.compactForm .rawRow > .check {
+  grid-column: 1/-1;
+}
+.compactForm .inlineActions > button[type="submit"] {
+  width: 100%;
+  min-height: 50px;
+}
+@media (max-width: 480px) {
+  .employeeEmpty {
+    padding: 20px;
+  }
+  .compactForm .rawRow {
+    grid-template-columns: 1fr;
+  }
+  .employeeHeader {
+    gap: 6px;
+  }
+}

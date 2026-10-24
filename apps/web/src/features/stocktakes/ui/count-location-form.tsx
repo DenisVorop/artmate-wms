@@ -28,7 +28,9 @@ export function CountLocationForm({
   onSave,
   onDirty,
   onReset,
+  compact = false,
 }: {
+  compact?: boolean;
   row: StocktakeRowDto;
   revision: number;
   pending: boolean;
@@ -56,7 +58,7 @@ export function CountLocationForm({
   const [resetConfirm, setResetConfirm] = useState(false);
   const form = useForm<StocktakeCountValues>({
     resolver: zodResolver(stocktakeCountSchema),
-    defaultValues: stocktakeCountDefaults(row),
+    defaultValues: stocktakeCountDefaults(row, compact),
   });
   const raws = useFieldArray({ control: form.control, name: "rawPallets" });
   const boxes = form.watch("boxCodes");
@@ -104,7 +106,7 @@ export function CountLocationForm({
   );
   return (
     <form
-      className={styles.form}
+      className={`${styles.form} ${compact ? styles.compactForm : ""}`}
       onSubmit={form.handleSubmit(async (values) => {
         if (disabled) return;
         const pendingCodeError = pendingCountBoxError(boxCode);
@@ -124,7 +126,7 @@ export function CountLocationForm({
             countedAt: savedRow.countedAt,
           });
           setExpectedRevision(saved.revision);
-          form.reset(stocktakeCountDefaults(savedRow));
+          form.reset(stocktakeCountDefaults(savedRow, compact));
         }
       })}
     >
@@ -181,6 +183,7 @@ export function CountLocationForm({
         Код пересчитанной ячейки
         <Input
           id={`${id}-address`}
+          autoFocus={compact}
           autoComplete="off"
           placeholder="Введите или отсканируйте код адреса"
           disabled={disabled}
@@ -196,9 +199,16 @@ export function CountLocationForm({
       <section>
         <h4 className={styles.subheading}>Раскраски на паллетах</h4>
         <p className={styles.footerNote}>
-          Отметьте физически найденные паллеты и введите количество. Найденная
-          пустая паллета — 0 шт.; не найденная паллета не включается в факт.
-          Ожидаемое количество не является результатом подсчёта.
+          {compact ? (
+            "Введите код найденной паллеты и количество. Пустая паллета — 0 шт.; отсутствующую не добавляйте."
+          ) : (
+            <>
+              Отметьте физически найденные паллеты и введите количество.
+              Найденная пустая паллета — 0 шт.; не найденная паллета не
+              включается в факт. Ожидаемое количество не является результатом
+              подсчёта.
+            </>
+          )}
         </p>
         <div className={styles.rawRows}>
           {raws.fields.map((field, index) => {
@@ -224,7 +234,7 @@ export function CountLocationForm({
                   Код паллеты
                   <Input
                     autoComplete="off"
-                    readOnly={!!known}
+                    readOnly={!!known && !compact}
                     disabled={disabled}
                     {...form.register(`rawPallets.${index}.palletCode`)}
                     aria-invalid={
@@ -274,7 +284,7 @@ export function CountLocationForm({
                     <X size={14} />
                   </Button>
                 )}
-                {known && (
+                {known && !compact && (
                   <small>
                     {known.skuName} · {known.lotName} · по снимку{" "}
                     {known.quantity} шт.
@@ -293,39 +303,50 @@ export function CountLocationForm({
           }
         >
           <Plus size={14} />
-          Другая найденная паллета
+          {compact ? "Добавить найденную паллету" : "Другая найденная паллета"}
         </Button>
       </section>
       <section>
         <h4 className={styles.subheading}>Готовые короба</h4>
-        {!!row.baseline.boxes.length && (
+        {!compact && !!row.baseline.boxes.length && (
           <p className={styles.footerNote}>
             Отметьте только физически найденные короба. Неотмеченные будут
             записаны как отсутствующие после сохранения подсчёта.
           </p>
         )}
         <div className={styles.boxList}>
-          {row.baseline.boxes.map((box) => (
-            <label className={styles.boxCheck} key={box.id}>
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={boxes.some(
-                  (code) => code.toLowerCase() === box.code.toLowerCase(),
-                )}
-                onChange={(event) => toggleBox(box.code, event.target.checked)}
-              />
-              <span>{box.code}</span>
-              <small>
-                {box.skuName} · {box.units} шт.
-              </small>
-            </label>
-          ))}
+          {!compact &&
+            row.baseline.boxes.map((box) => (
+              <label className={styles.boxCheck} key={box.id}>
+                <input
+                  type="checkbox"
+                  disabled={disabled}
+                  checked={boxes.some(
+                    (code) => code.toLowerCase() === box.code.toLowerCase(),
+                  )}
+                  onChange={(event) =>
+                    toggleBox(box.code, event.target.checked)
+                  }
+                />
+                <span>{box.code}</span>
+                <small>
+                  {box.skuName} · {box.units} шт.
+                </small>
+              </label>
+            ))}
         </div>
         <div className={styles.scanLine}>
           <Input
-            aria-label="Код другого найденного короба"
-            placeholder="Другой найденный короб: введите код"
+            aria-label={
+              compact
+                ? "Код найденного короба"
+                : "Код другого найденного короба"
+            }
+            placeholder={
+              compact
+                ? "Отсканируйте код найденного короба"
+                : "Другой найденный короб: введите код"
+            }
             autoComplete="off"
             value={boxCode}
             disabled={disabled || boxes.length >= 2000}
@@ -354,7 +375,7 @@ export function CountLocationForm({
           </span>
         )}
         <div className={styles.tags}>
-          {extras.map((code) => (
+          {(compact ? boxes : extras).map((code) => (
             <span className={styles.tag} key={code}>
               {code}
               <button
@@ -369,8 +390,9 @@ export function CountLocationForm({
           ))}
         </div>
         <p className={styles.footerNote}>
-          Неизвестный или найденный на другом адресе код сохранится как
-          расхождение для проверки. Не создавайте для него новый товар.
+          {compact
+            ? "Все найденные короба добавьте по коду. Неизвестные коды проверит руководитель."
+            : "Неизвестный или найденный на другом адресе код сохранится как расхождение для проверки. Не создавайте для него новый товар."}
         </p>
       </section>
       <label className={styles.check}>
@@ -408,7 +430,7 @@ export function CountLocationForm({
       )}
       <div className={styles.inlineActions}>
         <Button type="submit" disabled={disabled} aria-busy={pending}>
-          Сохранить подсчёт ячейки
+          {compact ? "Сохранить и продолжить" : "Сохранить подсчёт ячейки"}
         </Button>
       </div>
     </form>

@@ -1,0 +1,84 @@
+.panel {
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+  max-width: 680px;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+.panel h2 {
+  font-size: clamp(24px, 5vw, 32px);
+  line-height: 1.15;
+  margin: 0;
+}
+.panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.code {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(24px, 6vw, 36px);
+  line-height: 1.2;
+  font-weight: 650;
+  color: var(--text);
+}
+.address {
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.actions button {
+  min-height: 44px;
+}
+.notice {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--text) !important;
+}
+.choices {
+  display: grid;
+  gap: 8px;
+}
+.choices button {
+  text-align: left;
+  justify-content: flex-start;
+  white-space: normal;
+}
+.success {
+  color: var(--accent) !important;
+}
+.error {
+  color: var(--danger) !important;
+}
+.secondary {
+  font-size: 13px;
+}
+@media (max-width: 560px) {
+  .panel {
+    padding: 18px;
+    gap: 16px;
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .code {
+    font-size: 30px;
+  }
+}

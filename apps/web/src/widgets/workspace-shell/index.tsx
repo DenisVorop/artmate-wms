@@ -136,6 +136,35 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     data?.employees.filter((employee) =>
       ["working", "break"].includes(String(employee.status)),
     ).length ?? 0;
+  if (session.user?.role === "employee")
+    return (
+      <div style={{ minHeight: "100dvh", padding: "0 16px" }}>
+        <header
+          style={{
+            maxWidth: 1100,
+            margin: "auto",
+            minHeight: 64,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <Link href="/work" className="button button--ghost">
+            ← К работе
+          </Link>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>
+            {session.user.name}
+          </span>
+        </header>
+        <main
+          id="workspace-main"
+          style={{ maxWidth: 1100, margin: "auto", paddingBottom: 32 }}
+        >
+          {children}
+        </main>
+      </div>
+    );
   return (
     <div className="workspace-layout">
       <a className="skip-link" href="#workspace-main">

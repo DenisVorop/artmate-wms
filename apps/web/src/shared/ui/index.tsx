@@ -185,3 +185,7 @@ export function ErrorState({
     </div>
   );
 }
+
+export { EmployeeScan } from "./employee-scan";
+export type { EmployeeScanProps } from "./employee-scan";
+export { EmployeeScanBoundary, useEmployeeScanActivity } from "./employee-scan-activity";

@@ -1,4 +1,6 @@
 "use client";
+import { EmployeeWorkspace } from "@/widgets/employee-workspace";
+import type { EmployeeMode } from "@/features/employee-workday";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { DashboardFeature } from "@/features/dashboard";
 import { WarehouseLayoutFeature } from "@/features/warehouse-layout";
@@ -46,12 +48,20 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
             Ваши задания, приёмка и смена доступны в рабочем меню. Для изменения
             прав обратитесь к руководителю.
           </p>
-          <Link href="/assembly" className="button button--primary">
-            Перейти к заданиям сборки
+          <Link href="/work" className="button button--primary">
+            Перейти к работе
           </Link>
         </section>
       </WorkspaceShell>
     );
+  const workerModes: Partial<Record<WorkspaceView, EmployeeMode>> = {
+    assembly: "assembly",
+    receiving: "receiving",
+    movements: "movements",
+    team: "shift",
+  };
+  if (user.role === "employee" && workerModes[view])
+    return <EmployeeWorkspace key={view} initialMode={workerModes[view]} />;
   const Feature = views[view];
   return (
     <WorkspaceShell>

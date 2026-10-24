@@ -14,5 +14,5 @@ export function canOpenWorkspaceView(role: AuthUserDto["role"], view: string) {
   return role === "manager" || employeeViews.has(view);
 }
 export function landingForRole(role: AuthUserDto["role"]) {
-  return role === "manager" ? "/" : "/assembly";
+  return role === "manager" ? "/" : "/work";
 }

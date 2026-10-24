@@ -22,7 +22,11 @@ export function StocktakeRow({
   onRefresh,
   onDirty,
   dirty,
+  compact = false,
+  preserveDraft = false,
 }: {
+  compact?: boolean;
+  preserveDraft?: boolean;
   doc: StocktakeDto;
   row: StocktakeRowDto;
   own: boolean;
@@ -38,8 +42,8 @@ export function StocktakeRow({
   onDirty: (id: string, dirty: boolean) => void;
   dirty: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const [visited, setVisited] = useState(false);
+  const [open, setOpen] = useState(compact);
+  const [visited, setVisited] = useState(compact);
   const [formKey, setFormKey] = useState(0);
   const [confirmRefresh, setConfirmRefresh] = useState(false);
   const [refreshRevision, setRefreshRevision] = useState(doc.revision);
@@ -47,7 +51,9 @@ export function StocktakeRow({
   const blocked = !doc.canCount
     ? working
       ? "Подсчёт доступен назначенному сотруднику, пока документ находится в работе."
-      : "Чтобы сохранять подсчёт, начните или возобновите свою смену в разделе «Команда»."
+      : compact
+        ? "Начните или возобновите смену на рабочем экране."
+        : "Чтобы сохранять подсчёт, начните или возобновите свою смену в разделе «Команда»."
     : row.stale
       ? "Ячейка изменилась после снимка. Обновите только эту ячейку и пересчитайте её."
       : row.busyReasons.length
@@ -64,27 +70,42 @@ export function StocktakeRow({
     (item) => item.locationId === row.locationId && item.previousRow,
   );
   return (
-    <article className={`glass-panel ${styles.row}`}>
+    <article
+      className={`glass-panel ${styles.row} ${compact ? styles.compactRow : ""}`}
+    >
       <div className={styles.rowHeading}>
-        <button
-          type="button"
-          className={styles.rowButton}
-          aria-expanded={open}
-          aria-controls={`stocktake-row-${row.locationId}`}
-          onClick={() => {
-            setOpen((value) => !value);
-            setVisited(true);
-          }}
-        >
-          <strong>
-            {row.locationCode} · {row.locationName}
-          </strong>
-          <small>
-            {row.count
-              ? `Подсчитано ${stocktakeDate(row.countedAt)} · ${row.countedByName ?? "Автор не указан"}`
-              : "Ещё не пересчитана"}
-          </small>
-        </button>
+        {compact ? (
+          <div className={styles.rowButton}>
+            <strong>
+              {row.locationCode} · {row.locationName}
+            </strong>
+            <small>
+              {row.count
+                ? "Подсчёт сохранён"
+                : "Осмотрите и пересчитайте этот адрес"}
+            </small>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={styles.rowButton}
+            aria-expanded={open}
+            aria-controls={`stocktake-row-${row.locationId}`}
+            onClick={() => {
+              setOpen((value) => !value);
+              setVisited(true);
+            }}
+          >
+            <strong>
+              {row.locationCode} · {row.locationName}
+            </strong>
+            <small>
+              {row.count
+                ? `Подсчитано ${stocktakeDate(row.countedAt)} · ${row.countedByName ?? "Автор не указан"}`
+                : "Ещё не пересчитана"}
+            </small>
+          </button>
+        )}
         <div className={styles.actions}>
           {!archived && row.stale ? (
             <Badge tone="danger">Снимок устарел</Badge>
@@ -95,7 +116,7 @@ export function StocktakeRow({
               {row.count ? "Подсчитана" : "Ожидает подсчёта"}
             </Badge>
           )}
-          <ChevronDown size={16} />
+          {!compact && <ChevronDown size={16} />}
         </div>
       </div>
       {visited && (
@@ -114,29 +135,30 @@ export function StocktakeRow({
               </ul>
             </div>
           )}
-          <div className={styles.baseline}>
-            <strong>
-              {archived ? "Исходный снимок ячейки" : "Ожидалось по снимку"}
-            </strong>
-            {row.baseline.pallet && <p>Поддон: {row.baseline.pallet.code}</p>}
-            <ul>
-              {row.baseline.rawPallets.map((pallet) => (
-                <li key={pallet.palletId}>
-                  {pallet.palletCode} · {pallet.skuName} · {pallet.quantity} шт.
-                  · {pallet.lotName}
-                </li>
-              ))}
-              {row.baseline.boxes.map((box) => (
-                <li key={box.id}>
-                  {box.code} · {box.skuName} · {box.units} шт.
-                </li>
-              ))}
-            </ul>
-            {!row.baseline.rawPallets.length && !row.baseline.boxes.length && (
-              <p>Товара по снимку нет.</p>
-            )}
-          </div>
-          {row.count && (
+          {!compact && (
+            <div className={styles.baseline}>
+              <strong>
+                {archived ? "Исходный снимок ячейки" : "Ожидалось по снимку"}
+              </strong>
+              {row.baseline.pallet && <p>Поддон: {row.baseline.pallet.code}</p>}
+              <ul>
+                {row.baseline.rawPallets.map((pallet) => (
+                  <li key={pallet.palletId}>
+                    {pallet.palletCode} · {pallet.skuName} · {pallet.quantity}{" "}
+                    шт. · {pallet.lotName}
+                  </li>
+                ))}
+                {row.baseline.boxes.map((box) => (
+                  <li key={box.id}>
+                    {box.code} · {box.skuName} · {box.units} шт.
+                  </li>
+                ))}
+              </ul>
+              {!row.baseline.rawPallets.length &&
+                !row.baseline.boxes.length && <p>Товара по снимку нет.</p>}
+            </div>
+          )}
+          {row.count && !compact && (
             <div className={styles.counted}>
               <strong>Сохранённый факт</strong>
               {row.count.rawPallets.map((pallet) => (
@@ -155,9 +177,10 @@ export function StocktakeRow({
               )}
             </div>
           )}
-          {own && doc.status === "counting" && (
+          {((own && doc.status === "counting") || preserveDraft) && (
             <CountLocationForm
               key={formKey}
+              compact={compact}
               row={row}
               revision={doc.revision}
               pending={pending}

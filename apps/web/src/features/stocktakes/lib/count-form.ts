@@ -72,6 +72,7 @@ export function pendingCountBoxError(input: string): string | null {
 }
 export function stocktakeCountDefaults(
   row: StocktakeRowDto,
+  compact = false,
 ): StocktakeCountValues {
   const known = row.baseline.rawPallets.map((pallet) => {
     const actual = row.count?.rawPallets.find(
@@ -99,7 +100,13 @@ export function stocktakeCountDefaults(
     }));
   return {
     locationCode: "",
-    rawPallets: [...known, ...extras],
+    rawPallets: compact
+      ? (row.count?.rawPallets ?? []).map((pallet) => ({
+          palletCode: pallet.palletCode,
+          quantity: String(pallet.quantity),
+          present: true,
+        }))
+      : [...known, ...extras],
     boxCodes: row.count?.boxCodes ?? [],
     inspected: false,
   };

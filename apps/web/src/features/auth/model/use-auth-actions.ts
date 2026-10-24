@@ -37,7 +37,7 @@ export function useAuthActions() {
             ? pathname === "/login"
               ? "/"
               : pathname
-            : "/assembly",
+            : "/work",
         );
       return true;
     } catch (e) {
