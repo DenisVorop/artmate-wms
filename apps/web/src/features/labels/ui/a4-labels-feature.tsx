@@ -115,6 +115,9 @@ function A4LabelsEditor({
             <ArrowLeft size={16} />К карте склада
           </Link>
           <p className="eyebrow">МАРКИРОВКА СКЛАДА</p>
+          <Link href="/labels/boxes" className={styles.back}>
+            Запас этикеток коробов →
+          </Link>
           <h1 className="page-heading">Таблички склада</h1>
           <p className="page-description">
             Выберите зоны и места. Печатайте на рулоне Xprinter 75 × 120 мм или

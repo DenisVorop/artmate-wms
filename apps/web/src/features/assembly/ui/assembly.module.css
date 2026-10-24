@@ -459,3 +459,9 @@
     width: 100%;
   }
 }
+
+.headerActions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

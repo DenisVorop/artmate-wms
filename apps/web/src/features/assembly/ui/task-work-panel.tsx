@@ -222,11 +222,13 @@ export function TaskWorkPanel({
                   Подготовка не списывает запас. Каждая раскраска будет учтена
                   по своему штрихкоду после подтверждения короба.
                 </p>
-                <div className={styles.box}>
-                  <div>
-                    <span>Этикетка текущего короба</span>
-                    <code>{task.openBoxCode}</code>
-                  </div>
+                <p className={styles.help}>
+                  Промаркируйте раскраски, наклейте любую свободную этикетку из
+                  заранее напечатанного комплекта и отсканируйте QR короба. Этот
+                  код закрепится за текущим коробом задания.
+                </p>
+                <details className={styles.help}>
+                  <summary>Нет готовой этикетки</summary>
                   <Link
                     className="button button--secondary button--sm"
                     href={`/labels/box/${encodeURIComponent(task.openBoxCode)}`}
@@ -234,14 +236,9 @@ export function TaskWorkPanel({
                     rel="noopener noreferrer"
                   >
                     <Printer size={15} />
-                    Напечатать этикетку
+                    Напечатать отдельную этикетку
                   </Link>
-                </div>
-                <p className={styles.help}>
-                  Упакуйте и промаркируйте раскраски штрихкодом выбранной
-                  тематики. Напечатайте и наклейте этикетку короба, затем
-                  отсканируйте её.
-                </p>
+                </details>
                 <ScanControl
                   key={`${task.id}:${task.openBoxCode}:box`}
                   label="Код короба"

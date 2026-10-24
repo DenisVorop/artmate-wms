@@ -24,6 +24,11 @@ import {
   cellFingerprints,
   advanceCellVersions,
 } from "./stocktake-versions";
+import {
+  initializeBoxLabels,
+  confirmBoxLabel,
+  closeBoxLabels,
+} from "./box-label-storage";
 import { initializeAuth } from "./auth-storage";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
@@ -259,6 +264,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         await tx.query(
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "12"],
+        );
+      await initializeBoxLabels(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 13)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "13"],
         );
     });
   }
@@ -587,7 +598,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   private async _command(
     operation: string,
     body: D.CommandDto,
-    mutate: (state: D.WorkspaceDto) => void,
+    mutate: (state: D.WorkspaceDto, tx: Queryable) => void | Promise<void>,
   ): Promise<D.WorkspaceDto> {
     await this.ready;
     if (!body.requestId?.trim())
@@ -617,7 +628,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         if (
           (
             await tx.query(
-              "SELECT request_id FROM stocktake_commands WHERE request_id=$1",
+              "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1",
               [body.requestId],
             )
           ).rows.length
@@ -639,7 +650,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           return projectWorkspace(previous.rows[0].response, context);
         }
         const before = structuredClone(state);
-        mutate(state);
+        await mutate(state, tx);
+        await closeBoxLabels(tx, before, state);
         await this._commitState(tx, before, state, operation, body);
         await tx.query(
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
@@ -1785,15 +1797,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     });
   }
   scanTask(id: string, b: D.ScanTaskDto) {
-    return this._command(`scanTask/${id}`, b, (s) => {
+    return this._command(`scanTask/${id}`, b, async (s, tx) => {
       const task = find(s.tasks, id, "Задание");
       this._taskActor(s, task, b.employeeId);
       if (b.kind === "box") {
-        if (
-          b.value !== task.openBoxCode &&
-          b.value !== `artmate-wms:box:${task.openBoxCode}`
-        )
-          fail("Отсканируйте код текущего короба");
+        await confirmBoxLabel(tx, task, b.value);
         if (task.boxCodeConfirmed) return;
         if (task.scannedUnits > 0)
           fail("Нельзя менять подтверждение начатого короба");

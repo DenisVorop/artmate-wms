@@ -1,3 +1,4 @@
+import { isBoxLabelBatchResponse } from "./box-label-response";
 import { isStocktakeCommandResponse } from "./stocktake-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
 import {
@@ -60,6 +61,9 @@ export function createApiFetch(ports: Ports) {
           storage: ports.storage,
           fetch: send,
           fingerprint: commandFingerprint,
+          ...(/\/api\/box-label-batches(?:\?|$)/.test(url)
+            ? { isResponseConfirmed: isBoxLabelBatchResponse }
+            : {}),
           ...(/\/api\/stocktakes(?:\/|\?|$)/.test(url)
             ? { isResponseConfirmed: isStocktakeCommandResponse }
             : {}),

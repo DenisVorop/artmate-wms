@@ -4,6 +4,10 @@ import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
+  "createBoxLabelBatch",
+  "getBoxLabelBatches",
+  "getBoxLabelBatch",
+  "getBoxLabelBatchLabels",
   "createWorkZone",
   "updateWorkZone",
   "archiveWorkZone",

@@ -233,20 +233,22 @@ export function EmployeeAssembly({
                       ? "Подготовьте 2 упаковки по 10"
                       : `Подготовьте ${task.unitsPerBox} раскрасок`}
                   </h3>
-                  <p>Промаркируйте раскраски. Наклейте этикетку на короб.</p>
-                  <div className={styles.codeCard}>
-                    <span>Текущий короб</span>
-                    <strong>{task.openBoxCode}</strong>
-                  </div>
-                  <Link
-                    className={`button button--secondary ${styles.print}`}
-                    href={`/labels/box/${encodeURIComponent(task.openBoxCode)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Printer size={18} />
-                    Напечатать этикетку
-                  </Link>
+                  <p>
+                    Промаркируйте раскраски. Возьмите готовую этикетку, наклейте
+                    на короб и отсканируйте QR.
+                  </p>
+                  <details className={styles.help}>
+                    <summary>Нет готовой этикетки</summary>
+                    <Link
+                      className={`button button--secondary ${styles.print}`}
+                      href={`/labels/box/${encodeURIComponent(task.openBoxCode)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Printer size={18} />
+                      Напечатать отдельную этикетку
+                    </Link>
+                  </details>
                   <EmployeeScan
                     {...scanProps}
                     label="Сканируйте этикетку короба"

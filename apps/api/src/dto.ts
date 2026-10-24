@@ -1922,3 +1922,64 @@ export class ScanShipmentWorkDto extends ClaimTaskDto {
   boxCode!: string;
 }
 export class FinishShipmentWorkDto extends StartZoneWorkDto {}
+
+export class CreateBoxLabelBatchDto extends CommandDto {
+  @ApiProperty({ type: Number, minimum: 1, maximum: 1000, example: 100 })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  count!: number;
+}
+export class BoxLabelBatchDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: Number }) count!: number;
+  @ApiProperty({ type: Number }) freeCount!: number;
+  @ApiProperty({ type: Number }) assignedCount!: number;
+  @ApiProperty({ type: String }) createdAt!: string;
+}
+export class BoxLabelBatchQueryDto {
+  @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  page?: number;
+  @ApiPropertyOptional({ type: Number, default: 20, minimum: 1, maximum: 100 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+}
+export class BoxLabelQueryDto extends BoxLabelBatchQueryDto {
+  @ApiPropertyOptional({ enum: ["free", "assigned"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["free", "assigned"])
+  status?: "free" | "assigned";
+}
+export class BoxLabelBatchListDto {
+  @ApiProperty({ type: [BoxLabelBatchDto] }) items!: BoxLabelBatchDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}
+export class PreprintedBoxLabelDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) payload!: string;
+  @ApiProperty({ type: String }) svg!: string;
+  @ApiProperty({ enum: ["free", "assigned"] }) status!: "free" | "assigned";
+  @ApiProperty({ type: String, nullable: true }) taskId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) boxId!: string | null;
+}
+export class BoxLabelPageDto {
+  @ApiProperty({ type: BoxLabelBatchDto }) batch!: BoxLabelBatchDto;
+  @ApiProperty({ type: [PreprintedBoxLabelDto] })
+  items!: PreprintedBoxLabelDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}

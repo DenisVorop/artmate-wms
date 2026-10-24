@@ -23,6 +23,8 @@ import {
   WorkZoneController,
   ShipmentWorkController,
 } from "./work-zone.controller";
+import { BoxLabelController } from "./box-label.controller";
+import { BoxLabelService } from "./box-label.service";
 import { StocktakeController } from "./stocktake.controller";
 import { StocktakeService } from "./stocktake.service";
 import { AuthController, cookieName } from "./auth.controller";
@@ -1136,6 +1138,7 @@ class JsonExceptionFilter implements ExceptionFilter {
 @Module({
   controllers: [
     WarehouseController,
+    BoxLabelController,
     AuthController,
     StocktakeController,
     WorkZoneController,
@@ -1143,6 +1146,7 @@ class JsonExceptionFilter implements ExceptionFilter {
   ],
   providers: [
     WarehouseService,
+    BoxLabelService,
     AuthService,
     StocktakeService,
     { provide: APP_GUARD, useClass: AuthGuard },

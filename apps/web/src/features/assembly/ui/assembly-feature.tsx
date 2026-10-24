@@ -1,6 +1,6 @@
 "use client";
 import { useSession } from "@/entities/session";
-import { Check, Plus, Search, UserRound } from "lucide-react";
+import { Check, Plus, Printer, Search, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useWorkspace } from "@/entities/workspace";
 import type { ScanTaskDtoKind, TaskDto } from "@/shared/api/generated/model";
@@ -137,7 +137,7 @@ export function AssemblyFeature() {
           kind === "source"
             ? updated?.boxCodeConfirmed
               ? "Следующий источник подтверждён. Продолжайте сканировать раскраски в текущий короб."
-              : "Источник подтверждён. Подготовьте раскраски и проверьте код текущего короба."
+              : "Источник подтверждён. Подготовьте раскраски и отсканируйте свободную этикетку короба."
             : "Короб подтверждён. Теперь сканируйте каждую раскраску.",
         );
       }
@@ -183,16 +183,22 @@ export function AssemblyFeature() {
           </p>
         </div>
         {isManager && (
-          <Button
-            disabled={commands.pending}
-            onClick={() => {
-              commands.clearError();
-              ui.setCreating(true);
-            }}
-          >
-            <Plus size={16} />
-            Создать задание
-          </Button>
+          <div className={styles.headerActions}>
+            <Link href="/labels/boxes" className="button button--secondary">
+              <Printer size={16} />
+              Запас этикеток
+            </Link>
+            <Button
+              disabled={commands.pending}
+              onClick={() => {
+                commands.clearError();
+                ui.setCreating(true);
+              }}
+            >
+              <Plus size={16} />
+              Создать задание
+            </Button>
+          </div>
         )}
       </div>
       <div className={styles.metrics}>
