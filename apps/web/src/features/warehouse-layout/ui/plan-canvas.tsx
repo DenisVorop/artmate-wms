@@ -43,6 +43,7 @@ type Props = {
   interaction: ReturnType<typeof useMapInteraction>;
   selectedId: string | null;
   pending: boolean;
+  highlightedAddressIds?: string[];
   drawKind?: SpaceDraft["kind"] | null;
   onDraw?: (rectangle: SpaceDraft) => void;
   selectedSpaceId?: string | null;
@@ -101,6 +102,7 @@ export function PlanCanvas({
   interaction: map,
   selectedId,
   pending,
+  highlightedAddressIds = [],
   drawKind = null,
   onDraw,
   selectedSpaceId = null,
@@ -546,6 +548,19 @@ export function PlanCanvas({
                   <title>
                     {object.code} · {object.name}
                   </title>
+                  {object.addresses.some((address) =>
+                    highlightedAddressIds.includes(address.id),
+                  ) && (
+                    <rect
+                      x="-.13"
+                      y="-.13"
+                      width={footprint.width + 0.26}
+                      height={footprint.depth + 0.26}
+                      rx=".15"
+                      className={styles.workZoneHalo}
+                      pointerEvents="none"
+                    />
+                  )}
                   {selected && (
                     <rect
                       x="-.09"

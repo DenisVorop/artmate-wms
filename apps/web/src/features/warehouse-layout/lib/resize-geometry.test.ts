@@ -117,6 +117,8 @@ test("NW resize preview меняет только границы; оборудо
     name: "Склад",
     width: 24,
     depth: 20,
+    workZones: [],
+    zoneWork: [],
     layoutMode: "spaces",
     spaces: [
       {

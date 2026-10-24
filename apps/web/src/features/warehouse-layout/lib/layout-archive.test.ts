@@ -24,6 +24,8 @@ function workspace(): WorkspaceDto {
       name: "Склад",
       width: 24,
       depth: 16,
+      workZones: [],
+      zoneWork: [],
       layoutMode: "rectangle",
       spaces: [],
     },
@@ -238,4 +240,22 @@ test("Входящий короб запрещает удалить целево
   assert.deepEqual(archiveReasons(data, ["assembly"]), []); // historical source does not hold an empty address after take
   data.putawayTasks[0].status = "completed";
   assert.deepEqual(archiveReasons(data, ["target"]), []);
+});
+
+test("active logical work-zone membership must be removed before archiving its address", () => {
+  const data = workspace();
+  data.warehouse.workZones = [
+    {
+      id: "zone",
+      code: "WZ-01",
+      name: "Приёмка 1",
+      kind: "receiving",
+      locationIds: ["address"],
+      archived: false,
+      archivedAt: null,
+    },
+  ];
+  assert.match(archiveReasons(data, ["address"]).join(" "), /Приёмка 1/);
+  data.warehouse.workZones[0].archived = true;
+  assert.deepEqual(archiveReasons(data, ["address"]), []);
 });

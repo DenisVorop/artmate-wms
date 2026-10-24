@@ -36,6 +36,12 @@ import {
   ledgerEvent,
   appendStockEvent,
 } from "./stock-ledger";
+import {
+  activeZoneLocation,
+  canonicalAssemblyLocation,
+  validateWorkZone,
+  zoneIdentity,
+} from "./work-zones";
 import { generateSectionIdentity } from "./section-identity";
 import { seedWorkspace } from "./seed";
 import {
@@ -249,6 +255,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "11"],
         );
+      if (Number(version.rows[0]?.value ?? 1) < 12)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "12"],
+        );
     });
   }
   stocktakeState(tx: Queryable) {
@@ -303,6 +314,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       throw new Error("Некорректная ревизия склада в metadata");
     state.activities.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     this._deriveBalance(state);
+    if (state.warehouse) {
+      state.warehouse.workZones ??= [];
+      state.warehouse.zoneWork ??= [];
+    }
     return state;
   }
   async snapshot() {
@@ -642,6 +657,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     body: D.CommandDto,
     stocktake?: { id: string; code: string },
   ) {
+    this._assertZoneIntegrity(state);
     this._assertIntegrity(state);
     this._deriveBalance(state);
     if (state.revision >= Number.MAX_SAFE_INTEGER)
@@ -1491,6 +1507,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         id,
         palletId,
       );
+      const foreignClaim = s.warehouse.zoneWork.find(
+        (w) =>
+          w.jobKind === "receiving" &&
+          w.jobId === id &&
+          w.palletId === palletId &&
+          w.employeeId !== b.employeeId,
+      );
+      if (foreignClaim)
+        throw new ForbiddenException(
+          "Паллета приёмки уже взята другим сотрудником",
+        );
+
       if (find(s.employees, b.employeeId, "Сотрудник").status !== "working")
         fail("Для размещения сотрудник должен быть на смене");
       if (!this._scanEntity(b.palletCode, "pallet", pallet.id, pallet.code))
@@ -1519,6 +1547,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         `${receipt.code} · ${pallet.code} · ${row.quantity} шт. → ${location.code}`,
         "receipt",
       );
+      this._advanceZone(s, b.employeeId, "receiving", id, palletId);
     });
   }
   async getReceiptLabels(id: string): Promise<D.ReceiptLabelsDto> {
@@ -1867,6 +1896,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         .filter(
           (l) =>
             l.kind === "assembly" &&
+            (!s.warehouse.workZones.some(
+              (z) => z.kind === "assembly" && !z.archived,
+            ) ||
+              l.id === canonicalAssemblyLocation(s)) &&
             !placementError(s, l, { ...metrics, kind: "assembly" }),
         )
         .sort((a, b) => a.code.localeCompare(b.code))[0];
@@ -1926,6 +1959,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (task.status === "completed") this._takeNextTask(s, employeeId);
   }
   private _takeNextTask(s: D.WorkspaceDto, employeeId: string) {
+    const binding = s.warehouse.zoneWork.find(
+      (w) => w.employeeId === employeeId,
+    );
+    if (binding) {
+      const zone = s.warehouse.workZones.find(
+        (z) => z.id === binding.zoneId && !z.archived,
+      );
+      if (zone?.kind === "assembly")
+        this._chooseZoneWork(s, zone, employeeId, true);
+      return;
+    }
+
     if (this._activePutaway(s, employeeId)) return;
     if (
       s.tasks.some((t) => t.employeeId === employeeId && t.status === "active")
@@ -2119,34 +2164,37 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   claimPutawayTask(id: string, b: D.ClaimPutawayTaskDto) {
     return this._command(`claimPutawayTask/${id}`, b, (s) => {
-      const t = find(s.putawayTasks, id, "Задание размещения");
-      if (t.status !== "queued")
-        fail("Взять можно только свободное задание размещения");
-      this._movementEmployee(s, b.employeeId);
-      if (
-        this._activePutaway(s, b.employeeId) ||
-        s.tasks.some(
-          (t) => t.employeeId === b.employeeId && t.status === "active",
-        ) ||
-        s.movements.some(
-          (m) =>
-            m.employeeId === b.employeeId &&
-            ["planned", "in_transit"].includes(m.status),
-        )
-      )
-        fail("Сначала завершите или приостановите текущее задание сотрудника");
-      this._putawaySource(s, t);
-      const target = this._putawayOptions(s, t).suggestedLocationId;
-      if (!target)
-        fail(
-          "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
-        );
-      t.status = "claimed";
-      t.employeeId = b.employeeId;
-      t.toLocationId = target;
-      t.claimedAt = now();
-      activity(s, "Взято размещение короба", t.code, "putaway");
+      this._claimPutaway(s, id, b.employeeId);
     });
+  }
+  private _claimPutaway(s: D.WorkspaceDto, id: string, employeeId: string) {
+    const t = find(s.putawayTasks, id, "Задание размещения");
+    if (t.status !== "queued")
+      fail("Взять можно только свободное задание размещения");
+    this._movementEmployee(s, employeeId);
+    if (
+      this._activePutaway(s, employeeId) ||
+      s.tasks.some(
+        (t) => t.employeeId === employeeId && t.status === "active",
+      ) ||
+      s.movements.some(
+        (m) =>
+          m.employeeId === employeeId &&
+          ["planned", "in_transit"].includes(m.status),
+      )
+    )
+      fail("Сначала завершите или приостановите текущее задание сотрудника");
+    this._putawaySource(s, t);
+    const target = this._putawayOptions(s, t).suggestedLocationId;
+    if (!target)
+      fail(
+        "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
+      );
+    t.status = "claimed";
+    t.employeeId = employeeId;
+    t.toLocationId = target;
+    t.claimedAt = now();
+    activity(s, "Взято размещение короба", t.code, "putaway");
   }
   takePutawayTask(id: string, b: D.ConfirmPutawayTaskDto) {
     return this._command(`takePutawayTask/${id}`, b, (s) => {
@@ -2228,6 +2276,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         `${box.code} → ${target.code}`,
         "putaway",
       );
+      this._advanceZone(s, b.employeeId, "putaway", id);
     });
   }
   private _releasePutaway(t: D.PutawayTaskDto) {
@@ -2243,6 +2292,19 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       const t = find(s.putawayTasks, id, "Задание размещения");
       this._putawayActor(s, t, b.employeeId, "claimed");
       this._releasePutaway(t);
+      if (
+        s.warehouse.zoneWork.some(
+          (w) =>
+            w.employeeId === b.employeeId &&
+            w.jobKind === "putaway" &&
+            w.jobId === id,
+        )
+      )
+        this._clearZoneJob(
+          s,
+          b.employeeId,
+          "Размещение освобождено. Отсканируйте зону для следующего задания",
+        );
       activity(s, "Размещение возвращено в очередь", t.code, "putaway");
     });
   }
@@ -2320,60 +2382,68 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   shipShipment(id: string, b: D.CommandDto) {
     return this._command(`shipShipment/${id}`, b, (s) => {
       const shipment = find(s.shipments, id, "Отгрузка");
-      if (shipment.status === "shipped") fail("Отгрузка уже выполнена");
-      for (const boxId of shipment.boxIds) {
-        const box = find(s.boxes, boxId, "Короб");
-        if (box.status !== "stored") fail("Короб уже отгружен");
-        if (
-          s.putawayTasks.some(
-            (t) => t.boxId === box.id && t.status !== "completed",
-          ) ||
-          (box.locationId &&
-            find(s.locations, box.locationId, "Адрес").kind === "assembly") ||
-          s.pallets.find((p) => p.id === box.palletId)?.kind !== "finished"
-        )
-          fail("Сначала разместите короб с общей паллеты на хранение");
-        const sourcePallet = box.palletId
-          ? find(s.pallets, box.palletId, "Паллета")
-          : null;
-        if (
-          !box.locationId ||
-          sourcePallet?.status !== "stored" ||
-          this._activeLocation(s, box.locationId).blocked ||
-          !["picking", "shipping"].includes(
-            this._activeLocation(s, box.locationId).kind,
-          )
-        )
-          fail(
-            "Сначала подтвердите перемещение паллеты в зону отбора или отгрузки",
-          );
-        if (
-          s.movements.some(
-            (m) =>
-              m.palletId === box.palletId &&
-              ["planned", "in_transit"].includes(m.status),
-          )
-        )
-          fail("Завершите перемещение перед отгрузкой");
-
-        box.status = "shipped";
-        if (box.palletId) {
-          const pallet = find(s.pallets, box.palletId, "Паллета");
-          pallet.quantity--;
-          Object.assign(
-            pallet,
-            finishedMetrics(pallet.packagingSnapshot!, pallet.quantity),
-          );
-        }
-      }
-      shipment.status = "shipped";
-      activity(
-        s,
-        "Отгрузка завершена",
-        `${shipment.code} · ${shipment.boxesRequested} коробов. Остаток паллет сохранён.`,
-        "shipment",
-      );
+      if (shipment.employeeId)
+        fail(
+          "Отгрузка взята сотрудником. Завершите её по сканам на рабочем месте",
+        );
+      this._shipShipment(s, id);
     });
+  }
+  private _shipShipment(s: D.WorkspaceDto, id: string) {
+    const shipment = find(s.shipments, id, "Отгрузка");
+    if (shipment.status === "shipped") fail("Отгрузка уже выполнена");
+    for (const boxId of shipment.boxIds) {
+      const box = find(s.boxes, boxId, "Короб");
+      if (box.status !== "stored") fail("Короб уже отгружен");
+      if (
+        s.putawayTasks.some(
+          (t) => t.boxId === box.id && t.status !== "completed",
+        ) ||
+        (box.locationId &&
+          find(s.locations, box.locationId, "Адрес").kind === "assembly") ||
+        s.pallets.find((p) => p.id === box.palletId)?.kind !== "finished"
+      )
+        fail("Сначала разместите короб с общей паллеты на хранение");
+      const sourcePallet = box.palletId
+        ? find(s.pallets, box.palletId, "Паллета")
+        : null;
+      if (
+        !box.locationId ||
+        sourcePallet?.status !== "stored" ||
+        this._activeLocation(s, box.locationId).blocked ||
+        !["picking", "shipping"].includes(
+          this._activeLocation(s, box.locationId).kind,
+        )
+      )
+        fail(
+          "Сначала подтвердите перемещение паллеты в зону отбора или отгрузки",
+        );
+      if (
+        s.movements.some(
+          (m) =>
+            m.palletId === box.palletId &&
+            ["planned", "in_transit"].includes(m.status),
+        )
+      )
+        fail("Завершите перемещение перед отгрузкой");
+
+      box.status = "shipped";
+      if (box.palletId) {
+        const pallet = find(s.pallets, box.palletId, "Паллета");
+        pallet.quantity--;
+        Object.assign(
+          pallet,
+          finishedMetrics(pallet.packagingSnapshot!, pallet.quantity),
+        );
+      }
+    }
+    shipment.status = "shipped";
+    activity(
+      s,
+      "Отгрузка завершена",
+      `${shipment.code} · ${shipment.boxesRequested} коробов. Остаток паллет сохранён.`,
+      "shipment",
+    );
   }
   private _addLevel(
     s: D.WorkspaceDto,
@@ -2804,6 +2874,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         ))
           this._releasePutaway(t);
       }
+      if (b.status !== "working") {
+        const binding = s.warehouse.zoneWork.find((w) => w.employeeId === id);
+        if (binding && ["receiving", "putaway"].includes(binding.jobKind ?? ""))
+          this._clearZoneJob(
+            s,
+            id,
+            "Работа приостановлена. После возобновления смены отсканируйте зону",
+          );
+      }
       employee.status = b.status;
       if (b.status !== "working")
         for (const task of s.tasks)
@@ -2821,12 +2900,629 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       );
     });
   }
+  createWorkZone(b: D.CreateWorkZoneDto) {
+    return this._command("createWorkZone", b, (s) => {
+      const zone: D.WorkZoneDto = {
+        id: randomUUID(),
+        ...zoneIdentity(s, b.kind, b.code, b.name),
+        kind: b.kind,
+        locationIds: [...b.locationIds],
+        archived: false,
+        archivedAt: null,
+      };
+      validateWorkZone(s, zone);
+      s.warehouse.workZones.push(zone);
+      activity(s, "Рабочая зона создана", zone.name, "warehouse");
+    });
+  }
+  updateWorkZone(id: string, b: D.UpdateWorkZoneDto) {
+    return this._command(`updateWorkZone/${id}`, b, (s) => {
+      const zone = find(s.warehouse.workZones, id, "Рабочая зона");
+      if (zone.archived) fail("Сначала восстановите рабочую зону");
+      const changes = Object.fromEntries(
+        Object.entries(b).filter(
+          ([k, v]) => k !== "requestId" && v !== undefined,
+        ),
+      );
+      if (
+        (b.kind !== undefined && b.kind !== zone.kind) ||
+        (b.locationIds !== undefined &&
+          JSON.stringify(b.locationIds) !== JSON.stringify(zone.locationIds))
+      )
+        this._zoneEditGuard(s, id);
+      if (
+        b.code !== undefined &&
+        s.warehouse.workZones.some(
+          (z) =>
+            z.id !== id &&
+            z.code.trim().toLowerCase() === b.code!.trim().toLowerCase(),
+        )
+      )
+        fail("Код рабочей зоны уже используется, включая архив");
+      if (
+        (b.code !== undefined && !b.code.trim()) ||
+        (b.name !== undefined && !b.name.trim())
+      )
+        fail("Укажите непустые код и название рабочей зоны");
+      if (b.code !== undefined) changes.code = b.code.trim();
+      if (b.name !== undefined) changes.name = b.name.trim();
+      Object.assign(zone, changes);
+      validateWorkZone(s, zone);
+      activity(s, "Рабочая зона обновлена", zone.name, "warehouse");
+    });
+  }
+  archiveWorkZone(id: string, b: D.CommandDto) {
+    return this._command(`archiveWorkZone/${id}`, b, (s) => {
+      const z = find(s.warehouse.workZones, id, "Рабочая зона");
+      if (z.archived) fail("Рабочая зона уже в архиве");
+      this._zoneEditGuard(s, id);
+      z.archived = true;
+      z.archivedAt = now();
+      s.warehouse.zoneWork = s.warehouse.zoneWork.filter(
+        (w) => w.zoneId !== id,
+      );
+      activity(s, "Рабочая зона в архиве", z.name, "warehouse");
+    });
+  }
+  restoreWorkZone(id: string, b: D.CommandDto) {
+    return this._command(`restoreWorkZone/${id}`, b, (s) => {
+      const z = find(s.warehouse.workZones, id, "Рабочая зона");
+      if (!z.archived) fail("Рабочая зона уже активна");
+      validateWorkZone(s, z);
+      z.archived = false;
+      z.archivedAt = null;
+      activity(s, "Рабочая зона восстановлена", z.name, "warehouse");
+    });
+  }
+  private _zoneEditGuard(s: D.WorkspaceDto, id: string) {
+    if (
+      s.warehouse.zoneWork.some(
+        (w) => w.zoneId === id && this._zoneJobActive(s, w),
+      )
+    )
+      fail(
+        "В рабочей зоне есть незавершённые задания. Сначала завершите работу или выйдите из зоны",
+      );
+  }
+  private _zoneJobActive(s: D.WorkspaceDto, w: D.ZoneWorkDto) {
+    if (w.jobKind === "assembly")
+      return s.tasks.some(
+        (t) =>
+          t.id === w.jobId &&
+          t.employeeId === w.employeeId &&
+          t.status !== "completed",
+      );
+    if (w.jobKind === "putaway")
+      return s.putawayTasks.some(
+        (t) =>
+          t.id === w.jobId &&
+          t.employeeId === w.employeeId &&
+          ["claimed", "in_transit"].includes(t.status),
+      );
+    if (w.jobKind === "receiving")
+      return s.receipts.some(
+        (r) =>
+          r.id === w.jobId &&
+          r.pallets.some((p) => p.palletId === w.palletId && !p.placedAt),
+      );
+    if (w.jobKind === "shipping")
+      return s.shipments.some(
+        (x) =>
+          x.id === w.jobId &&
+          x.employeeId === w.employeeId &&
+          x.status === "draft",
+      );
+    return false;
+  }
+  private _assertZoneIntegrity(s: D.WorkspaceDto) {
+    const zones = s.warehouse.workZones,
+      bindings = s.warehouse.zoneWork;
+    if (
+      new Set(zones.map((z) => z.id)).size !== zones.length ||
+      new Set(zones.map((z) => z.code.trim().toLowerCase())).size !==
+        zones.length
+    )
+      fail("Идентичность рабочих зон должна быть уникальной");
+    for (const z of zones.filter((z) => !z.archived))
+      validateWorkZone(s, z, false);
+    if (new Set(bindings.map((w) => w.employeeId)).size !== bindings.length)
+      fail("У сотрудника может быть только одна рабочая зона");
+    const receiptClaims = new Set<string>();
+    for (const w of bindings) {
+      find(s.employees, w.employeeId, "Сотрудник зоны");
+      const z = find(zones, w.zoneId, "Рабочая зона");
+      if (z.archived)
+        fail("Нельзя сохранять назначение в архивной рабочей зоне");
+      if (w.jobKind && w.jobKind !== z.kind)
+        fail("Назначение не соответствует виду рабочей зоны");
+      if (w.jobKind === "receiving" && this._zoneJobActive(s, w)) {
+        const key = `${w.jobId}/${w.palletId}`;
+        if (receiptClaims.has(key))
+          fail("Паллета приёмки взята несколькими сотрудниками");
+        receiptClaims.add(key);
+      }
+    }
+    for (const shipment of s.shipments) {
+      const scanned = shipment.scannedBoxIds ?? [];
+      if (
+        new Set(scanned).size !== scanned.length ||
+        scanned.some((id) => !shipment.boxIds.includes(id))
+      )
+        fail("Подтверждённый короб не принадлежит отгрузке");
+      if (scanned.length && !shipment.employeeId)
+        fail("У подтверждённых коробов отгрузки должен быть исполнитель");
+      if (shipment.employeeId)
+        find(s.employees, shipment.employeeId, "Исполнитель отгрузки");
+    }
+  }
+  private _readWorkZone(s: D.WorkspaceDto, code: string) {
+    const prefix = "artmate-wms:work-zone:";
+    if (!code.startsWith(prefix))
+      fail("Отсканируйте QR рабочей зоны, а не адреса хранения");
+    const zone = find(
+      s.warehouse.workZones,
+      code.slice(prefix.length),
+      "Рабочая зона",
+    );
+    if (zone.archived) fail("Рабочая зона находится в архиве");
+    validateWorkZone(s, zone);
+    return zone;
+  }
+  private _clearZoneJob(
+    s: D.WorkspaceDto,
+    employeeId: string,
+    message: string,
+  ) {
+    const w = s.warehouse.zoneWork.find((w) => w.employeeId === employeeId);
+    if (w)
+      Object.assign(w, { jobKind: null, jobId: null, palletId: null, message });
+  }
+  private _setZoneJob(
+    s: D.WorkspaceDto,
+    z: D.WorkZoneDto,
+    employeeId: string,
+    kind: string | null,
+    id: string | null,
+    palletId: string | null,
+    message: string,
+  ) {
+    let w = s.warehouse.zoneWork.find((w) => w.employeeId === employeeId);
+    const next = {
+      employeeId,
+      zoneId: z.id,
+      jobKind: kind,
+      jobId: id,
+      palletId,
+      message,
+    };
+    if (w) Object.assign(w, next);
+    else s.warehouse.zoneWork.push(next);
+    return next;
+  }
+  private _leaveWork(s: D.WorkspaceDto, employeeId: string) {
+    if (
+      s.movements.some(
+        (m) => m.employeeId === employeeId && m.status === "in_transit",
+      ) ||
+      s.putawayTasks.some(
+        (t) => t.employeeId === employeeId && t.status === "in_transit",
+      )
+    )
+      fail("Сначала подтвердите размещение товара в пути");
+    const tasks = s.tasks.filter(
+      (t) => t.employeeId === employeeId && t.status !== "completed",
+    );
+    if (tasks.some((t) => t.scannedUnits > 0 || t.boxCodeConfirmed))
+      fail(
+        "Сначала завершите текущий короб. Менять рабочую зону можно между коробами",
+      );
+    const shipments = s.shipments.filter(
+      (x) => x.employeeId === employeeId && x.status === "draft",
+    );
+    if (shipments.some((x) => (x.scannedBoxIds ?? []).length > 0))
+      fail("Сначала завершите отгрузку с уже подтверждёнными коробами");
+    for (const t of tasks) {
+      if (t.status === "active") t.status = "paused";
+      t.sourcePalletId = null;
+    }
+    for (const t of s.putawayTasks.filter(
+      (t) => t.employeeId === employeeId && t.status === "claimed",
+    ))
+      this._releasePutaway(t);
+    for (const shipment of shipments) {
+      shipment.employeeId = null;
+      shipment.workZoneId = null;
+      shipment.scannedBoxIds = [];
+    }
+    s.warehouse.zoneWork = s.warehouse.zoneWork.filter(
+      (w) => w.employeeId !== employeeId,
+    );
+  }
+  startZoneWork(b: D.StartZoneWorkDto) {
+    return this._command("startZoneWork", b, (s) => {
+      this._movementEmployee(s, b.employeeId);
+      const zone = this._readWorkZone(s, b.zoneCode),
+        current = s.warehouse.zoneWork.find(
+          (w) => w.employeeId === b.employeeId,
+        );
+      const carryMovement = s.movements.some(
+        (m) => m.employeeId === b.employeeId && m.status === "in_transit",
+      );
+      if (carryMovement) fail("Сначала подтвердите размещение паллеты в пути");
+      const carry = s.putawayTasks.find(
+        (t) => t.employeeId === b.employeeId && t.status === "in_transit",
+      );
+      const resumeUnbound =
+        !current &&
+        ((zone.kind === "assembly" &&
+          s.tasks.some(
+            (t) =>
+              t.employeeId === b.employeeId &&
+              t.status !== "completed" &&
+              (t.scannedUnits > 0 || t.boxCodeConfirmed),
+          )) ||
+          (zone.kind === "putaway" &&
+            !!carry &&
+            zone.locationIds.includes(carry.fromLocationId)) ||
+          (zone.kind === "shipping" &&
+            s.shipments.some(
+              (x) =>
+                x.employeeId === b.employeeId &&
+                x.status === "draft" &&
+                x.workZoneId === zone.id,
+            )));
+      if (
+        carry &&
+        (zone.kind !== "putaway" ||
+          !zone.locationIds.includes(carry.fromLocationId) ||
+          (current && current.zoneId !== zone.id))
+      )
+        fail("Сначала подтвердите размещение короба в пути");
+      if (current?.zoneId !== zone.id && !resumeUnbound)
+        this._leaveWork(s, b.employeeId);
+      this._chooseZoneWork(s, zone, b.employeeId);
+      activity(
+        s,
+        "Рабочая зона отсканирована",
+        `${zone.name} · ${find(s.employees, b.employeeId, "Сотрудник").name}`,
+        "work-zone",
+      );
+    });
+  }
+  leaveZoneWork(b: D.ClaimTaskDto) {
+    return this._command("leaveZoneWork", b, (s) => {
+      this._leaveWork(s, b.employeeId);
+      activity(
+        s,
+        "Рабочая зона освобождена",
+        find(s.employees, b.employeeId, "Сотрудник").name,
+        "work-zone",
+      );
+    });
+  }
+  private _chooseZoneWork(
+    s: D.WorkspaceDto,
+    zone: D.WorkZoneDto,
+    employeeId: string,
+    automatic = false,
+  ) {
+    const assign = (
+      kind: string,
+      id: string,
+      palletId: string | null,
+      message: string,
+    ) => this._setZoneJob(s, zone, employeeId, kind, id, palletId, message);
+    const idle = (message: string) =>
+      this._setZoneJob(s, zone, employeeId, null, null, null, message);
+    if (zone.kind === "assembly") {
+      const own = s.tasks
+        .filter(
+          (t) =>
+            t.employeeId === employeeId &&
+            ["active", "paused"].includes(t.status),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.status === "active") - Number(a.status === "active") ||
+            Number(b.scannedUnits > 0 || b.boxCodeConfirmed) -
+              Number(a.scannedUnits > 0 || a.boxCodeConfirmed) ||
+            (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+            a.id.localeCompare(b.id),
+        )[0];
+      if (own) {
+        const sourceError = this._taskSourcesError(s, own);
+        if (automatic && own.status === "paused" && sourceError) {
+          idle(`Следующее своё задание пока недоступно: ${sourceError}`);
+          return;
+        }
+        if (own.status !== "active") this._claimTask(s, own, employeeId);
+        assign("assembly", own.id, null, "Продолжите своё задание сборки");
+        return;
+      }
+      const candidates = s.tasks
+        .filter(
+          (t) =>
+            t.status === "queued" &&
+            (!t.employeeId || t.employeeId === employeeId) &&
+            !t.scannedUnits &&
+            !t.boxCodeConfirmed,
+        )
+        .sort(
+          (a, b) =>
+            Number(b.employeeId === employeeId) -
+              Number(a.employeeId === employeeId) ||
+            (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+            a.id.localeCompare(b.id),
+        );
+      const t = candidates.find((t) => !this._taskSourcesError(s, t));
+      if (t) {
+        this._claimTask(s, t, employeeId);
+        assign("assembly", t.id, null, "Задание сборки взято в работу");
+      } else
+        idle(
+          "Нет доступных заданий сборки. Руководитель может создать новое задание",
+        );
+    } else if (zone.kind === "receiving") {
+      const current = s.warehouse.zoneWork.find(
+        (w) =>
+          w.employeeId === employeeId &&
+          w.zoneId === zone.id &&
+          w.jobKind === "receiving" &&
+          this._zoneJobActive(s, w),
+      );
+      if (current) return;
+      const claims = new Set(
+        s.warehouse.zoneWork
+          .filter(
+            (w) =>
+              w.employeeId !== employeeId &&
+              w.jobKind === "receiving" &&
+              this._zoneJobActive(s, w),
+          )
+          .map((w) => `${w.jobId}/${w.palletId}`),
+      );
+      for (const r of [...s.receipts]
+        .filter((r) => r.status !== "completed")
+        .sort(
+          (a, b) =>
+            a.receivedAt.localeCompare(b.receivedAt) ||
+            a.createdAt.localeCompare(b.createdAt) ||
+            a.id.localeCompare(b.id),
+        ))
+        for (const row of [...r.pallets].sort((a, b) =>
+          a.palletId.localeCompare(b.palletId),
+        )) {
+          const p = s.pallets.find((p) => p.id === row.palletId);
+          if (
+            row.placedAt ||
+            !p ||
+            p.status !== "awaiting_placement" ||
+            claims.has(`${r.id}/${p.id}`)
+          )
+            continue;
+          if (
+            !s.locations.some(
+              (l) =>
+                ["rack", "floor"].includes(l.kind) && !placementError(s, l, p),
+            )
+          )
+            continue;
+          assign(
+            "receiving",
+            r.id,
+            p.id,
+            "Разместите выбранную входящую паллету по сканам",
+          );
+          return;
+        }
+      idle("Нет свободных входящих паллет с доступным местом хранения");
+    } else if (zone.kind === "putaway") {
+      const own = this._activePutaway(s, employeeId);
+      if (own) {
+        if (!zone.locationIds.includes(own.fromLocationId))
+          fail("Ваше размещение относится к другой рабочей зоне");
+        assign("putaway", own.id, null, "Продолжите размещение своего короба");
+        return;
+      }
+      const candidates = s.putawayTasks
+        .filter(
+          (t) =>
+            t.status === "queued" &&
+            zone.locationIds.includes(t.fromLocationId),
+        )
+        .sort(
+          (a, b) =>
+            a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+        );
+      for (const t of candidates) {
+        try {
+          this._putawaySource(s, t);
+          if (!this._putawayOptions(s, t).suggestedLocationId) continue;
+        } catch {
+          continue;
+        }
+        this._claimPutaway(s, t.id, employeeId);
+        assign("putaway", t.id, null, "Короб взят на размещение");
+        return;
+      }
+      idle("Нет коробов, которые можно разместить с адресов этой зоны");
+    } else if (zone.kind === "shipping") {
+      const own = s.shipments.find(
+        (x) => x.employeeId === employeeId && x.status === "draft",
+      );
+      if (own) {
+        if (own.workZoneId !== zone.id)
+          fail("Ваша отгрузка относится к другой рабочей зоне");
+        assign(
+          "shipping",
+          own.id,
+          null,
+          "Продолжите подтверждать короба своей отгрузки",
+        );
+        return;
+      }
+      const draft = s.shipments
+        .filter((x) => x.status === "draft" && !x.employeeId)
+        .sort(
+          (a, b) => a.code.localeCompare(b.code) || a.id.localeCompare(b.id),
+        )
+        .find((x) => !this._shipmentWorkError(s, x, zone));
+      if (draft) {
+        draft.employeeId = employeeId;
+        draft.workZoneId = zone.id;
+        draft.scannedBoxIds = [];
+        assign(
+          "shipping",
+          draft.id,
+          null,
+          "Отсканируйте каждый зарезервированный короб и подтвердите отгрузку",
+        );
+      } else
+        idle(
+          "Нет готовых отгрузок у адресов зоны. Сначала переместите зарезервированные паллеты в зону отбора или отгрузки",
+        );
+    }
+  }
+  private _advanceZone(
+    s: D.WorkspaceDto,
+    employeeId: string,
+    kind: string,
+    id: string,
+    palletId?: string,
+  ) {
+    const w = s.warehouse.zoneWork.find(
+      (w) =>
+        w.employeeId === employeeId &&
+        w.jobKind === kind &&
+        w.jobId === id &&
+        (!palletId || w.palletId === palletId),
+    );
+    if (!w) return;
+    const z = s.warehouse.workZones.find(
+      (z) => z.id === w.zoneId && !z.archived,
+    );
+    if (!z) return;
+    this._clearZoneJob(s, employeeId, "Выбираем следующее задание");
+    this._chooseZoneWork(s, z, employeeId, true);
+  }
+  private _shipmentWorkError(
+    s: D.WorkspaceDto,
+    x: D.ShipmentDto,
+    z: D.WorkZoneDto,
+  ): string | null {
+    for (const id of x.boxIds) {
+      const b = s.boxes.find((b) => b.id === id),
+        p = s.pallets.find((p) => p.id === b?.palletId),
+        l = b?.locationId ? activeZoneLocation(s, b.locationId) : null;
+      if (
+        !b ||
+        b.status !== "stored" ||
+        !p ||
+        p.kind !== "finished" ||
+        p.status !== "stored" ||
+        !l ||
+        p.locationId !== l.id ||
+        l.blocked ||
+        !["picking", "shipping"].includes(l.kind) ||
+        !z.locationIds.includes(l.id)
+      )
+        return "Сначала переместите все зарезервированные паллеты к адресам этой зоны отгрузки";
+      if (
+        s.putawayTasks.some(
+          (t) => t.boxId === id && t.status !== "completed",
+        ) ||
+        s.movements.some(
+          (m) =>
+            m.palletId === p.id && ["planned", "in_transit"].includes(m.status),
+        )
+      )
+        return "Завершите размещение и перемещения перед отгрузкой";
+    }
+    return null;
+  }
+  private _shipmentWorkActor(
+    s: D.WorkspaceDto,
+    id: string,
+    employeeId: string,
+  ) {
+    this._movementEmployee(s, employeeId);
+    if (
+      s.movements.some(
+        (m) => m.employeeId === employeeId && m.status === "in_transit",
+      ) ||
+      s.putawayTasks.some(
+        (t) => t.employeeId === employeeId && t.status === "in_transit",
+      )
+    )
+      fail("Сначала подтвердите размещение товара в пути");
+    const shipment = find(s.shipments, id, "Отгрузка");
+    if (shipment.employeeId !== employeeId)
+      throw new ForbiddenException("Отгрузка взята другим сотрудником");
+    if (shipment.status !== "draft") fail("Отгрузка уже завершена");
+    const zone = find(
+      s.warehouse.workZones,
+      shipment.workZoneId!,
+      "Рабочая зона",
+    );
+    if (zone.archived || zone.kind !== "shipping")
+      fail("Рабочая зона отгрузки недоступна");
+    const binding = s.warehouse.zoneWork.find(
+      (w) =>
+        w.employeeId === employeeId &&
+        w.zoneId === zone.id &&
+        w.jobKind === "shipping" &&
+        w.jobId === id,
+    );
+    if (!binding) fail("Сначала отсканируйте рабочую зону своей отгрузки");
+    const error = this._shipmentWorkError(s, shipment, zone);
+    if (error) fail(error);
+    return { shipment, zone };
+  }
+  scanShipmentWork(id: string, b: D.ScanShipmentWorkDto) {
+    return this._command(`scanShipmentWork/${id}`, b, (s) => {
+      const { shipment } = this._shipmentWorkActor(s, id, b.employeeId);
+      const box = shipment.boxIds
+        .map((id) => find(s.boxes, id, "Короб"))
+        .find((box) => this._scanEntity(b.boxCode, "box", box.code, box.code));
+      if (!box) fail("Короб не входит в резерв этой отгрузки");
+      shipment.scannedBoxIds ??= [];
+      if (shipment.scannedBoxIds.includes(box.id))
+        fail("Этот короб уже подтверждён. Отсканируйте следующий");
+      shipment.scannedBoxIds.push(box.id);
+    });
+  }
+  finishShipmentWork(id: string, b: D.FinishShipmentWorkDto) {
+    return this._command(`finishShipmentWork/${id}`, b, (s) => {
+      const { shipment, zone } = this._shipmentWorkActor(s, id, b.employeeId),
+        scanned = new Set(shipment.scannedBoxIds ?? []);
+      if (this._readWorkZone(s, b.zoneCode).id !== zone.id)
+        fail("Отсканирован QR другой зоны отгрузки");
+      if (
+        shipment.boxIds.some((id) => !scanned.has(id)) ||
+        scanned.size !== shipment.boxIds.length
+      )
+        fail("Сначала подтвердите каждый зарезервированный короб");
+      this._shipShipment(s, id);
+      this._advanceZone(s, b.employeeId, "shipping", id);
+    });
+  }
   async getLabel(type: string, id: string): Promise<D.LabelDto> {
     const s = await this.snapshot();
     let code = "",
       title = "",
       payload = "";
-    if (type === "location") {
+    if (type === "work-zone") {
+      const z = find(s.warehouse.workZones, id, "Рабочая зона");
+      code = z.code;
+      const purpose: Record<string, string> = {
+        receiving: "Приёмка",
+        assembly: "Сборка",
+        putaway: "Размещение",
+        shipping: "Отгрузка",
+      };
+      title = `${z.archived ? "Архив · " : ""}${purpose[z.kind]} · ${z.name}`;
+      payload = `artmate-wms:work-zone:${z.id}`;
+    } else if (type === "location") {
       const l = find(s.locations, id, "Место");
       code = l.code;
       title = this._isActiveLocation(s, id) ? l.name : `Архив · ${l.name}`;
@@ -2846,7 +3542,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       code = box?.code ?? task!.openBoxCode;
       title = find(s.skus, (box ?? task)!.skuId, "Тематика").name;
       payload = `artmate-wms:box:${code}`;
-    } else throw new BadRequestException("Тип метки: location, pallet или box");
+    } else
+      throw new BadRequestException(
+        "Тип метки: location, pallet, box или work-zone",
+      );
     return {
       code,
       title,

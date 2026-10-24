@@ -14,6 +14,19 @@ export function projectWorkspace(
   state: D.WorkspaceDto,
   context = requestAuth.getStore(),
 ): D.WorkspaceDto {
+  // Legacy cached JSON stays immutable; normalize only the response projection.
+  if (
+    state.warehouse &&
+    (!state.warehouse.workZones || !state.warehouse.zoneWork)
+  )
+    state = {
+      ...state,
+      warehouse: {
+        ...state.warehouse,
+        workZones: state.warehouse.workZones ?? [],
+        zoneWork: state.warehouse.zoneWork ?? [],
+      },
+    };
   if (!context?.http || context.role === "manager") return state;
   const id = context.employeeId;
   const addressHolds: D.AddressHoldDto[] = [];
@@ -42,7 +55,13 @@ export function projectWorkspace(
       (t) => t.employeeId === id || t.status === "queued",
     ),
     movements: state.movements.filter((m) => m.employeeId === id),
-    shipments: [],
+    warehouse: {
+      ...state.warehouse,
+      zoneWork: (state.warehouse.zoneWork ?? []).filter(
+        (w) => w.employeeId === id,
+      ),
+    },
+    shipments: state.shipments.filter((x) => x.employeeId === id),
     activities: [],
     receipts: state.receipts.filter((r) => r.status !== "completed"),
   };

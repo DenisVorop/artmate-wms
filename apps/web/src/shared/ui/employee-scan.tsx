@@ -7,6 +7,7 @@ import { ScanLine, Keyboard } from "lucide-react";
 import { createScanQueue, type ScanQueueState } from "../lib/scan-queue";
 import { getAuthEpoch } from "../api/auth-memory";
 import { useEmployeeScanActivity } from "./employee-scan-activity";
+import { useEmployeeScanGateway } from "./employee-scan-gateway";
 import styles from "./employee-scan.module.css";
 const schema = z.object({
   code: z
@@ -36,6 +37,9 @@ export function EmployeeScan({
   onProblem,
 }: EmployeeScanProps) {
   const activity = useEmployeeScanActivity();
+  const gateway = useEmployeeScanGateway();
+  const intercepting = useRef(false);
+  const selectAfterIntercept = useRef(false);
   const id = useId(),
     input = useRef<HTMLInputElement | null>(null);
   const [manual, setManual] = useState(false);
@@ -89,6 +93,7 @@ export function EmployeeScan({
     queue.current = processor;
     setQueueState({ pending: 0, running: false, failedCode: null });
     setLocalError(null);
+    selectAfterIntercept.current = false;
     form.reset({ code: "" });
     if (!disabled && !document.querySelector("dialog[open]"))
       input.current?.focus({ preventScroll: true });
@@ -101,12 +106,25 @@ export function EmployeeScan({
     if (
       !disabled &&
       !pending &&
+      !gateway.pending &&
       !document.querySelector("dialog[open]") &&
       (document.activeElement === document.body ||
         document.activeElement === input.current)
     )
       input.current?.focus({ preventScroll: true });
-  }, [pending, disabled]);
+  }, [pending, disabled, gateway.pending]);
+  useEffect(() => {
+    if (
+      !gateway.pending &&
+      selectAfterIntercept.current &&
+      !disabled &&
+      !document.querySelector("dialog[open]")
+    ) {
+      input.current?.focus({ preventScroll: true });
+      input.current?.select();
+      selectAfterIntercept.current = false;
+    }
+  }, [gateway.pending, disabled]);
   useEffect(() => {
     const restore = () => {
       if (
@@ -137,16 +155,76 @@ export function EmployeeScan({
     return () => activity.report(id, 0);
   }, [id, queueState.pending, activity.report]);
   const field = form.register("code");
-  const locked = disabled || (!repeat && (pending || queueState.running));
+  const locked =
+    disabled || gateway.pending || (!repeat && (pending || queueState.running));
   return (
     <form
       className={styles.form}
       onSubmit={form.handleSubmit((values) => {
-        if (locked) return;
-        if (queue.current?.enqueue(values.code)) {
-          form.reset({ code: "" });
-          setLocalError(null);
-        } else setLocalError("Дождитесь сохранения и повторите скан.");
+        if (locked || intercepting.current) return;
+        const startContext = contextKey,
+          epoch = getAuthEpoch();
+        const current = () =>
+          live.current.contextKey === startContext && getAuthEpoch() === epoch;
+        const selectField = () => {
+          selectAfterIntercept.current = true;
+          if (
+            input.current &&
+            !input.current.disabled &&
+            !document.querySelector("dialog[open]")
+          ) {
+            input.current.focus({ preventScroll: true });
+            input.current.select();
+            selectAfterIntercept.current = false;
+          }
+        };
+        const apply = (disposition: "pass" | "handled" | "blocked") => {
+          if (!current()) return;
+          if (disposition === "blocked") {
+            if (queueState.failedCode)
+              form.setValue("code", queueState.failedCode);
+            setLocalError(
+              "Код не применён. Завершите текущий шаг или устраните причину блокировки.",
+            );
+            selectField();
+            return;
+          }
+          if (disposition === "handled") {
+            form.reset({ code: "" });
+            setLocalError(null);
+            return;
+          }
+          if (queue.current?.enqueue(values.code)) {
+            form.reset({ code: "" });
+            setLocalError(null);
+          } else {
+            setLocalError("Дождитесь сохранения и повторите скан.");
+            selectField();
+          }
+        };
+        const fail = (failure: unknown) => {
+          if (current()) {
+            setLocalError(
+              failure instanceof Error
+                ? failure.message
+                : "Не удалось обработать код. Повторите ввод.",
+            );
+            selectField();
+          }
+        };
+        try {
+          const result = gateway.intercept(values.code);
+          if (typeof result === "string") {
+            apply(result);
+            return;
+          }
+          intercepting.current = true;
+          void result.then(apply, fail).finally(() => {
+            intercepting.current = false;
+          });
+        } catch (failure) {
+          fail(failure);
+        }
       })}
       noValidate
     >
@@ -179,13 +257,43 @@ export function EmployeeScan({
         role={error || localError ? "alert" : "status"}
         aria-live="polite"
       >
-        {error ||
-          localError ||
-          form.formState.errors.code?.message ||
-          (queueState.pending
-            ? `Сохраняем сканы${queueState.pending > 1 ? ` · ещё ${queueState.pending - 1}` : "…"}`
-            : "Готов к сканированию")}
+        {gateway.pending
+          ? "Обрабатываем код…"
+          : error ||
+            localError ||
+            form.formState.errors.code?.message ||
+            (queueState.pending
+              ? `Сохраняем сканы${queueState.pending > 1 ? ` · ещё ${queueState.pending - 1}` : "…"}`
+              : "Готов к сканированию")}
       </div>
+      {queueState.failedCode && !queueState.running && (
+        <details className={styles.recovery}>
+          <summary>Отменить непринятые сканы</summary>
+          <p>
+            Без подтверждения: {queueState.pending}. Уже принятые сервером сканы
+            сохранятся. Перед продолжением проверьте товар, который не получил
+            подтверждения.
+          </p>
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={gateway.pending || pending}
+            onClick={() => {
+              const discarded = queue.current?.discardFailed() ?? 0;
+              if (!discarded) return;
+              form.reset({ code: "" });
+              setLocalError(null);
+              selectAfterIntercept.current = false;
+              input.current?.focus({ preventScroll: true });
+              live.current.onProblem?.(
+                `Отменено непринятых сканов: ${discarded}. Принятые сервером сканы сохранены. Проверьте товар без подтверждения перед продолжением.`,
+              );
+            }}
+          >
+            Отменить сканы ({queueState.pending})
+          </button>
+        </details>
+      )}
       {manual && (
         <button
           type="submit"
@@ -202,7 +310,7 @@ export function EmployeeScan({
           setManual(!manual);
           input.current?.focus({ preventScroll: true });
         }}
-        disabled={disabled}
+        disabled={disabled || gateway.pending}
       >
         <Keyboard size={17} />
         {manual ? "Вернуться к сканеру" : "Ввести код вручную"}

@@ -13,6 +13,8 @@ const warehouse: WarehousePlanDto = {
   name: "План",
   width: 24,
   depth: 16,
+  workZones: [],
+  zoneWork: [],
   layoutMode: "spaces",
   spaces: [
     {

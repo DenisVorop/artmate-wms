@@ -35,6 +35,8 @@ const room = {
   name: "Склад",
   width: 12.2,
   depth: 8.3,
+  workZones: [],
+  zoneWork: [],
   layoutMode: "rectangle" as const,
   spaces: [],
 };
@@ -204,6 +206,8 @@ function spacesPlan(): WarehousePlanDto {
     name: "План",
     width: 30,
     depth: 20,
+    workZones: [],
+    zoneWork: [],
     layoutMode: "spaces",
     spaces: [
       {

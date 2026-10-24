@@ -48,7 +48,7 @@ test("a claimed secondary job and an assigned planned movement remain resumable 
   });
 });
 test("arbitrary deep link modes do not expose manager features", () => {
-  assert.equal(employeeMode("inventory"), "assembly");
+  assert.equal(employeeMode("inventory"), "zone");
   assert.equal(employeeMode("receiving"), "receiving");
-  assert.equal(employeeMode(undefined), "assembly");
+  assert.equal(employeeMode(undefined), "zone");
 });

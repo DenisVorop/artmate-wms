@@ -35,6 +35,8 @@ function plan(): WarehousePlanDto {
     name: "План",
     width: 30.2,
     depth: 20.1,
+    workZones: [],
+    zoneWork: [],
     layoutMode: "spaces",
     spaces: [area()],
   };

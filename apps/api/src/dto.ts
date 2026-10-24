@@ -97,7 +97,35 @@ export class WarehouseSpaceDto extends PlanArchiveDto {
   @ApiProperty({ type: Number }) width!: number;
   @ApiProperty({ type: Number }) depth!: number;
 }
+export const WORK_ZONE_KINDS = [
+  "receiving",
+  "assembly",
+  "putaway",
+  "shipping",
+] as const;
+export class WorkZoneDto extends PlanArchiveDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, enum: WORK_ZONE_KINDS }) kind!: string;
+  @ApiProperty({ type: [String] }) locationIds!: string[];
+}
+export class ZoneWorkDto {
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String }) zoneId!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ["receiving", "assembly", "putaway", "shipping"],
+  })
+  jobKind!: string | null;
+  @ApiProperty({ type: String, nullable: true }) jobId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: String }) message!: string;
+}
 export class WarehousePlanDto {
+  @ApiProperty({ type: [WorkZoneDto] }) workZones!: WorkZoneDto[];
+  @ApiProperty({ type: [ZoneWorkDto] }) zoneWork!: ZoneWorkDto[];
   @ApiProperty({ type: String, enum: ["rectangle", "spaces"] })
   layoutMode!: string;
   @ApiProperty({ type: [WarehouseSpaceDto] }) spaces!: WarehouseSpaceDto[];
@@ -271,6 +299,14 @@ export class EmployeeDto {
   @ApiProperty({ type: Number }) unitsToday!: number;
 }
 export class ShipmentDto {
+  @ApiPropertyOptional({ type: String, nullable: true }) employeeId?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) workZoneId?:
+    | string
+    | null;
+  @ApiPropertyOptional({ type: [String] }) scannedBoxIds?: string[];
+
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String }) skuId!: string;
@@ -1815,3 +1851,74 @@ export class ReasonStocktakeDto extends StocktakeCommandDto {
   @MaxLength(500)
   reason!: string;
 }
+
+export class CreateWorkZoneDto extends CommandDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @MaxLength(80)
+  code!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @MaxLength(160)
+  name!: string;
+  @ApiProperty({ type: String, enum: WORK_ZONE_KINDS })
+  @IsIn(WORK_ZONE_KINDS)
+  kind!: string;
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  locationIds!: string[];
+}
+export class UpdateWorkZoneDto extends CommandDto {
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @MinLength(1)
+  @MaxLength(80)
+  code?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @MinLength(1)
+  @MaxLength(160)
+  name?: string;
+  @ApiPropertyOptional({ type: String, enum: WORK_ZONE_KINDS })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(WORK_ZONE_KINDS)
+  kind?: string;
+  @ApiPropertyOptional({ type: [String] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  locationIds?: string[];
+}
+export class StartZoneWorkDto extends ClaimTaskDto {
+  @ApiProperty({
+    type: String,
+    description: "Только QR artmate-wms:work-zone:<id>",
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  zoneCode!: string;
+}
+export class ScanShipmentWorkDto extends ClaimTaskDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  boxCode!: string;
+}
+export class FinishShipmentWorkDto extends StartZoneWorkDto {}

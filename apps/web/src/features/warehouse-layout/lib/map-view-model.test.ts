@@ -104,6 +104,8 @@ function workspace(overrides: Partial<WorkspaceDto> = {}): WorkspaceDto {
       name: "Проверочный склад",
       width: 24,
       depth: 16,
+      workZones: [],
+      zoneWork: [],
       layoutMode: "rectangle",
       spaces: [],
     },

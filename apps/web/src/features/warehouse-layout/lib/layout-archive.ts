@@ -52,6 +52,13 @@ export function archiveReasons(
     reasons.push(
       `Цель размещения коробов зарезервирована: ${putaways.map((task) => task.code).join(", ")}.`,
     );
+  const zones = data.warehouse.workZones.filter(
+    (zone) => !zone.archived && zone.locationIds.some((id) => ids.has(id)),
+  );
+  if (zones.length)
+    reasons.push(
+      `Адрес входит в рабочие зоны: ${zones.map((zone) => zone.name).join(", ")}. Сначала измените состав зон или переместите их в корзину.`,
+    );
   return reasons;
 }
 

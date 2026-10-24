@@ -149,6 +149,7 @@ export function EmployeePutaway({
                 pending={commands.pending}
                 error={commands.error}
                 disabled={!!block}
+                onProblem={onProblem}
                 onConfirm={(boxCode, locationCode) =>
                   execute(
                     () =>

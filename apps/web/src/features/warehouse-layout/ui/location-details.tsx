@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   ArrowDownToLine,
   Box,
@@ -22,6 +23,8 @@ import {
 } from "../lib/map-view-model";
 import { locationKindLabel } from "../lib/location-form";
 import styles from "./warehouse-layout.module.css";
+import zoneStyles from "./work-zones.module.css";
+import { workZoneKindLabels } from "../lib/work-zone-form";
 import panelStyles from "./plan-panels.module.css";
 import { archiveReasons } from "../lib/layout-archive";
 
@@ -374,6 +377,33 @@ export function LocationDetails({
               <LockKeyhole size={15} />
               Новое размещение запрещено
             </p>
+          )}
+          {data.warehouse.workZones.some(
+            (zone) => !zone.archived && zone.locationIds.includes(address.id),
+          ) && (
+            <div
+              className={zoneStyles.related}
+              aria-label={`Рабочие зоны адреса ${address.code}`}
+            >
+              <span className={styles.eyebrow}>Рабочие зоны адреса</span>
+              {data.warehouse.workZones
+                .filter(
+                  (zone) =>
+                    !zone.archived && zone.locationIds.includes(address.id),
+                )
+                .map((zone) => (
+                  <Link
+                    key={zone.id}
+                    href={`/labels/work-zone/${encodeURIComponent(zone.id)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="button button--secondary button--sm"
+                  >
+                    <QrCode size={15} />
+                    QR «{zone.name}» · {workZoneKindLabels[zone.kind]}
+                  </Link>
+                ))}
+            </div>
           )}
           <div className={styles.detailsActions}>
             <Button variant="secondary" onClick={() => onLabel(address.id)}>

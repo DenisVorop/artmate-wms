@@ -6,6 +6,12 @@ export default async function Page({
   params: Promise<{ type: string; id: string }>;
 }) {
   const { type, id } = await params;
-  if (type !== "location" && type !== "pallet" && type !== "box") notFound();
+  if (
+    type !== "location" &&
+    type !== "pallet" &&
+    type !== "box" &&
+    type !== "work-zone"
+  )
+    notFound();
   return <LabelPage type={type} id={id} />;
 }

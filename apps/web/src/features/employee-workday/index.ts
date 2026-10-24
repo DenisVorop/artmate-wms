@@ -5,3 +5,5 @@ export {
   employeePriority,
   type EmployeeMode,
 } from "./lib/workday";
+export { isWorkZoneScan, ownZoneWork, workZonePrefix } from "./lib/zone-work";
+export { useEmployeeZone } from "./model/use-employee-zone";

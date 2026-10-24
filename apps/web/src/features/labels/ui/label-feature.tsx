@@ -7,6 +7,7 @@ import { useLabelPrint } from "../lib/use-label-print";
 import styles from "./label.module.css";
 
 const labelNames = {
+  "work-zone": "QR рабочей зоны",
   location: "Этикетка адреса",
   pallet: "Этикетка паллеты",
   box: "Этикетка короба",
@@ -17,13 +18,13 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
   const backHref =
     type === "box"
       ? "/assembly"
-      : type === "location"
+      : type === "location" || type === "work-zone"
         ? "/warehouse"
         : "/inventory";
   const backText =
     type === "box"
       ? "К сборке"
-      : type === "location"
+      : type === "location" || type === "work-zone"
         ? "К складу"
         : "К остаткам";
   if (query.isPending)
@@ -72,6 +73,12 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
           <p>
             Макет 100 × 70 мм. Выберите этот размер бумаги в диалоге печати.
           </p>
+          {type === "work-zone" && (
+            <p className={styles.hint}>
+              Скан зоны открывает работу. Для перемещения товара нужны отдельные
+              сканы адреса и товара.
+            </p>
+          )}
           {type === "box" && (
             <p className={styles.hint}>
               Повторная печать сохраняет код этого короба.

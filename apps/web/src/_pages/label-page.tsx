@@ -3,7 +3,7 @@ export function LabelPage({
   type,
   id,
 }: {
-  type: "location" | "pallet" | "box";
+  type: "location" | "pallet" | "box" | "work-zone";
   id: string;
 }) {
   return (

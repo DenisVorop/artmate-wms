@@ -2,6 +2,10 @@
 import { useState } from "react";
 import type { SpaceDraft } from "./space-form";
 export function useLayoutState() {
+  const [workZoneFormId, setWorkZoneFormId] = useState<string | null>(null);
+  const [selectedWorkZoneId, setSelectedWorkZoneId] = useState<string | null>(
+    null,
+  );
   const [spaceResizeId, setSpaceResizeId] = useState<string | null>(null);
   const [spaceFormId, setSpaceFormId] = useState<string | null>(null);
   const [spaceDraft, setSpaceDraft] = useState<SpaceDraft | undefined>(
@@ -27,6 +31,10 @@ export function useLayoutState() {
     null,
   );
   return {
+    workZoneFormId,
+    setWorkZoneFormId,
+    selectedWorkZoneId,
+    setSelectedWorkZoneId,
     spaceResizeId,
     setSpaceResizeId,
     spaceFormId,

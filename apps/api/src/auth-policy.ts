@@ -4,6 +4,14 @@ import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
+  "createWorkZone",
+  "updateWorkZone",
+  "archiveWorkZone",
+  "restoreWorkZone",
+  "startZoneWork",
+  "leaveZoneWork",
+  "scanShipmentWork",
+  "finishShipmentWork",
   "getWorkspace",
   "getStocktakes",
   "getStocktake",
@@ -85,6 +93,10 @@ const workerReads = new Set([
   "getPutawayPlacementOptions",
 ]);
 const workerWrites = new Set([
+  "startZoneWork",
+  "leaveZoneWork",
+  "scanShipmentWork",
+  "finishShipmentWork",
   "claimStocktake",
   "countStocktakeLocation",
   "refreshStocktakeLocation",
@@ -106,6 +118,10 @@ const workerWrites = new Set([
   "updateShift",
 ]);
 const actorWrites = new Set([
+  "startZoneWork",
+  "leaveZoneWork",
+  "scanShipmentWork",
+  "finishShipmentWork",
   "placeReceiptPallet",
   "claimTask",
   "updateTaskStatus",
@@ -199,6 +215,34 @@ export async function authorizeWarehouse(
       throw new ForbiddenException("Для вывоза паллеты начните свою смену");
   }
   if (state) {
+    if (
+      ["startZoneWork", "scanShipmentWork", "finishShipmentWork"].includes(
+        op,
+      ) &&
+      state.employees.find((e) => e.id === account.employee_id)?.status !==
+        "working"
+    )
+      throw new ForbiddenException(
+        "Для работы в зоне начните или возобновите свою смену",
+      );
+    if (
+      ["scanShipmentWork", "finishShipmentWork"].includes(op) &&
+      state.shipments.find((x) => x.id === id)?.employeeId !==
+        account.employee_id
+    )
+      throw new ForbiddenException("Отгрузка принадлежит другому сотруднику");
+    if (
+      op === "placeReceiptPallet" &&
+      state.warehouse.zoneWork.some(
+        (w) =>
+          w.jobKind === "receiving" &&
+          w.jobId === id &&
+          w.palletId === operation.split("/")[2] &&
+          w.employeeId !== account.employee_id,
+      )
+    )
+      throw new ForbiddenException("Паллета приёмки взята другим сотрудником");
+
     if (
       account.role !== "manager" &&
       ["getReceiptLabels", "getReceiptPlacementOptions"].includes(op) &&

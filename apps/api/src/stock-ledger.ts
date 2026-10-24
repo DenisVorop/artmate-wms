@@ -178,7 +178,7 @@ export function ledgerEvent(
     kind = "movement";
     referenceType = "movement";
     reference = s.movements.find((x) => x.id === id);
-  } else if (op === "shipShipment") {
+  } else if (["shipShipment", "finishShipmentWork"].includes(op)) {
     kind = "shipment";
     referenceType = "shipment";
     reference = s.shipments.find((x) => x.id === id);

@@ -225,6 +225,8 @@ test("v4 migration keeps a clean v3 plan empty, preserves revision and cached v3
       ...oldPlan,
       layoutMode: "rectangle",
       spaces: [],
+      workZones: [],
+      zoneWork: [],
     });
     for (const table of tableNames)
       assert.deepEqual((migrated as any)[table], []);
@@ -522,7 +524,7 @@ test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full 
           "SELECT value FROM metadata WHERE key='schema_version'",
         )
       ).rows[0].value,
-      "11",
+      "12",
     );
     await inspect.close();
   } finally {

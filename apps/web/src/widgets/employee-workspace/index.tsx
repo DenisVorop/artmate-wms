@@ -10,17 +10,23 @@ import {
   EmployeeReceiving,
   EmployeeMovements,
 } from "@/features/employee-handling";
+import { EmployeeShipping } from "@/features/employee-shipping";
 import { EmployeeStocktakes } from "@/features/stocktakes";
 import {
   EmployeeShift,
   useEmployeeWorkday,
   employeePriority,
+  useEmployeeZone,
+  ownZoneWork,
+  isWorkZoneScan,
   type EmployeeMode,
 } from "@/features/employee-workday";
 import { useAuthActions, ChangePasswordModal } from "@/features/auth";
 import {
   Button,
   EmployeeScanBoundary,
+  EmployeeScanGateway,
+  EmployeeScan,
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import styles from "./workspace.module.css";
@@ -35,7 +41,7 @@ export function EmployeeWorkspace(props: {
   );
 }
 function EmployeeWorkspaceBody({
-  initialMode = "assembly",
+  initialMode = "zone",
   initialDocumentId,
 }: {
   initialMode?: EmployeeMode;
@@ -50,11 +56,60 @@ function EmployeeWorkspaceBody({
     [more, setMore] = useState(false),
     [help, setHelp] = useState(false),
     [password, setPassword] = useState(false),
+    [notice, setNotice] = useState<string | null>(null),
+    [showZoneScan, setShowZoneScan] = useState(false),
     [problem, setProblem] = useState<string | null>(null);
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
     data && user ? employeePriority(data, user.employeeId) : null;
+  const liveZone = ownZoneWork(data, user?.employeeId);
+  const previousJob = useRef(liveZone?.assignment);
+  useEffect(() => {
+    const previous = previousJob.current,
+      next = liveZone?.assignment;
+    previousJob.current = next;
+    if (
+      !previous?.jobId ||
+      !data ||
+      (previous.jobId === next?.jobId && previous.palletId === next?.palletId)
+    )
+      return;
+    const complete = (message: string) => {
+      setNotice(message);
+      setProblem((current) =>
+        current?.startsWith("Сначала ") ? null : current,
+      );
+    };
+    if (
+      previous.jobKind === "shipping" &&
+      data.shipments.some(
+        (s) => s.id === previous.jobId && s.status === "shipped",
+      )
+    )
+      complete("Отгрузка завершена.");
+    if (
+      previous.jobKind === "assembly" &&
+      data.tasks.some(
+        (t) => t.id === previous.jobId && t.status === "completed",
+      )
+    )
+      complete("Задание сборки завершено.");
+    if (
+      previous.jobKind === "putaway" &&
+      data.putawayTasks.some(
+        (t) => t.id === previous.jobId && t.status === "completed",
+      )
+    )
+      complete("Короб размещён на хранение.");
+    if (
+      previous.jobKind === "receiving" &&
+      data.pallets.some(
+        (p) => p.id === previous.palletId && p.status === "stored",
+      )
+    )
+      complete("Паллета размещена и зачислена на баланс.");
+  }, [data, liveZone?.assignment]);
   const requestedMode: EmployeeMode =
     employee?.status !== "working"
       ? "shift"
@@ -62,12 +117,34 @@ function EmployeeWorkspaceBody({
         ? priority.mode
         : day.mode === "shift"
           ? "shift"
-          : (priority?.mode ?? day.mode);
-  const blocked = scan.pending > 0 || scan.unsaved;
-  const displayed = useRef({ userId: user?.id, mode: requestedMode });
+          : ((liveZone?.zone.kind as EmployeeMode | undefined) ??
+            priority?.mode ??
+            day.mode);
+  const baseBlocked = scan.pending > 0 || scan.unsaved;
+  const zones = useEmployeeZone({
+    blocked: baseBlocked,
+    onProblem: setProblem,
+    onStarted: () => {
+      day.choose("zone");
+      setProblem(null);
+      setMenu(false);
+      setShowZoneScan(false);
+      setNotice(null);
+    },
+  });
+  const blocked = baseBlocked || zones.pending;
+  const nextDisplay = {
+    userId: user?.id,
+    mode: requestedMode,
+    zone: liveZone,
+    key: liveZone
+      ? `${liveZone.zone.id}:${liveZone.assignment.jobId}:${liveZone.assignment.palletId}`
+      : "manual",
+  };
+  const displayed = useRef(nextDisplay);
   if (!blocked || displayed.current.userId !== user?.id)
-    displayed.current = { userId: user?.id, mode: requestedMode };
-  const mode = displayed.current.mode;
+    displayed.current = nextDisplay;
+  const { mode, zone: currentZone, key } = displayed.current;
 
   useEffect(() => {
     if (!blocked) return;
@@ -77,8 +154,9 @@ function EmployeeWorkspaceBody({
     window.addEventListener("beforeunload", preventLoss);
     return () => window.removeEventListener("beforeunload", preventLoss);
   }, [blocked]);
-  const choose = (next: EmployeeMode, confirmed = false) => {
-    if (scan.pending || (scan.unsaved && !confirmed)) return;
+  const choose = async (next: EmployeeMode, confirmed = false) => {
+    if (zones.pending || scan.pending || (scan.unsaved && !confirmed)) return;
+    if (currentZone && !(await zones.leave())) return;
     if (confirmed) displayed.current.mode = next;
     day.choose(next);
     setProblem(null);
@@ -87,281 +165,398 @@ function EmployeeWorkspaceBody({
   };
   const shift = async (status: "working" | "break" | "off") => {
     if (
-      scan.pending ||
+      zones.pending ||
+      (scan.pending > 0 && status !== "working") ||
       (scan.unsaved && status !== "working") ||
       priority?.carrying
     )
       return;
     const ok = await day.setShift(status);
     if (ok) {
-      day.choose(status === "working" ? "assembly" : "shift");
+      day.choose(status === "working" ? "zone" : "shift");
       setMenu(false);
       setProblem(null);
     }
   };
   const noShift = employee?.status !== "working";
+  const zoneIdle =
+    mode === "zone" || (!!currentZone && !currentZone.assignment.jobKind);
+  const zoneEntry = showZoneScan || zoneIdle;
+  const intercept = async (value: string) => {
+    if (isWorkZoneScan(value)) return zones.intercept(value);
+    if (zoneEntry) {
+      setProblem(
+        "Нужен QR рабочей зоны с таблички. Код короба или адреса не выбирает работу.",
+      );
+      return "blocked" as const;
+    }
+    return "pass" as const;
+  };
+  const zoneNames: Record<string, string> = {
+    receiving: "Приёмка",
+    assembly: "Сборка",
+    putaway: "Размещение коробов",
+    shipping: "Отгрузка",
+  };
+
   return (
-    <div className={styles.surface}>
-      <a className={styles.skip} href="#employee-main">
-        К заданию
-      </a>
-      <div className={styles.frame}>
-        <header className={styles.header}>
-          <Link
-            href="/work"
-            onClick={(event) => {
-              if (blocked) event.preventDefault();
-            }}
-            aria-disabled={blocked}
-            className={styles.brand}
-            aria-label="Моё рабочее место"
-          >
-            <Package size={23} />
-            <span>
-              artmate<small>МОЯ РАБОТА</small>
-            </span>
-          </Link>
-          <button
-            className={styles.menuButton}
-            onClick={() => setMenu(!menu)}
-            aria-expanded={menu}
-            aria-controls="employee-menu"
-            aria-label={
-              menu ? "Закрыть меню сотрудника" : "Открыть меню сотрудника"
-            }
-          >
-            {menu ? <X /> : <Ellipsis />}
-          </button>
-        </header>
-        {menu && (
-          <section
-            id="employee-menu"
-            className={styles.menu}
-            aria-label="Меню сотрудника"
-          >
-            <p className={styles.person}>{user?.name}</p>
-            {scan.pending > 0 && (
-              <p role="status">
-                Сначала дождитесь сохранения сканов или исправьте непринятый
-                код.
-              </p>
-            )}
-            {scan.unsaved && (
-              <p role="status">
-                Сначала сохраните подсчёт или вернитесь кнопкой «К работе».
-              </p>
-            )}
-            {noShift && blocked && (
-              <button
-                disabled={day.pending || scan.pending > 0}
-                onClick={() => void shift("working")}
-              >
-                Возобновить смену
+    <EmployeeScanGateway
+      intercept={intercept}
+      canIntercept={(value) => isWorkZoneScan(value) || zoneEntry}
+    >
+      <div className={styles.surface}>
+        <a className={styles.skip} href="#employee-main">
+          К заданию
+        </a>
+        <div className={styles.frame}>
+          <header className={styles.header}>
+            <Link
+              href="/work"
+              onClick={(event) => {
+                if (blocked) event.preventDefault();
+              }}
+              aria-disabled={blocked}
+              className={styles.brand}
+              aria-label="Моё рабочее место"
+            >
+              <Package size={23} />
+              <span>
+                artmate<small>МОЯ РАБОТА</small>
+              </span>
+            </Link>
+            <button
+              className={styles.menuButton}
+              onClick={() => setMenu(!menu)}
+              aria-expanded={menu}
+              aria-controls="employee-menu"
+              aria-label={
+                menu ? "Закрыть меню сотрудника" : "Открыть меню сотрудника"
+              }
+            >
+              {menu ? <X /> : <Ellipsis />}
+            </button>
+          </header>
+          {menu && (
+            <section
+              id="employee-menu"
+              className={styles.menu}
+              aria-label="Меню сотрудника"
+            >
+              <p className={styles.person}>{user?.name}</p>
+              {scan.pending > 0 && (
+                <p role="status">
+                  Сначала дождитесь сохранения сканов или исправьте непринятый
+                  код.
+                </p>
+              )}
+              {scan.unsaved && (
+                <p role="status">
+                  Сначала сохраните подсчёт или вернитесь кнопкой «К работе».
+                </p>
+              )}
+              {noShift && blocked && (
+                <button
+                  disabled={day.pending || zones.pending}
+                  onClick={() => void shift("working")}
+                >
+                  Возобновить смену
+                </button>
+              )}
+              {!noShift && (
+                <>
+                  <button
+                    onClick={() => void shift("break")}
+                    disabled={day.pending || blocked || priority?.carrying}
+                  >
+                    Перерыв
+                  </button>
+                  <button
+                    onClick={() => void shift("off")}
+                    disabled={day.pending || blocked || priority?.carrying}
+                  >
+                    Завершить смену
+                  </button>
+                </>
+              )}
+              {priority?.carrying && (
+                <p>Сначала поставьте переносимый товар на адрес.</p>
+              )}
+              <button onClick={() => setMore(!more)} aria-expanded={more}>
+                Другие работы
               </button>
+              {more && (
+                <div className={styles.submenu}>
+                  {(
+                    [
+                      ["zone", "Сканировать зону"],
+                      ["assembly", "Сборка без QR"],
+                      ["putaway", "Разместить короба"],
+                      ["receiving", "Приёмка"],
+                      ["movements", "Перемещения"],
+                      ["stocktakes", "Инвентаризация"],
+                    ] as [EmployeeMode, string][]
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      disabled={
+                        blocked || (!!priority && priority.mode !== key)
+                      }
+                      onClick={() => void choose(key)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {priority && !priority.carrying && (
+                    <p>Сначала завершите или приостановите текущее задание.</p>
+                  )}
+                </div>
+              )}
+              <button onClick={() => setHelp(!help)} aria-expanded={help}>
+                Помощь
+              </button>
+              {help && (
+                <div className={styles.submenu}>
+                  <p>
+                    Код не читается? Откройте ручной ввод под полем сканера.
+                    Если товар не совпадает или возникла другая проблема —
+                    позовите руководителя.
+                  </p>
+                  <Link
+                    href="/warehouse"
+                    aria-disabled={blocked}
+                    onClick={(event) => {
+                      if (blocked) event.preventDefault();
+                    }}
+                  >
+                    Карта склада
+                  </Link>
+                  <Link
+                    href="/performance"
+                    aria-disabled={blocked}
+                    onClick={(event) => {
+                      if (blocked) event.preventDefault();
+                    }}
+                  >
+                    Мой результат
+                  </Link>
+                  <button disabled={blocked} onClick={() => setPassword(true)}>
+                    Сменить пароль
+                  </button>
+                  <button
+                    disabled={auth.pending || blocked}
+                    onClick={() => void auth.logout()}
+                  >
+                    Выйти из учётной записи
+                  </button>
+                </div>
+              )}
+              {day.error && (
+                <p className={styles.error} role="alert">
+                  {day.error}
+                </p>
+              )}
+              {auth.error && (
+                <p className={styles.error} role="alert">
+                  {auth.error}
+                </p>
+              )}
+            </section>
+          )}
+          <main id="employee-main" className={styles.main}>
+            {mode !== "shift" && (
+              <h1 className={styles.srOnly}>Моё рабочее место</h1>
             )}
-            {!noShift && (
+            {blocked && requestedMode !== mode && (
+              <div className={styles.warning} role="status">
+                <p>
+                  Рабочие условия изменились. Ввод сохранён на экране.{" "}
+                  {noShift
+                    ? "Возобновите смену через меню."
+                    : "Закончите текущий шаг перед переходом."}
+                </p>
+              </div>
+            )}
+            {notice && (
+              <div className={styles.completion} role="status">
+                <span>{notice}</span>
+                <button
+                  onClick={() => setNotice(null)}
+                  aria-label="Скрыть подтверждение"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            )}
+            {problem && (
+              <div className={styles.warning} role="alert">
+                <p>{problem}</p>
+                <button
+                  onClick={() => setProblem(null)}
+                  aria-label="Скрыть сообщение"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            )}
+            {workspace.isError && data && (
+              <div className={styles.warning} role="status">
+                <p>Связь со складом нестабильна.</p>
+                <button onClick={() => void workspace.refetch()}>
+                  Обновить
+                </button>
+              </div>
+            )}
+            {!data ? (
+              <section className={styles.state}>
+                <h1>
+                  {workspace.isError
+                    ? "Нет связи со складом"
+                    : "Открываем задание…"}
+                </h1>
+                {workspace.isError && (
+                  <Button onClick={() => void workspace.refetch()}>
+                    Повторить загрузку
+                  </Button>
+                )}
+              </section>
+            ) : !employee ? (
+              <section className={styles.state}>
+                <h1>Профиль сотрудника недоступен</h1>
+                <p>Обратитесь к руководителю.</p>
+              </section>
+            ) : mode === "shift" ? (
+              <EmployeeShift
+                employee={employee}
+                pending={day.pending}
+                error={day.error}
+                onStart={() => void shift("working")}
+                onWork={() => void choose("zone")}
+              />
+            ) : (
               <>
-                <button
-                  onClick={() => void shift("break")}
-                  disabled={day.pending || blocked || priority?.carrying}
-                >
-                  Перерыв
-                </button>
-                <button
-                  onClick={() => void shift("off")}
-                  disabled={day.pending || blocked || priority?.carrying}
-                >
-                  Завершить смену
-                </button>
+                {currentZone && (
+                  <div className={styles.zoneHeading}>
+                    <div>
+                      <small>{zoneNames[currentZone.zone.kind]}</small>
+                      <strong>{currentZone.zone.name}</strong>
+                    </div>
+                    <button
+                      disabled={blocked}
+                      onClick={() => setShowZoneScan((value) => !value)}
+                    >
+                      {showZoneScan ? "К заданию" : "Сменить зону"}
+                    </button>
+                  </div>
+                )}
+                {!currentZone && !zoneEntry && (
+                  <button
+                    className={styles.zoneSwitch}
+                    disabled={blocked}
+                    onClick={() => setShowZoneScan(true)}
+                  >
+                    Сканировать рабочую зону
+                  </button>
+                )}
+                {zoneEntry ? (
+                  <section
+                    className={styles.zoneEntry}
+                    aria-label="Выбор рабочей зоны"
+                  >
+                    <h2>
+                      {zoneIdle && currentZone
+                        ? "В этой зоне пока нет работы"
+                        : "Где начнём работу?"}
+                    </h2>
+                    <p>
+                      {currentZone?.assignment.message ||
+                        "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
+                    </p>
+                    <EmployeeScan
+                      contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}`}
+                      label="Сканируйте QR рабочей зоны"
+                      disabled={zones.pending}
+                      onScan={async () => false}
+                      onProblem={setProblem}
+                    />
+                    {currentZone && (
+                      <Button
+                        disabled={blocked}
+                        onClick={() =>
+                          void zones.intercept(
+                            `artmate-wms:work-zone:${currentZone.zone.id}`,
+                          )
+                        }
+                      >
+                        Проверить задания в зоне
+                      </Button>
+                    )}
+                  </section>
+                ) : (
+                  <>
+                    {mode === "assembly" && (
+                      <EmployeeAssembly
+                        key={key}
+                        data={data}
+                        onIdle={() => void choose("putaway")}
+                        onProblem={setProblem}
+                      />
+                    )}
+                    {mode === "putaway" && (
+                      <EmployeePutaway
+                        key={key}
+                        data={data}
+                        onIdle={() => void choose("assembly")}
+                        onProblem={setProblem}
+                      />
+                    )}
+                    {mode === "receiving" && (
+                      <EmployeeReceiving
+                        key={key}
+                        data={data}
+                        onIdle={() => void choose("assembly")}
+                        onProblem={setProblem}
+                      />
+                    )}
+                    {mode === "movements" && (
+                      <EmployeeMovements
+                        data={data}
+                        onIdle={() => void choose("assembly")}
+                        onProblem={setProblem}
+                      />
+                    )}
+                    {mode === "shipping" && (
+                      <EmployeeShipping
+                        key={key}
+                        data={data}
+                        onIdle={() => void choose("zone")}
+                        onProblem={setProblem}
+                      />
+                    )}
+                    {mode === "stocktakes" && (
+                      <EmployeeStocktakes
+                        key={initialDocumentId ?? "queue"}
+                        initialDocumentId={initialDocumentId}
+                        onIdle={() => void choose("assembly", true)}
+                        onProblem={setProblem}
+                      />
+                    )}
+                  </>
+                )}
               </>
             )}
-            {priority?.carrying && (
-              <p>Сначала поставьте переносимый товар на адрес.</p>
-            )}
-            <button onClick={() => setMore(!more)} aria-expanded={more}>
-              Другие работы
-            </button>
-            {more && (
-              <div className={styles.submenu}>
-                {(
-                  [
-                    ["assembly", "Сборка"],
-                    ["putaway", "Разместить короба"],
-                    ["receiving", "Приёмка"],
-                    ["movements", "Перемещения"],
-                    ["stocktakes", "Инвентаризация"],
-                  ] as [EmployeeMode, string][]
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    disabled={blocked || (!!priority && priority.mode !== key)}
-                    onClick={() => choose(key)}
-                  >
-                    {label}
-                  </button>
-                ))}
-                {priority && !priority.carrying && (
-                  <p>Сначала завершите или приостановите текущее задание.</p>
-                )}
-              </div>
-            )}
-            <button onClick={() => setHelp(!help)} aria-expanded={help}>
-              Помощь
-            </button>
-            {help && (
-              <div className={styles.submenu}>
-                <p>
-                  Код не читается? Откройте ручной ввод под полем сканера. Если
-                  товар не совпадает или возникла другая проблема — позовите
-                  руководителя.
-                </p>
-                <Link
-                  href="/warehouse"
-                  aria-disabled={blocked}
-                  onClick={(event) => {
-                    if (blocked) event.preventDefault();
-                  }}
-                >
-                  Карта склада
-                </Link>
-                <Link
-                  href="/performance"
-                  aria-disabled={blocked}
-                  onClick={(event) => {
-                    if (blocked) event.preventDefault();
-                  }}
-                >
-                  Мой результат
-                </Link>
-                <button disabled={blocked} onClick={() => setPassword(true)}>
-                  Сменить пароль
-                </button>
-                <button
-                  disabled={auth.pending || blocked}
-                  onClick={() => void auth.logout()}
-                >
-                  Выйти из учётной записи
-                </button>
-              </div>
-            )}
-            {day.error && (
-              <p className={styles.error} role="alert">
-                {day.error}
-              </p>
-            )}
-            {auth.error && (
-              <p className={styles.error} role="alert">
-                {auth.error}
-              </p>
-            )}
-          </section>
-        )}
-        <main id="employee-main" className={styles.main}>
-          {mode !== "shift" && (
-            <h1 className={styles.srOnly}>Моё рабочее место</h1>
-          )}
-          {blocked && requestedMode !== mode && (
-            <div className={styles.warning} role="status">
-              <p>
-                Рабочие условия изменились. Ввод сохранён на экране.{" "}
-                {noShift
-                  ? "Возобновите смену через меню."
-                  : "Закончите текущий шаг перед переходом."}
-              </p>
-            </div>
-          )}
-          {problem && (
-            <div className={styles.warning} role="alert">
-              <p>{problem}</p>
-              <button
-                onClick={() => setProblem(null)}
-                aria-label="Скрыть сообщение"
-              >
-                <X size={17} />
-              </button>
-            </div>
-          )}
-          {workspace.isError && data && (
-            <div className={styles.warning} role="status">
-              <p>Связь со складом нестабильна.</p>
-              <button onClick={() => void workspace.refetch()}>Обновить</button>
-            </div>
-          )}
-          {!data ? (
-            <section className={styles.state}>
-              <h1>
-                {workspace.isError
-                  ? "Нет связи со складом"
-                  : "Открываем задание…"}
-              </h1>
-              {workspace.isError && (
-                <Button onClick={() => void workspace.refetch()}>
-                  Повторить загрузку
-                </Button>
-              )}
-            </section>
-          ) : !employee ? (
-            <section className={styles.state}>
-              <h1>Профиль сотрудника недоступен</h1>
-              <p>Обратитесь к руководителю.</p>
-            </section>
-          ) : mode === "shift" ? (
-            <EmployeeShift
-              employee={employee}
-              pending={day.pending}
-              error={day.error}
-              onStart={() => void shift("working")}
-              onWork={() => choose("assembly")}
+          </main>
+          <footer className={styles.footer}>
+            <span
+              className={workspace.isError ? styles.offline : styles.online}
             />
-          ) : (
-            <>
-              {mode === "assembly" && (
-                <EmployeeAssembly
-                  data={data}
-                  onIdle={() => choose("putaway")}
-                  onProblem={setProblem}
-                />
-              )}
-              {mode === "putaway" && (
-                <EmployeePutaway
-                  data={data}
-                  onIdle={() => choose("assembly")}
-                  onProblem={setProblem}
-                />
-              )}
-              {mode === "receiving" && (
-                <EmployeeReceiving
-                  data={data}
-                  onIdle={() => choose("assembly")}
-                  onProblem={setProblem}
-                />
-              )}
-              {mode === "movements" && (
-                <EmployeeMovements
-                  data={data}
-                  onIdle={() => choose("assembly")}
-                  onProblem={setProblem}
-                />
-              )}
-              {mode === "stocktakes" && (
-                <EmployeeStocktakes
-                  key={initialDocumentId ?? "queue"}
-                  initialDocumentId={initialDocumentId}
-                  onIdle={() => choose("assembly", true)}
-                  onProblem={setProblem}
-                />
-              )}
-            </>
-          )}
-        </main>
-        <footer className={styles.footer}>
-          <span
-            className={workspace.isError ? styles.offline : styles.online}
-          />
-          {workspace.isError ? "Проверьте соединение" : "Склад онлайн"}
-        </footer>
+            {workspace.isError ? "Проверьте соединение" : "Склад онлайн"}
+          </footer>
+        </div>
+        <ChangePasswordModal
+          open={password}
+          onClose={() => setPassword(false)}
+        />
       </div>
-      <ChangePasswordModal open={password} onClose={() => setPassword(false)} />
-    </div>
+    </EmployeeScanGateway>
   );
 }

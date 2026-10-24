@@ -14,9 +14,15 @@ export function EmployeeReceiving({
 }: EmployeeHandlingProps) {
   const { employeeId, commands, execute } = useHandling();
   const { pending: scanPending } = useEmployeeScanActivity();
-  const candidate = selectReceipt(data.receipts);
+  const assignment = data.warehouse.zoneWork?.find(
+    (work) => work.employeeId === employeeId && work.jobKind === "receiving",
+  );
+  const candidate = assignment
+    ? data.receipts.find((receipt) => receipt.id === assignment.jobId)
+    : selectReceipt(data.receipts);
   const state = useHandlingState(
-    candidate?.pallets.find((p) => !p.placedAt)?.palletId,
+    assignment?.palletId ??
+      candidate?.pallets.find((p) => !p.placedAt)?.palletId,
   );
   const next = () => {
     if (scanPending > 0 || commands.pending) return;
@@ -80,38 +86,39 @@ export function EmployeeReceiving({
             {row.quantity.toLocaleString("ru-RU")} раскрасок ·{" "}
             {pallet?.code ?? "Паллета недоступна"}
           </p>
-          {receipt.pallets.filter((p) => !p.placedAt).length > 1 && (
-            <details>
-              <summary>Другая паллета</summary>
-              <div
-                className={styles.choices}
-                aria-label="Паллеты текущей приёмки"
-              >
-                {receipt.pallets
-                  .filter((p) => !p.placedAt)
-                  .map((p) => (
-                    <Button
-                      key={p.palletId}
-                      variant="secondary"
-                      disabled={commands.pending || scanPending > 0}
-                      aria-pressed={p.palletId === row.palletId}
-                      onClick={() => {
-                        if (scanPending > 0 || commands.pending) return;
-                        commands.clearError();
-                        state.setSelectedId(p.palletId);
-                      }}
-                    >
-                      {data.pallets.find((item) => item.id === p.palletId)
-                        ?.code ?? p.palletId}{" "}
-                      ·{" "}
-                      {data.skus.find((s) => s.id === p.skuId)?.name ??
-                        "Тематика"}{" "}
-                      · {p.quantity.toLocaleString("ru-RU")} шт.
-                    </Button>
-                  ))}
-              </div>
-            </details>
-          )}
+          {!assignment &&
+            receipt.pallets.filter((p) => !p.placedAt).length > 1 && (
+              <details>
+                <summary>Другая паллета</summary>
+                <div
+                  className={styles.choices}
+                  aria-label="Паллеты текущей приёмки"
+                >
+                  {receipt.pallets
+                    .filter((p) => !p.placedAt)
+                    .map((p) => (
+                      <Button
+                        key={p.palletId}
+                        variant="secondary"
+                        disabled={commands.pending || scanPending > 0}
+                        aria-pressed={p.palletId === row.palletId}
+                        onClick={() => {
+                          if (scanPending > 0 || commands.pending) return;
+                          commands.clearError();
+                          state.setSelectedId(p.palletId);
+                        }}
+                      >
+                        {data.pallets.find((item) => item.id === p.palletId)
+                          ?.code ?? p.palletId}{" "}
+                        ·{" "}
+                        {data.skus.find((s) => s.id === p.skuId)?.name ??
+                          "Тематика"}{" "}
+                        · {p.quantity.toLocaleString("ru-RU")} шт.
+                      </Button>
+                    ))}
+                </div>
+              </details>
+            )}
           {block && <p className={styles.notice}>{block}</p>}
           {options.isPending ? (
             <p role="status">Подбираем адрес по габаритам паллеты…</p>
@@ -153,6 +160,7 @@ export function EmployeeReceiving({
               pending={commands.pending}
               error={commands.error}
               disabled={!!block || !options.data?.locations.length}
+              onProblem={onProblem}
               onConfirm={(palletCode, locationCode) =>
                 execute(
                   () =>

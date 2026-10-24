@@ -91,6 +91,8 @@ function scene(): Scene {
       name: "План",
       width: 24,
       depth: 16,
+      workZones: [],
+      zoneWork: [],
       layoutMode: "spaces",
       spaces: [
         {

@@ -19,6 +19,10 @@ import {
   HttpException,
 } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import {
+  WorkZoneController,
+  ShipmentWorkController,
+} from "./work-zone.controller";
 import { StocktakeController } from "./stocktake.controller";
 import { StocktakeService } from "./stocktake.service";
 import { AuthController, cookieName } from "./auth.controller";
@@ -1100,7 +1104,7 @@ export class WarehouseController {
   @Get("labels/:type/:id")
   @ApiOperation({ operationId: "getLabel" })
   @ApiOkResponse({ type: D.LabelDto })
-  @ApiParam({ name: "type", enum: ["location", "pallet", "box"] })
+  @ApiParam({ name: "type", enum: ["location", "pallet", "box", "work-zone"] })
   @ApiParam({ name: "id", type: String })
   getLabel(@Param("type") type: string, @Param("id") id: string) {
     return this.warehouse.getLabel(type, id);
@@ -1130,7 +1134,13 @@ class JsonExceptionFilter implements ExceptionFilter {
   }
 }
 @Module({
-  controllers: [WarehouseController, AuthController, StocktakeController],
+  controllers: [
+    WarehouseController,
+    AuthController,
+    StocktakeController,
+    WorkZoneController,
+    ShipmentWorkController,
+  ],
   providers: [
     WarehouseService,
     AuthService,

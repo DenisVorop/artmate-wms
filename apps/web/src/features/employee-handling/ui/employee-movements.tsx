@@ -88,6 +88,7 @@ export function EmployeeMovements({
                 pending={commands.pending}
                 error={commands.error}
                 disabled={!!block}
+                onProblem={onProblem}
                 onConfirm={(palletCode, locationCode) =>
                   execute(
                     () =>

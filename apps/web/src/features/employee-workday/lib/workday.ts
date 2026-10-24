@@ -5,7 +5,9 @@ export type EmployeeMode =
   | "receiving"
   | "movements"
   | "stocktakes"
-  | "shift";
+  | "shift"
+  | "zone"
+  | "shipping";
 export function employeeMode(value?: string): EmployeeMode {
   return [
     "assembly",
@@ -14,9 +16,11 @@ export function employeeMode(value?: string): EmployeeMode {
     "movements",
     "stocktakes",
     "shift",
+    "zone",
+    "shipping",
   ].includes(value ?? "")
     ? (value as EmployeeMode)
-    : "assembly";
+    : "zone";
 }
 export function employeePriority(
   data: WorkspaceDto,

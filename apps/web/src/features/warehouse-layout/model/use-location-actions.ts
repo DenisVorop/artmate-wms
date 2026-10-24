@@ -3,6 +3,11 @@ import type {
   ResizeSpaceDto,
   WarehousePlanDto,
 } from "@/shared/api/generated/model";
+import {
+  toCreateWorkZone,
+  toUpdateWorkZone,
+  type WorkZoneValues,
+} from "../lib/work-zone-form";
 import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
 import { toSpace, type SpaceValues } from "../lib/space-form";
 import {
@@ -92,6 +97,14 @@ export function useLocationActions() {
     return Promise.reject(new Error("Положение входа определяется стеной"));
   }
   return {
+    saveWorkZone: (values: WorkZoneValues, id?: string) =>
+      id
+        ? commands.updateWorkZone(id, toUpdateWorkZone(values))
+        : commands.createWorkZone(toCreateWorkZone(values)),
+    archiveWorkZone: (id: string) =>
+      commands.archiveWorkZone(id, { requestId: crypto.randomUUID() }),
+    restoreWorkZone: (id: string) =>
+      commands.restoreWorkZone(id, { requestId: crypto.randomUUID() }),
     pending: commands.pending,
     error: commands.error,
     clearError: commands.clearError,

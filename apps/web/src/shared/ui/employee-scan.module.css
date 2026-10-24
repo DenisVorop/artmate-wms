@@ -76,3 +76,28 @@
   width: 100%;
   min-height: 54px;
 }
+
+.recovery {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.recovery summary {
+  min-height: 44px;
+  padding-block: 11px;
+  color: var(--text);
+  cursor: pointer;
+}
+.recovery summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+.recovery p {
+  margin: 0 0 12px;
+}
+.recovery button {
+  min-height: 44px;
+}

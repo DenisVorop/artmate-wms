@@ -16,7 +16,7 @@ function snapshot(): WorkspaceDto {
       awaitingPlacementPallets: 0,
     },
     revision: 0,
-    warehouse: {
+    warehouse: { workZones: [], zoneWork: [],
       name: "Тестовый склад",
       width: 26,
       depth: 17,

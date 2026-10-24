@@ -187,5 +187,7 @@ export function ErrorState({
 }
 
 export { EmployeeScan } from "./employee-scan";
+export { EmployeeScanGateway,useEmployeeScanGateway } from "./employee-scan-gateway";
+export type { EmployeeScanGatewayProps,EmployeeScanDisposition } from "./employee-scan-gateway";
 export type { EmployeeScanProps } from "./employee-scan";
 export { EmployeeScanBoundary, useEmployeeScanActivity } from "./employee-scan-activity";

@@ -17,6 +17,7 @@ import {
   Square,
   X,
   ZoomIn,
+  QrCode,
 } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
@@ -32,6 +33,8 @@ import { DEFAULT_STORAGE_FOOTPRINT } from "../lib/location-form";
 import { useMapInteraction } from "../lib/use-map-interaction";
 import { useLayoutState } from "../lib/use-layout-state";
 import { useLocationActions } from "../model/use-location-actions";
+import { WorkZoneForm } from "./work-zone-form";
+import { WorkZonesPanel } from "./work-zones-panel";
 import { LocationForm } from "./location-form";
 import { LocationLabel } from "./location-label";
 import { RackSectionForm } from "./rack-section-form";
@@ -104,6 +107,7 @@ export function WarehouseLayoutFeature() {
     [room, objects],
   );
   const formIsOpen = !!(
+    ui.workZoneFormId ||
     ui.spaceFormId ||
     ui.spaceResizeId ||
     ui.locationFormId ||
@@ -166,6 +170,12 @@ export function WarehouseLayoutFeature() {
   const resizeSpace = room.spaces.find(
     (space) => space.id === ui.spaceResizeId,
   );
+  const editWorkZone = room.workZones.find(
+    (zone) => zone.id === ui.workZoneFormId,
+  );
+  const selectedWorkZone = room.workZones.find(
+    (zone) => zone.id === ui.selectedWorkZoneId && !zone.archived,
+  );
   const editLocation = data.locations.find(
     (address) => address.id === ui.locationFormId,
   );
@@ -186,6 +196,7 @@ export function WarehouseLayoutFeature() {
     cancelSectionCopy();
     map.setSelectedId(null);
     ui.setSelectedAddressId(null);
+    ui.setSelectedWorkZoneId(null);
   };
   const saved = map.saveState === "saved" && !commands.error;
   const saveText = !isManager
@@ -534,6 +545,20 @@ export function WarehouseLayoutFeature() {
               <button
                 type="button"
                 disabled={busy}
+                aria-label="Добавить рабочую зону с QR"
+                onClick={() => {
+                  clear();
+                  ui.setDrawKind(null);
+                  map.setPanMode(false);
+                  ui.setWorkZoneFormId("new");
+                }}
+              >
+                <QrCode size={17} />
+                <span>Рабочая зона</span>
+              </button>
+              <button
+                type="button"
+                disabled={busy}
                 aria-label="Добавить проход"
                 onClick={() => {
                   clear();
@@ -691,6 +716,7 @@ export function WarehouseLayoutFeature() {
           <PlanCanvas
             data={data}
             warehouse={room}
+            highlightedAddressIds={editing ? selectedWorkZone?.locationIds : []}
             objects={objects}
             aisles={aisles}
             entrances={entrances}
@@ -884,6 +910,58 @@ export function WarehouseLayoutFeature() {
           />
         )}
       </div>
+      {editing && (
+        <WorkZonesPanel
+          data={data}
+          selectedId={ui.selectedWorkZoneId}
+          pending={busy}
+          error={formIsOpen ? null : commands.error}
+          onCreate={() => {
+            clear();
+            cancelSectionCopy();
+            ui.setDrawKind(null);
+            ui.setWorkZoneFormId("new");
+          }}
+          onEdit={(id) => {
+            clear();
+            cancelSectionCopy();
+            ui.setDrawKind(null);
+            ui.setWorkZoneFormId(id);
+          }}
+          onSelect={(id) =>
+            ui.setSelectedWorkZoneId(ui.selectedWorkZoneId === id ? null : id)
+          }
+          onArchive={async (id) => {
+            await commands.archiveWorkZone(id);
+            if (ui.selectedWorkZoneId === id) ui.setSelectedWorkZoneId(null);
+            map.markSaved();
+          }}
+          onRestore={async (id) => {
+            await commands.restoreWorkZone(id);
+            ui.setSelectedWorkZoneId(id);
+            map.markSaved();
+          }}
+        />
+      )}
+      <WorkZoneForm
+        open={isManager && !!ui.workZoneFormId}
+        zone={editWorkZone}
+        data={data}
+        pending={busy}
+        error={commands.error}
+        onClose={() => ui.setWorkZoneFormId(null)}
+        onSave={async (values, id) => {
+          const ids = new Set(room.workZones.map((zone) => zone.id));
+          const updated = await commands.saveWorkZone(values, id);
+          const saved = id
+            ? updated.warehouse.workZones.find((zone) => zone.id === id)
+            : updated.warehouse.workZones.find(
+                (zone) => !ids.has(zone.id) && !zone.archived,
+              );
+          if (saved) ui.setSelectedWorkZoneId(saved.id);
+          map.markSaved();
+        }}
+      />
       <SpaceResizeForm
         open={isManager && !!ui.spaceResizeId}
         space={resizeSpace}

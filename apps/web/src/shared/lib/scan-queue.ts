@@ -16,8 +16,8 @@ export function createScanQueue(port: {
   let running = false,
     failed = false,
     closed = false;
-  const publish = () => {
-    if (!closed && port.isCurrent())
+  const publish = (settled = false) => {
+    if (!closed && (settled || port.isCurrent()))
       port.changed({
         pending: items.length,
         running,
@@ -37,16 +37,19 @@ export function createScanQueue(port: {
         accepted = false;
       }
       if (accepted) items.shift();
-      if (closed || !port.isCurrent()) break;
-      if (!accepted) {
+      if (closed) break;
+      if (!accepted || (!port.isCurrent() && items.length > 0)) {
         failed = true;
-        port.failed(value);
+        port.failed(items[0]);
         break;
       }
+      if (!port.isCurrent()) break;
       publish();
     }
     running = false;
-    publish();
+    // A disabled context must still settle its local activity and expose recovery.
+    // close() remains the boundary that prevents updates after unmount.
+    publish(true);
   };
   return {
     enqueue(value: string) {
@@ -61,6 +64,15 @@ export function createScanQueue(port: {
       publish();
       void drain();
       return true;
+    },
+    discardFailed() {
+      if (closed || running || !failed) return 0;
+      const discarded = items.length;
+      items.length = 0;
+      failed = false;
+      // Explicit recovery is local and remains available after external disabling.
+      publish(true);
+      return discarded;
     },
     close() {
       if (closed) return;

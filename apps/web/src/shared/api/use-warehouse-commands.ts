@@ -3,6 +3,11 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as api from "./generated/client";
 import type {
+  CreateWorkZoneDto,
+  UpdateWorkZoneDto,
+  StartZoneWorkDto,
+  ScanShipmentWorkDto,
+  FinishShipmentWorkDto,
   AdjustStockDto,
   CreateSpaceDto,
   UpdateSpaceDto,
@@ -93,6 +98,20 @@ export function useWarehouseCommands() {
     pending,
     error,
     clearError: () => setError(null),
+    createWorkZone: (dto: CreateWorkZoneDto) =>
+      run(() => api.createWorkZone(dto)),
+    updateWorkZone: (id: string, dto: UpdateWorkZoneDto) =>
+      run(() => api.updateWorkZone(id, dto)),
+    archiveWorkZone: (id: string, dto: CommandDto) =>
+      run(() => api.archiveWorkZone(id, dto)),
+    restoreWorkZone: (id: string, dto: CommandDto) =>
+      run(() => api.restoreWorkZone(id, dto)),
+    startZoneWork: (dto: StartZoneWorkDto) => run(() => api.startZoneWork(dto)),
+    leaveZoneWork: (dto: ClaimTaskDto) => run(() => api.leaveZoneWork(dto)),
+    scanShipmentWork: (id: string, dto: ScanShipmentWorkDto) =>
+      run(() => api.scanShipmentWork(id, dto)),
+    finishShipmentWork: (id: string, dto: FinishShipmentWorkDto) =>
+      run(() => api.finishShipmentWork(id, dto)),
     adjustStock: (dto: AdjustStockDto) => run(() => api.adjustStock(dto)),
     createSpace: (dto: CreateSpaceDto) => run(() => api.createSpace(dto)),
     updateSpace: (id: string, dto: UpdateSpaceDto) =>

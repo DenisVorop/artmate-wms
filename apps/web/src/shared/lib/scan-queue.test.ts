@@ -111,3 +111,70 @@ test("thrown network failure preserves the unaccepted scan and bounds the input 
   assert.equal(p.state().pending, 50);
   assert.deepEqual(p.failed, ["0"]);
 });
+test("explicit failed recovery discards the failed front and its unsent backlog, then accepts new scans", async () => {
+  const got: string[] = [];
+  const p = setup(async (code) => {
+    got.push(code);
+    return code !== "wrong";
+  });
+  p.q.enqueue("wrong");
+  p.q.enqueue("second");
+  p.q.enqueue("third");
+  await tick();
+  assert.equal(p.q.discardFailed(), 3);
+  assert.deepEqual(p.state(), { pending: 0, running: false, failedCode: null });
+  assert.deepEqual(got, ["wrong"]);
+  assert.deepEqual(p.dropped, []);
+  assert.equal(p.q.discardFailed(), 0);
+  assert.equal(p.q.enqueue("new"), true);
+  await tick();
+  assert.deepEqual(got, ["wrong", "new"]);
+  assert.equal(p.state().pending, 0);
+});
+test("recovery never removes an in-flight scan or its queued followers", async () => {
+  let finish!: (accepted: boolean) => void;
+  const got: string[] = [];
+  const p = setup(async (code) => {
+    got.push(code);
+    if (code === "first")
+      return new Promise<boolean>((resolve) => (finish = resolve));
+    return true;
+  });
+  p.q.enqueue("first");
+  p.q.enqueue("second");
+  assert.equal(p.q.discardFailed(), 0);
+  assert.equal(p.state().pending, 2);
+  finish(true);
+  await tick();
+  assert.deepEqual(got, ["first", "second"]);
+  assert.equal(p.state().pending, 0);
+});
+test("explicit recovery publishes idle activity even after the failed context becomes disabled", async () => {
+  const p = setup(async () => false);
+  p.q.enqueue("wrong");
+  await tick();
+  p.stale();
+  assert.equal(p.q.discardFailed(), 1);
+  assert.deepEqual(p.state(), { pending: 0, running: false, failedCode: null });
+  assert.equal(p.q.enqueue("other context"), false);
+});
+test("external disabling during a request settles it and preserves only the unaccepted codes for recovery", async () => {
+  for (const accepted of [true, false]) {
+    let finish!: (accepted: boolean) => void;
+    const got: string[] = [];
+    const p = setup((code) => {
+      got.push(code);
+      return new Promise<boolean>((resolve) => (finish = resolve));
+    });
+    p.q.enqueue("first");
+    p.q.enqueue("second");
+    p.stale();
+    finish(accepted);
+    await tick();
+    assert.deepEqual(got, ["first"]);
+    assert.equal(p.state().running, false);
+    assert.equal(p.state().failedCode, accepted ? "second" : "first");
+    assert.equal(p.q.discardFailed(), accepted ? 1 : 2);
+    assert.equal(p.state().pending, 0);
+  }
+});

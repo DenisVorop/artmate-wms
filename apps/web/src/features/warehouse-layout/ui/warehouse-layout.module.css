@@ -1555,3 +1555,12 @@
   stroke-width: 2;
   stroke-dasharray: 6 4;
 }
+
+.workZoneHalo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.85;
+}
