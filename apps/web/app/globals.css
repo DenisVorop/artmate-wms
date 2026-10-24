@@ -2041,6 +2041,12 @@ textarea.input {
   }
 }
 @media print {
+  :root {
+    color-scheme: light;
+  }
+  html {
+    background: #fff;
+  }
   .sidebar,
   .topbar,
   .workspace-footer,

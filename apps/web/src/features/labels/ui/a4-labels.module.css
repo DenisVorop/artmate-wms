@@ -1,0 +1,329 @@
+.page {
+  max-width: 1360px;
+  padding: 32px;
+  margin: auto;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.header > div {
+  max-width: 700px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 26px;
+  color: var(--accent);
+  font-size: 13px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+}
+.selection {
+  padding: 20px;
+  position: sticky;
+  top: 20px;
+}
+.selectionHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 22px;
+  align-items: center;
+}
+.selectionHeading h2 {
+  font-size: 16px;
+}
+.selectionHeading > span {
+  color: var(--accent);
+  font-size: 12px;
+}
+.selection > label {
+  margin-bottom: 14px;
+}
+.selectionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.filterHint,
+.hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.options {
+  max-height: 65vh;
+  overflow-y: auto;
+  margin-top: 16px;
+}
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 14px 2px;
+  cursor: pointer;
+}
+.option > input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 5px;
+  accent-color: var(--accent);
+}
+.option > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+.option small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.option strong {
+  font-size: 14px;
+}
+.option > span > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.preview {
+  min-width: 0;
+}
+.instructions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  color: var(--accent);
+}
+.instructions p {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.instructions p span {
+  color: var(--muted);
+}
+.pageCount {
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sheets {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+}
+.sheet {
+  width: min(100%, 190mm);
+  aspect-ratio: 190 / 276;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  background: white;
+  color: black;
+  box-shadow: 0 12px 40px oklch(0 0 0 / 0.2);
+  font-family: Arial, sans-serif;
+}
+.card {
+  padding: 6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  min-height: 0;
+  border: 1px dashed #999;
+}
+.kind {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: clamp(8px, 0.9vw, 10px);
+  color: #444;
+  margin: 0 0 5%;
+}
+.card h2 {
+  font-size: clamp(14px, 2vw, 32px);
+  line-height: 1.12;
+  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
+  letter-spacing: -0.02em;
+}
+.card h2.longTitle {
+  font-size: clamp(11px, 1.5vw, 22px);
+}
+.card img {
+  display: block;
+  width: 72%;
+  height: auto;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+  background: white;
+  margin: auto 0;
+  padding: 3%;
+  box-sizing: border-box;
+}
+.code {
+  font-size: clamp(12px, 1.7vw, 27px);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+.longCode {
+  font-size: clamp(10px, 1vw, 16px);
+}
+.denseCard h2.longTitle {
+  font-size: clamp(10px, 1.2vw, 18px);
+}
+.denseCard img {
+  width: 60%;
+}
+.error {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.printNotice {
+  display: none;
+}
+@media (max-width: 1000px) {
+  .workspace {
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 18px;
+  }
+  .page {
+    padding: 24px;
+  }
+  .selection {
+    padding: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .selection {
+    position: static;
+  }
+  .options {
+    max-height: 300px;
+  }
+  .page {
+    padding: 18px;
+  }
+  .card h2 {
+    font-size: clamp(14px, 4vw, 28px);
+  }
+  .card h2.longTitle {
+    font-size: clamp(11px, 3vw, 20px);
+  }
+  .code {
+    font-size: clamp(12px, 3vw, 23px);
+  }
+}
+@media print {
+  @page warehouseSigns {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  .page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  .screenOnly {
+    display: none !important;
+  }
+  .workspace {
+    display: block;
+  }
+  .sheets {
+    display: block;
+  }
+  .sheet {
+    page: warehouseSigns;
+    width: 190mm;
+    height: 276mm;
+    aspect-ratio: auto;
+    box-shadow: none;
+    margin: 0;
+    break-after: page;
+    break-inside: avoid;
+  }
+  .sheet:last-child {
+    break-after: auto;
+  }
+  .card {
+    padding: 6mm;
+    border: 0.25mm dashed #888;
+    break-inside: avoid;
+  }
+  .kind {
+    font-size: 9pt;
+    margin-bottom: 5mm;
+  }
+  .card h2 {
+    font-size: 24pt;
+  }
+  .card h2.longTitle {
+    font-size: 16pt;
+  }
+  .denseCard h2.longTitle {
+    font-size: 12pt;
+  }
+  .card.denseCard img {
+    width: 46mm;
+    height: 46mm;
+  }
+  .card img {
+    width: 58mm;
+    height: 58mm;
+    padding: 2mm;
+    margin: auto 0;
+  }
+  .code {
+    font-size: 21pt;
+  }
+  .code.longCode {
+    font-size: 12pt;
+  }
+  .page[data-print-ready="false"] .sheets {
+    display: none;
+  }
+  .page[data-print-ready="false"] .printNotice {
+    display: block;
+    page: warehouseSigns;
+    color: black;
+    font-size: 16pt;
+  }
+}

@@ -67,6 +67,15 @@ export function WorkZonesPanel({
           ) : (
             <>
               <Link
+                href={`/labels/a4?type=work-zone&id=${encodeURIComponent(zone.id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="button button--secondary button--sm"
+              >
+                <QrCode size={14} />
+                Табличка А4
+              </Link>
+              <Link
                 href={`/labels/work-zone/${encodeURIComponent(zone.id)}`}
                 target="_blank"
                 rel="noopener noreferrer"

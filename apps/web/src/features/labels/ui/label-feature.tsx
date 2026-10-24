@@ -86,6 +86,14 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
           )}
         </div>
         <div className={styles.printActions}>
+          {(type === "work-zone" || type === "location") && (
+            <Link
+              href={`/labels/a4?type=${type}&id=${encodeURIComponent(id)}`}
+              className="button button--secondary"
+            >
+              Табличка на А4
+            </Link>
+          )}
           <Button
             onClick={print.print}
             disabled={!print.ready}

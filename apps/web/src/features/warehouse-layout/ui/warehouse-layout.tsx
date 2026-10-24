@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useSession } from "@/entities/session";
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -18,6 +19,7 @@ import {
   X,
   ZoomIn,
   QrCode,
+  Printer,
 } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
@@ -304,12 +306,20 @@ export function WarehouseLayoutFeature() {
             коридоры и места хранения на одном плане.
           </p>
         </div>
-        {isManager && !editing && (
-          <Button onClick={() => map.setEditing(true)} disabled={busy}>
-            <Move size={17} />
-            Открыть конструктор
-          </Button>
-        )}
+        <div className={styles.headerActions}>
+          {isManager && (
+            <Link href="/labels/a4" className="button button--secondary">
+              <Printer size={17} />
+              Таблички А4
+            </Link>
+          )}
+          {isManager && !editing && (
+            <Button onClick={() => map.setEditing(true)} disabled={busy}>
+              <Move size={17} />
+              Открыть конструктор
+            </Button>
+          )}
+        </div>
       </header>
       <div className={styles.summary}>
         <div>

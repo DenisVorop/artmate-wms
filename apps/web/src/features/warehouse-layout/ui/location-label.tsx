@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Printer } from "lucide-react";
 import { useState } from "react";
 import { Button, ErrorState, LoadingState, Modal } from "@/shared/ui";
@@ -68,6 +69,15 @@ export function LocationLabel({ id, onClose }: Props) {
             alt={`QR адреса ${label.data.code}`}
           />
           <p>{label.data.title}</p>
+          <Link
+            href={`/labels/a4?type=location&id=${encodeURIComponent(id!)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="button button--secondary"
+          >
+            <Printer size={16} />
+            Табличка на А4
+          </Link>
           {printError && (
             <p className={styles.error} role="alert">
               {printError}
