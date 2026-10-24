@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import {
   Body,
+  applyDecorators,
   Inject,
   Controller,
   Get,
@@ -39,6 +40,18 @@ import {
 import * as D from "./dto";
 import { WarehouseService } from "./warehouse.service";
 
+const workforceFilters = () =>
+  applyDecorators(
+    ApiQuery({ name: "from", required: false, type: String, format: "date" }),
+    ApiQuery({ name: "to", required: false, type: String, format: "date" }),
+    ApiQuery({ name: "employeeId", required: false, type: String }),
+  );
+const workforcePaging = () =>
+  applyDecorators(
+    workforceFilters(),
+    ApiQuery({ name: "page", required: false, type: Number }),
+    ApiQuery({ name: "pageSize", required: false, type: Number }),
+  );
 @ApiCookieAuth()
 @ApiTags("warehouse")
 @Controller("api")
@@ -51,6 +64,57 @@ export class WarehouseController {
   @ApiOkResponse({ type: D.WorkspaceDto })
   getWorkspace() {
     return this.warehouse.snapshot();
+  }
+  @Get("performance")
+  @ApiOperation({ operationId: "getPerformance" })
+  @workforceFilters()
+  @ApiOkResponse({ type: D.PerformanceReportDto })
+  getPerformance(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.PerformanceQueryDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: D.PerformanceQueryDto,
+  ) {
+    return this.warehouse.getPerformance(query);
+  }
+  @Get("shifts")
+  @ApiOperation({ operationId: "getShiftHistory" })
+  @workforcePaging()
+  @ApiOkResponse({ type: D.ShiftHistoryPageDto })
+  getShiftHistory(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.WorkforceHistoryQueryDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: D.WorkforceHistoryQueryDto,
+  ) {
+    return this.warehouse.getShiftHistory(query);
+  }
+  @Get("work-events")
+  @ApiOperation({ operationId: "getWorkHistory" })
+  @workforcePaging()
+  @ApiOkResponse({ type: D.WorkHistoryPageDto })
+  getWorkHistory(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.WorkforceHistoryQueryDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: D.WorkforceHistoryQueryDto,
+  ) {
+    return this.warehouse.getWorkHistory(query);
   }
   @Get("stock-ledger")
   @ApiOperation({ operationId: "getStockLedger" })

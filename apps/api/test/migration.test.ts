@@ -490,6 +490,19 @@ test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full 
     );
     assert.deepEqual(await warehouse.getLabel("box", full.openBoxCode), label);
     assert.deepEqual(await warehouse.packTask(full.id, command), packed);
+    const work = await warehouse.getWorkHistory({});
+    const recovered = work.items.filter(
+      (event) => event.requestId === command.requestId,
+    );
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0].kind, "box_packed");
+    assert.equal(recovered[0].units, full.unitsPerBox);
+    assert.equal(recovered[0].employeeId, "employee-1");
+    assert.equal(
+      (await warehouse.getPerformance({ employeeId: "employee-1" }))
+        .employees[0].metrics.unitsPacked,
+      full.unitsPerBox,
+    );
     const cached = await warehouse.updateWarehousePlan(replay);
     assert.ok(
       cached.tasks.every((t) => (t as any).boxCodeConfirmed === undefined),
@@ -509,7 +522,7 @@ test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full 
           "SELECT value FROM metadata WHERE key='schema_version'",
         )
       ).rows[0].value,
-      "9",
+      "10",
     );
     await inspect.close();
   } finally {

@@ -5,6 +5,9 @@ import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
   "getWorkspace",
+  "getPerformance",
+  "getShiftHistory",
+  "getWorkHistory",
   "getStockLedger",
   "getLabel",
   "getReceiptPlacementOptions",
@@ -60,6 +63,9 @@ export const warehouseOperations = new Set([
 ]);
 const workerReads = new Set([
   "getWorkspace",
+  "getPerformance",
+  "getShiftHistory",
+  "getWorkHistory",
   "getLabel",
   "getReceiptPlacementOptions",
   "getReceiptLabels",

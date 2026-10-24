@@ -1402,3 +1402,173 @@ export class ResetAuthPasswordDto {
   @MaxLength(128)
   password!: string;
 }
+
+export class PerformanceQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    format: "date",
+    description: "Первый календарный день Europe/Moscow включительно",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsISO8601({ strict: true })
+  from?: string;
+  @ApiPropertyOptional({
+    type: String,
+    format: "date",
+    description:
+      "Последний календарный день Europe/Moscow включительно; диапазон не больше366 дней",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsISO8601({ strict: true })
+  to?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  employeeId?: string;
+}
+export class WorkforceHistoryQueryDto extends PerformanceQueryDto {
+  @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  page?: number;
+  @ApiPropertyOptional({ type: Number, default: 25, minimum: 1, maximum: 100 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+}
+export class PerformanceMetricsDto {
+  @ApiProperty({ type: Number }) boxesPacked!: number;
+  @ApiProperty({ type: Number }) unitsPacked!: number;
+  @ApiProperty({ type: Number }) receiptPalletsPlaced!: number;
+  @ApiProperty({ type: Number }) putawayBoxesPlaced!: number;
+  @ApiProperty({ type: Number }) movementPalletsPlaced!: number;
+  @ApiProperty({
+    type: Number,
+    description: "В смене без перерывов; не измерение активности",
+  })
+  workingSeconds!: number;
+  @ApiProperty({ type: Number }) breakSeconds!: number;
+}
+export class CurrentShiftDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) startedAt!: string;
+  @ApiProperty({ type: String, enum: ["explicit", "observed_from_migration"] })
+  origin!: string;
+  @ApiProperty({ type: String, enum: ["working", "break"] }) status!: string;
+  @ApiProperty({ type: String }) periodStartedAt!: string;
+  @ApiProperty({ type: Number }) workingSeconds!: number;
+  @ApiProperty({ type: Number }) breakSeconds!: number;
+}
+export class WorkJobDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String, enum: ["assembly", "putaway", "movement"] })
+  kind!: string;
+  @ApiProperty({ type: String }) status!: string;
+  @ApiProperty({ type: String }) description!: string;
+}
+export class EmployeePerformanceDto {
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String }) employeeName!: string;
+  @ApiProperty({ type: String, enum: ["off", "working", "break"] })
+  status!: string;
+  @ApiProperty({ type: CurrentShiftDto, nullable: true })
+  currentShift!: CurrentShiftDto | null;
+  @ApiProperty({ type: [WorkJobDto] }) currentJobs!: WorkJobDto[];
+  @ApiProperty({ type: PerformanceMetricsDto }) metrics!: PerformanceMetricsDto;
+}
+export class PerformanceReportDto {
+  @ApiProperty({ type: String }) trackingSince!: string;
+  @ApiProperty({ type: String, format: "date" }) from!: string;
+  @ApiProperty({ type: String, format: "date" }) to!: string;
+  @ApiProperty({ type: String, enum: ["Europe/Moscow"] }) timezone!: string;
+  @ApiProperty({ type: String }) generatedAt!: string;
+  @ApiProperty({ type: [EmployeePerformanceDto] })
+  employees!: EmployeePerformanceDto[];
+}
+export class ShiftIntervalDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String, enum: ["working", "break"] }) status!: string;
+  @ApiProperty({ type: String }) startedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) endedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) actorEmployeeId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) actorName!: string | null;
+  @ApiProperty({
+    type: Number,
+    description: "Пересечение интервала с выбранным отчётным периодом",
+  })
+  durationSeconds!: number;
+}
+export class ShiftHistoryDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String }) employeeName!: string;
+  @ApiProperty({ type: String }) startedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) endedAt!: string | null;
+  @ApiProperty({ type: String, enum: ["explicit", "observed_from_migration"] })
+  origin!: string;
+  @ApiProperty({ type: String, nullable: true }) startedByEmployeeId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) startedByName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) endedByEmployeeId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) endedByName!: string | null;
+  @ApiProperty({ type: Number }) workingSeconds!: number;
+  @ApiProperty({ type: Number }) breakSeconds!: number;
+  @ApiProperty({ type: [ShiftIntervalDto] }) intervals!: ShiftIntervalDto[];
+}
+export class ShiftHistoryPageDto {
+  @ApiProperty({ type: String }) trackingSince!: string;
+  @ApiProperty({ type: [ShiftHistoryDto] }) items!: ShiftHistoryDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}
+export class WorkEventDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String }) employeeName!: string;
+  @ApiProperty({
+    type: String,
+    enum: [
+      "box_packed",
+      "receipt_pallet_placed",
+      "putaway_box_placed",
+      "movement_pallet_placed",
+    ],
+  })
+  kind!: string;
+  @ApiProperty({ type: String }) occurredAt!: string;
+  @ApiProperty({ type: String, nullable: true }) requestId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) shiftId!: string | null;
+  @ApiProperty({ type: String }) referenceId!: string;
+  @ApiProperty({ type: String }) referenceCode!: string;
+  @ApiProperty({ type: Number }) quantity!: number;
+  @ApiProperty({
+    type: Number,
+    description:
+      "Упакованные единицы только для box_packed; для остальных операций0",
+  })
+  units!: number;
+}
+export class WorkHistoryPageDto {
+  @ApiProperty({ type: String }) trackingSince!: string;
+  @ApiProperty({ type: [WorkEventDto] }) items!: WorkEventDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}

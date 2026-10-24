@@ -17,3 +17,97 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+.person {
+  flex: 1;
+  min-width: 0;
+}
+.person h2 {
+  margin-bottom: 5px;
+  overflow-wrap: anywhere;
+}
+.shiftTime {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.shiftTime > span:last-child {
+  flex-basis: 100%;
+}
+.currentWork {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  font-size: 12px;
+}
+.jobs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.jobs li {
+  display: grid;
+  gap: 4px;
+}
+.jobs a,
+.historyLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.jobs span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.placementMetrics {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+.placementMetrics > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.placementMetrics dt {
+  color: var(--muted);
+}
+.placementMetrics dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.impact,
+.blocker {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 16px 0;
+  color: var(--muted);
+}
+.blocker {
+  color: var(--warning);
+}
+.historyLink {
+  margin-top: 18px;
+}
+.historyLink:focus-visible,
+.jobs a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.metricPeriod {
+  margin: 18px 0 -8px;
+  font-size: 12px;
+  color: var(--muted);
+}

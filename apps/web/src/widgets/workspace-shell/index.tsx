@@ -40,6 +40,11 @@ const allNavigation = [
   { href: "/movements", label: "Перемещения", icon: MoveRight },
   { href: "/shipments", label: "Отгрузки", icon: ArrowUpRight },
   { href: "/team", label: "Команда", icon: UsersRound },
+  {
+    href: "/performance",
+    label: "Смены и выработка",
+    icon: ChartNoAxesCombined,
+  },
 ];
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
@@ -54,6 +59,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     "/putaway",
     "/movements",
     "/team",
+    "/performance",
   ];
   const navigation = allNavigation.filter(
     (item) => session.isManager || workerPaths.includes(item.href),
@@ -125,7 +131,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   );
   const activeEmployees =
     data?.employees.filter((employee) =>
-      ["working", "active"].includes(String(employee.status)),
+      ["working", "break"].includes(String(employee.status)),
     ).length ?? 0;
   return (
     <div className="workspace-layout">
@@ -180,7 +186,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               className={`nav-item ${pathname === href ? "nav-item--active" : ""}`}
             >
               <Icon size={19} strokeWidth={1.7} />
-              <span>{label}</span>
+              <span>
+                {!session.isManager && href === "/team" ? "Моя смена" : label}
+              </span>
               {pathname === href && <span className="nav-current-dot" />}
             </Link>
           ))}
@@ -197,9 +205,18 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
                       (employee) => employee.id === session.user?.employeeId,
                     )?.status === "working"
                   ? "Ваша смена открыта"
-                  : "Ваша смена"}
+                  : data?.employees.find(
+                        (employee) => employee.id === session.user?.employeeId,
+                      )?.status === "break"
+                    ? "Ваша смена · перерыв"
+                    : "Вне смены"}
             </span>
-            <Link href="/team" aria-label="Открыть команду">
+            <Link
+              href="/team"
+              aria-label={
+                session.isManager ? "Открыть команду" : "Открыть мою смену"
+              }
+            >
               <ArrowUpRight size={16} />
             </Link>
           </div>
@@ -254,7 +271,11 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             </button>
             <span className="breadcrumb-workspace">Рабочее пространство</span>
             <span className="breadcrumb-divider">/</span>
-            <strong>{current.label}</strong>
+            <strong>
+              {!session.isManager && current.href === "/team"
+                ? "Моя смена"
+                : current.label}
+            </strong>
           </div>
           <div className="topbar-actions">
             <span className={sessionStyles.role}>{roleLabel}</span>
@@ -319,7 +340,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           {links.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} onClick={() => setSearchOpen(false)}>
               <Icon size={19} />
-              <span>{label}</span>
+              <span>
+                {!session.isManager && href === "/team" ? "Моя смена" : label}
+              </span>
               <ArrowUpRight size={16} />
             </Link>
           ))}

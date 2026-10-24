@@ -38,7 +38,11 @@ import type {
   ConfirmMovementDto,
   RetireEmptyPalletDto,
 } from "./generated/model";
-import { workspaceQueryKey, stockLedgerQueryKey } from "./query-keys";
+import {
+  workspaceQueryKey,
+  stockLedgerQueryKey,
+  workforceQueryKey,
+} from "./query-keys";
 import { getAuthEpoch } from "./auth-memory";
 import { ApiError } from "./api-error";
 import { runWarehouseCommand } from "./run-warehouse-command";
@@ -72,6 +76,7 @@ export function useWarehouseCommands() {
           409,
         );
       void client.invalidateQueries({ queryKey: stockLedgerQueryKey });
+      void client.invalidateQueries({ queryKey: workforceQueryKey });
       return result;
     } catch (e) {
       setError(

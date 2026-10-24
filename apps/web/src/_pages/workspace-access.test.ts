@@ -9,6 +9,7 @@ test("Рабочие прямые ссылки доступны сотрудни
     "putaway",
     "movements",
     "team",
+    "performance",
   ])
     assert.equal(canOpenWorkspaceView("employee", route), true, route);
   for (const route of ["overview", "inventory", "stock-ledger", "shipments"]) {

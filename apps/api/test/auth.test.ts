@@ -319,6 +319,141 @@ test("worker sees projected stock and only own staff/tasks; management and spoof
     403,
   );
 });
+test("workforce HTTP permissions scope workers to self, manager shift actor differs from subject and strict query bounds are enforced", async () => {
+  for (const path of ["performance", "shifts", "work-events"]) {
+    assert.equal((await call("GET", path)).status, 401);
+    assert.equal(
+      (
+        await call(
+          "GET",
+          `${path}?employeeId=${manager.user.employeeId}`,
+          undefined,
+          worker,
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await call(
+          "GET",
+          `${path}?employeeId=${worker.user.employeeId}`,
+          undefined,
+          worker,
+        )
+      ).status,
+      200,
+    );
+  }
+  const report = await call("GET", "performance", undefined, worker);
+  assert.deepEqual(
+    report.body.employees.map((e: D.EmployeePerformanceDto) => e.employeeId),
+    [worker.user.employeeId],
+  );
+  assert.equal(
+    (await call("GET", "performance", undefined, manager)).body.employees
+      .length,
+    (await w.snapshot()).employees.length,
+  );
+  for (const query of [
+    "from=2026-02-31",
+    "from=2026-10-25&to=2026-10-24",
+    "from=2024-01-01&to=2025-01-01",
+    "from=2026-10-24T00:00:00Z",
+    "employeeId=",
+  ])
+    assert.equal(
+      (await call("GET", `performance?${query}`, undefined, manager)).status,
+      400,
+    );
+  for (const query of ["page=0", "page=NaN", "pageSize=101", "extra=yes"])
+    assert.equal(
+      (await call("GET", `shifts?${query}`, undefined, manager)).status,
+      400,
+    );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `employees/${worker.user.employeeId}/shift`,
+        { ...req(), status: "break" },
+        manager,
+      )
+    ).status,
+    200,
+  );
+  const history = await call(
+    "GET",
+    `shifts?employeeId=${worker.user.employeeId}`,
+    undefined,
+    manager,
+  );
+  assert.equal(history.status, 200);
+  const current = history.body.items.find(
+    (s: D.ShiftHistoryDto) => s.endedAt === null,
+  ) as D.ShiftHistoryDto;
+  assert.equal(current.employeeId, worker.user.employeeId);
+  assert.equal(
+    current.intervals.at(-1)!.actorEmployeeId,
+    manager.user.employeeId,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `employees/${worker.user.employeeId}/shift`,
+        { ...req(), status: "working" },
+        manager,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `employees/${worker.user.employeeId}/shift`,
+        { ...req(), status: "off" },
+        manager,
+      )
+    ).status,
+    200,
+  );
+  const ended = await call(
+    "GET",
+    `shifts?employeeId=${worker.user.employeeId}`,
+    undefined,
+    manager,
+  );
+  assert.equal(
+    ended.body.items.find((s: D.ShiftHistoryDto) => s.id === current.id)
+      .endedByEmployeeId,
+    manager.user.employeeId,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `employees/${worker.user.employeeId}/shift`,
+        { ...req(), status: "working" },
+        manager,
+      )
+    ).status,
+    200,
+  );
+  const explicit = await call(
+    "GET",
+    `shifts?employeeId=${worker.user.employeeId}`,
+    undefined,
+    manager,
+  );
+  assert.equal(
+    explicit.body.items.find((s: D.ShiftHistoryDto) => s.endedAt === null)
+      .startedByEmployeeId,
+    manager.user.employeeId,
+  );
+});
+
 test("second manager has an independent fingerprint namespace; fresh role changes revoke all sessions and worker replay stays projected", async () => {
   const s = await w.snapshot(),
     employee = s.employees.find(

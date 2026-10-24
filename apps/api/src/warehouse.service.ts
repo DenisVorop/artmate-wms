@@ -2,12 +2,22 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
 import { createDatabase, Database, Queryable } from "./database";
 import { requestAuth, projectWorkspace } from "./auth-context";
+import {
+  initializeWorkforce,
+  workforceBefore,
+  recordWorkforce,
+  reportPeriod,
+  performanceReport,
+  shiftHistory,
+  workHistory,
+} from "./workforce";
 import { authorizeWarehouse } from "./auth-policy";
 import { initializeAuth } from "./auth-storage";
 import { createHash, randomUUID } from "node:crypto";
@@ -222,6 +232,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "9"],
         );
+      await initializeWorkforce(tx, await this._load(tx));
+      if (Number(version.rows[0]?.value ?? 1) < 10)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "10"],
+        );
     });
   }
   private _enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -271,6 +287,74 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         await authorizeWarehouse(tx, operation, undefined, state);
       return state;
     });
+  }
+  private async _workforceRead<T>(
+    operation: string,
+    q: D.PerformanceQueryDto,
+    read: (
+      tx: Queryable,
+      state: D.WorkspaceDto,
+      employees: D.EmployeeDto[],
+      period: Awaited<ReturnType<typeof reportPeriod>>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.authTransaction(async (tx) => {
+      const state = await this._load(tx),
+        context = requestAuth.getStore();
+      if (context?.http)
+        await authorizeWarehouse(tx, operation, undefined, state);
+      if (
+        context?.http &&
+        context.role !== "manager" &&
+        q.employeeId !== undefined &&
+        q.employeeId !== context.employeeId
+      )
+        throw new ForbiddenException("Можно просматривать только свою историю");
+      const employeeId =
+        context?.http && context.role !== "manager"
+          ? context.employeeId
+          : q.employeeId;
+      if (
+        employeeId !== undefined &&
+        !state.employees.some((e) => e.id === employeeId)
+      )
+        throw new NotFoundException("Сотрудник не найден");
+      const employees = state.employees
+        .filter((e) => employeeId === undefined || e.id === employeeId)
+        .sort(
+          (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+        );
+      return read(tx, state, employees, await reportPeriod(tx, q));
+    });
+  }
+  getPerformance(q: D.PerformanceQueryDto = {}) {
+    return this._workforceRead("getPerformance", q, performanceReport);
+  }
+  getShiftHistory(q: D.WorkforceHistoryQueryDto = {}) {
+    return this._workforceRead(
+      "getShiftHistory",
+      q,
+      (tx, _state, employees, period) =>
+        shiftHistory(
+          tx,
+          employees.map((e) => e.id),
+          q,
+          period,
+        ),
+    );
+  }
+  getWorkHistory(q: D.WorkforceHistoryQueryDto = {}) {
+    return this._workforceRead(
+      "getWorkHistory",
+      q,
+      (tx, _state, employees, period) =>
+        workHistory(
+          tx,
+          employees.map((e) => e.id),
+          q,
+          period,
+        ),
+    );
   }
   async getStockLedger(
     query: D.StockLedgerQueryDto = {},
@@ -493,6 +577,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           return projectWorkspace(previous.rows[0].response, context);
         }
         const before = stockPositions(state);
+        const workBefore = workforceBefore(state);
         mutate(state);
         this._assertIntegrity(state);
         this._deriveBalance(state);
@@ -525,6 +610,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
               context?.http ? context.employeeId : undefined,
             ),
           );
+        await recordWorkforce(tx, workBefore, state, body);
         await tx.query(
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
           [body.requestId, fingerprint, JSON.stringify(state)],
@@ -2623,7 +2709,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   updateShift(id: string, b: D.UpdateShiftDto) {
     return this._command(`updateShift/${id}`, b, (s) => {
       const employee = find(s.employees, id, "Сотрудник");
+      if (!["working", "break", "off"].includes(b.status))
+        fail("Неизвестный статус смены");
+      if (employee.status === b.status) return;
+      if (employee.status === "off" && b.status === "break")
+        fail("Сначала начните смену");
       if (b.status !== "working") {
+        if (
+          s.movements.some(
+            (m) => m.employeeId === id && m.status === "in_transit",
+          )
+        )
+          fail(
+            "Сначала разместите паллету: нельзя прервать смену с паллетой в пути",
+          );
         if (
           s.putawayTasks.some(
             (t) => t.employeeId === id && t.status === "in_transit",
