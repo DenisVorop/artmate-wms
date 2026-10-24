@@ -1,0 +1,9 @@
+# Контракт
+
+Существующий updateSpace: по исходной активной геометрии пространства выбираются целиком лежащие внутри активные sections, standalone locations(sectionId=null) и aisles, с учётом поворота. При изменении x/y всем добавляется одна и та же delta с нормализацией floatnoise. У активной section сдвигаются все дочерние levels включая архивные, ровно один раз. Архивные standalone/sections/aisles не входят в группу. Помещение и коридор имеют одинаковое поведение. Rename/resize без delta не сдвигают объекты. Translate+resize: состав по исходному footprint, затем проверка результата и полное отклонение при невозможности вместить.
+
+Секция, ее адреса, одиночное место, паллеты/короба/reservations/tasks не меняют ID/QR/учётные ссылки/лимиты/остатки; moving schema не создаёт физические palletmovements. Привязанные entrance используют spaceId+offset, поэтому просто следуют перенесённой стене. Остальные помещения и их объекты не сдвигаются. checkPlanState проверяет финальный snapshot одной командой; любой отказ откатывает всё и revision/commands/activity не изменяются. replay идемпотентен.
+
+Frontend preview определяет членство по исходным данным тем же fullcontainment с rotatedfootprint/tolerance; один effectiveWorkspace/scene даёт синхронный preview пола/стен/входов/sections/locations/aisles. Не мутировать Querycache и не запускать отдельные команды на каждый объект. Запись остаётся черезupdateSpace; после response виден подтверждённый snapshot, ошибка/Escape/cancel возвращают исходный. Сохранить точные дельты/gridfix изADR028.
+
+UX: подсказка и форма явно описывают совместный перенос, настройки X/Y — альтернатива drag. Правила product-design: rule/gesture-has-control-alternative, rule/name-object-scope-consequence, rule/cover-reachable-states. Дизайн существующий тёмный стеклянный.

@@ -1,0 +1,19 @@
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.created {
+  border-color: oklch(0.75 0.13 156 / 0.35);
+}
+.notice {
+  margin-bottom: 20px;
+  border: 1px solid oklch(0.75 0.13 156 / 0.2);
+  padding: 13px 16px;
+  border-radius: 12px;
+  color: var(--accent);
+  background: oklch(0.75 0.13 156 / 0.045);
+  font-size: 12px;
+  line-height: 1.6;
+}

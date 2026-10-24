@@ -1,0 +1,7 @@
+node_modules
+.next
+dist
+.data
+openapi.json
+apps/web/src/shared/api/generated
+yarn.lock

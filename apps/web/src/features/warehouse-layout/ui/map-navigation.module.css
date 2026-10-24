@@ -1,0 +1,9 @@
+.backgroundPan {
+  cursor: grab;
+  touch-action: none;
+}
+.panning,
+.panning * {
+  cursor: grabbing !important;
+  user-select: none;
+}

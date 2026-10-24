@@ -1,0 +1,54 @@
+.kindField {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.kindField legend {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.kindChoices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: oklch(0.1 0.01 155 / 0.3);
+}
+.kindChoices label {
+  position: relative;
+  cursor: pointer;
+}
+.kindChoices input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.kindChoices span {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.kindChoices input:checked + span {
+  background: oklch(0.65 0.1 155 / 0.1);
+  border-color: oklch(0.7 0.1 155 / 0.18);
+  color: var(--accent);
+}
+.kindChoices input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.kindChoices input:disabled + span {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

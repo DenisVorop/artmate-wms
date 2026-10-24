@@ -1,0 +1,1137 @@
+import { Transform, Type } from "class-transformer";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import {
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  ValidateIf,
+  IsIn,
+  IsBoolean,
+  IsNumber,
+  MaxLength,
+  ValidateNested,
+  IsDefined,
+  IsObject,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  MinLength,
+  IsISO8601,
+  Matches,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+} from "class-validator";
+
+export class LotContentDto {
+  @ApiProperty({ type: String }) lotId!: string;
+  @ApiProperty({ type: Number }) quantity!: number;
+}
+export class ReservationDto extends LotContentDto {
+  @ApiProperty({ type: String }) palletId!: string;
+}
+
+export class PackagingProfileDto {
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  boxWidthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  boxDepthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  boxHeightMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(5000)
+  palletWidthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(5000)
+  palletDepthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  palletBaseHeightMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  boxesPerLayer!: number;
+  @ApiProperty({ type: Number }) @IsInt() @Min(1) @Max(100) maxLayers!: number;
+  @ApiProperty({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(10000)
+  boxWeightKg!: number | null;
+  @ApiProperty({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(10000)
+  palletWeightKg!: number | null;
+}
+
+export class PlanArchiveDto {
+  @ApiProperty({ type: Boolean }) archived!: boolean;
+  @ApiProperty({ type: String, nullable: true }) archivedAt!: string | null;
+}
+export class WarehouseSpaceDto extends PlanArchiveDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, enum: ["room", "corridor"] }) kind!: string;
+  @ApiProperty({ type: Number }) x!: number;
+  @ApiProperty({ type: Number }) y!: number;
+  @ApiProperty({ type: Number }) width!: number;
+  @ApiProperty({ type: Number }) depth!: number;
+}
+export class WarehousePlanDto {
+  @ApiProperty({ type: String, enum: ["rectangle", "spaces"] })
+  layoutMode!: string;
+  @ApiProperty({ type: [WarehouseSpaceDto] }) spaces!: WarehouseSpaceDto[];
+
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: Number }) width!: number;
+  @ApiProperty({ type: Number }) depth!: number;
+}
+export class AisleDto extends PlanArchiveDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: Number }) x!: number;
+  @ApiProperty({ type: Number }) y!: number;
+  @ApiProperty({ type: Number }) width!: number;
+  @ApiProperty({ type: Number }) depth!: number;
+  @ApiProperty({ type: Number, enum: [0, 90, 180, 270] }) rotation!: number;
+}
+export class EntranceDto extends PlanArchiveDto {
+  @ApiProperty({ type: String, nullable: true }) spaceId!: string | null;
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, enum: ["north", "east", "south", "west"] })
+  wall!: string;
+  @ApiProperty({ type: Number }) offset!: number;
+  @ApiProperty({ type: Number }) width!: number;
+}
+
+export class RackSectionDto extends PlanArchiveDto {
+  @ApiProperty({ type: Number, enum: [0, 90, 180, 270] }) rotation!: number;
+  @ApiProperty({ type: [String] }) archivedLocationIds!: string[];
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: Number }) x!: number;
+  @ApiProperty({ type: Number }) y!: number;
+  @ApiProperty({ type: Number }) width!: number;
+  @ApiProperty({ type: Number }) depth!: number;
+}
+export class MovementDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) palletId!: string;
+  @ApiProperty({ type: String }) fromLocationId!: string;
+  @ApiProperty({ type: String }) toLocationId!: string;
+  @ApiProperty({ type: String, enum: ["transfer", "lower", "return"] })
+  kind!: string;
+  @ApiProperty({
+    type: String,
+    enum: ["planned", "in_transit", "completed", "cancelled"],
+  })
+  status!: string;
+  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: Boolean }) keepSourceReserved!: boolean;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) takenAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;
+}
+
+export class SkuDto {
+  @ApiProperty({ type: PackagingProfileDto }) packaging!: PackagingProfileDto;
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String }) barcode!: string;
+  @ApiProperty({ type: Number }) unitsPerBox!: number;
+  @ApiProperty({ type: String }) color!: string;
+}
+export class LocationDto extends PlanArchiveDto {
+  @ApiProperty({ type: Number, enum: [0, 90, 180, 270] }) rotation!: number;
+  @ApiProperty({ type: String, nullable: true }) sectionId!: string | null;
+  @ApiProperty({ type: Number }) level!: number;
+  @ApiProperty({ type: Number }) availableWidthMm!: number;
+  @ApiProperty({ type: Number }) availableDepthMm!: number;
+  @ApiProperty({ type: Number, nullable: true }) maxWeightKg!: number | null;
+  @ApiProperty({ type: Number }) accessSides!: number;
+
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({
+    enum: ["rack", "floor", "receiving", "assembly", "shipping", "picking"],
+    type: String,
+  })
+  kind!: string;
+  @ApiProperty({ type: Number }) x!: number;
+  @ApiProperty({ type: Number }) y!: number;
+  @ApiProperty({ type: Number }) width!: number;
+  @ApiProperty({ type: Number }) depth!: number;
+  @ApiProperty({ type: Number }) levels!: number;
+  @ApiProperty({ type: Number }) maxHeightMm!: number;
+  @ApiProperty({ type: Number }) maxBoxes!: number;
+  @ApiProperty({ type: Boolean }) blocked!: boolean;
+}
+export class LotDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: String }) receivedAt!: string;
+  @ApiProperty({ type: String }) name!: string;
+}
+export class PalletDto {
+  @ApiProperty({ type: Number }) widthMm!: number;
+  @ApiProperty({ type: Number }) depthMm!: number;
+  @ApiProperty({ type: Number, nullable: true }) weightKg!: number | null;
+  @ApiProperty({
+    type: String,
+    enum: ["stored", "in_transit", "retired", "awaiting_placement"],
+  })
+  status!: string;
+  @ApiProperty({ type: String, nullable: true }) returnLocationId!:
+    | string
+    | null;
+  @ApiProperty({ type: PackagingProfileDto, nullable: true })
+  packagingSnapshot!: PackagingProfileDto | null;
+
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String, nullable: true }) skuId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) lotId!: string | null;
+  @ApiProperty({ type: Number }) quantity!: number;
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ enum: ["raw", "finished", "assembly"], type: String })
+  kind!: string;
+  @ApiProperty({ type: Number }) heightMm!: number;
+}
+export class BoxDto {
+  @ApiProperty({ type: PackagingProfileDto })
+  packagingSnapshot!: PackagingProfileDto;
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiProperty({ type: [LotContentDto] }) lotContents!: LotContentDto[];
+  @ApiProperty({ type: String }) packedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ enum: ["stored", "in_transit", "shipped"], type: String })
+  status!: string;
+}
+export class TaskDto {
+  @ApiProperty({ type: String, nullable: true }) createdAt!: string | null;
+  @ApiProperty({ type: Boolean }) boxCodeConfirmed!: boolean;
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: Number }) boxesTarget!: number;
+  @ApiProperty({ type: Number }) boxesCompleted!: number;
+  @ApiProperty({ type: Number }) unitsPerBox!: number;
+  @ApiProperty({
+    enum: ["queued", "active", "paused", "completed"],
+    type: String,
+  })
+  status!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
+  @ApiProperty({ type: Number }) scannedUnits!: number;
+  @ApiProperty({ type: String, nullable: true }) sourcePalletId!: string | null;
+  @ApiProperty({ type: String }) openBoxCode!: string;
+  @ApiProperty({ type: [ReservationDto] }) reservations!: ReservationDto[];
+  @ApiProperty({ type: [LotContentDto] }) openBoxContents!: LotContentDto[];
+}
+export class EmployeeDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String }) initials!: string;
+  @ApiProperty({ type: String }) role!: string;
+  @ApiProperty({ enum: ["off", "working", "break"], type: String })
+  status!: string;
+  @ApiProperty({ type: Number }) boxesToday!: number;
+  @ApiProperty({ type: Number }) unitsToday!: number;
+}
+export class ShipmentDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: Number }) boxesRequested!: number;
+  @ApiProperty({ enum: ["draft", "shipped"], type: String }) status!: string;
+  @ApiProperty({ type: [String] }) boxIds!: string[];
+}
+export class ActivityDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) title!: string;
+  @ApiProperty({ type: String }) description!: string;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String }) kind!: string;
+}
+export class ReceiptPalletDto {
+  @ApiProperty({ type: String }) palletId!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: Number }) quantity!: number;
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) placedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) placedByEmployeeId!:
+    | string
+    | null;
+}
+export class ReceiptDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) receivedAt!: string;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({
+    type: String,
+    enum: ["awaiting_placement", "partially_placed", "completed"],
+  })
+  status!: string;
+  @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;
+  @ApiProperty({ type: [ReceiptPalletDto] }) pallets!: ReceiptPalletDto[];
+}
+export class BalanceDto {
+  @ApiProperty({ type: Number }) rawUnits!: number;
+  @ApiProperty({ type: Number }) workInProgressUnits!: number;
+  @ApiProperty({ type: Number }) boxedUnits!: number;
+  @ApiProperty({ type: Number }) totalUnits!: number;
+  @ApiProperty({ type: Number }) awaitingPlacementUnits!: number;
+  @ApiProperty({ type: Number }) awaitingPlacementPallets!: number;
+}
+export class ReceiptPlacementOptionsDto {
+  @ApiProperty({ type: String }) palletId!: string;
+  @ApiProperty({ type: String, nullable: true }) suggestedLocationId!:
+    | string
+    | null;
+  @ApiProperty({ type: [LocationDto] }) locations!: LocationDto[];
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+}
+export class ReceiptLabelDto {
+  @ApiProperty({ type: String }) palletId!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) title!: string;
+  @ApiProperty({ type: Number }) quantity!: number;
+  @ApiProperty({ type: String }) payload!: string;
+  @ApiProperty({ type: String }) svg!: string;
+}
+export class ReceiptLabelsDto {
+  @ApiProperty({ type: String }) receiptCode!: string;
+  @ApiProperty({ type: String }) receivedAt!: string;
+  @ApiProperty({ type: [ReceiptLabelDto] }) labels!: ReceiptLabelDto[];
+}
+export class PutawayTaskDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) boxId!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({
+    type: String,
+    enum: ["queued", "claimed", "in_transit", "completed"],
+  })
+  status!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
+  @ApiProperty({ type: String }) fromPalletId!: string;
+  @ApiProperty({ type: String }) fromLocationId!: string;
+  @ApiProperty({ type: String, nullable: true }) toLocationId!: string | null;
+  @ApiProperty({ type: String }) createdAt!: string;
+  @ApiProperty({ type: String, nullable: true }) claimedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) takenAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;
+}
+export class PutawayPlacementOptionsDto {
+  @ApiProperty({ type: String }) boxId!: string;
+  @ApiProperty({ type: [LocationDto] }) locations!: LocationDto[];
+  @ApiProperty({ type: String, nullable: true }) suggestedLocationId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+}
+export class WorkspaceDto {
+  @ApiProperty({ type: [PutawayTaskDto] }) putawayTasks!: PutawayTaskDto[];
+  @ApiProperty({ type: [ReceiptDto] }) receipts!: ReceiptDto[];
+  @ApiProperty({ type: BalanceDto }) balance!: BalanceDto;
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    format: "int64",
+    description: "Монотонная ревизия состояния склада",
+  })
+  revision!: number;
+  @ApiProperty({ type: WarehousePlanDto }) warehouse!: WarehousePlanDto;
+  @ApiProperty({ type: [AisleDto] }) aisles!: AisleDto[];
+  @ApiProperty({ type: [EntranceDto] }) entrances!: EntranceDto[];
+  @ApiProperty({ type: [RackSectionDto] }) sections!: RackSectionDto[];
+  @ApiProperty({ type: [MovementDto] }) movements!: MovementDto[];
+  @ApiProperty({ type: [SkuDto] }) skus!: SkuDto[];
+  @ApiProperty({ type: [LocationDto] }) locations!: LocationDto[];
+  @ApiProperty({ type: [LotDto] }) lots!: LotDto[];
+  @ApiProperty({ type: [PalletDto] }) pallets!: PalletDto[];
+  @ApiProperty({ type: [BoxDto] }) boxes!: BoxDto[];
+  @ApiProperty({ type: [TaskDto] }) tasks!: TaskDto[];
+  @ApiProperty({ type: [EmployeeDto] }) employees!: EmployeeDto[];
+  @ApiProperty({ type: [ShipmentDto] }) shipments!: ShipmentDto[];
+  @ApiProperty({ type: [ActivityDto] }) activities!: ActivityDto[];
+}
+export class CommandDto {
+  @ApiProperty({ example: "unique-request-id", type: String })
+  @IsString()
+  @MaxLength(150)
+  requestId!: string;
+}
+export class PhysicalAddressDto extends CommandDto {
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableWidthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableDepthMm!: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(100000)
+  maxWeightKg?: number | null;
+  @ApiPropertyOptional({ type: Number, default: 1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  accessSides?: number;
+}
+export class CreateLocationDto extends PhysicalAddressDto {
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+  @ApiProperty({ example: "B-01-01", type: String })
+  @IsString()
+  @MaxLength(40)
+  code!: string;
+  @ApiProperty({ example: "Секция B · Ярус 1", type: String })
+  @IsString()
+  @MaxLength(100)
+  name!: string;
+  @ApiProperty({
+    enum: ["floor", "receiving", "assembly", "shipping", "picking"],
+    type: String,
+  })
+  @IsIn(["floor", "receiving", "assembly", "shipping", "picking"])
+  kind!: string;
+  @ApiProperty({ default: 0, type: Number })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x!: number;
+  @ApiProperty({ default: 0, type: Number })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y!: number;
+  @ApiProperty({ default: 1.3, type: Number, minimum: 0.1 })
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  width!: number;
+  @ApiProperty({ default: 0.9, type: Number, minimum: 0.1 })
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  depth!: number;
+  @ApiProperty({ default: 1, type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  levels!: number;
+  @ApiProperty({ default: 1800, type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  maxHeightMm!: number;
+  @ApiProperty({ default: 18, type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  maxBoxes!: number;
+  @ApiPropertyOptional({ default: false, type: Boolean })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean()
+  blocked?: boolean;
+}
+export class UpdateLocationDto extends CommandDto {
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableWidthMm?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableDepthMm?: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(100000)
+  maxWeightKg?: number | null;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  accessSides?: number;
+
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(40)
+  code?: string;
+  @ApiPropertyOptional({
+    type: String,
+    enum: ["rack", "floor", "receiving", "assembly", "shipping", "picking"],
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["rack", "floor", "receiving", "assembly", "shipping", "picking"])
+  kind?: string;
+  @ApiPropertyOptional({ type: Number, minimum: 0.1 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  width?: number;
+  @ApiPropertyOptional({ type: Number, minimum: 0.1 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  depth?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  levels?: number;
+
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({ type: Boolean })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean()
+  blocked?: boolean;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  maxHeightMm?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  maxBoxes?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y?: number;
+}
+const trimText = ({ value }: { value: unknown }) =>
+  typeof value === "string" ? value.trim() : value;
+export class ReceiptNewSkuDto {
+  @ApiProperty({ type: String, maxLength: 100 })
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+  @ApiProperty({ type: String, maxLength: 150 })
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  barcode!: string;
+  @ApiPropertyOptional({ type: String, maxLength: 40 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  code?: string;
+  @ApiPropertyOptional({ type: Number, default: 20 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  unitsPerBox?: number;
+}
+@ValidatorConstraint({ name: "receiptSkuChoice", async: false })
+class ReceiptSkuChoice implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments) {
+    const o = args.object as CreateReceiptPalletDto;
+    return (o.skuId !== undefined) !== (o.newSku !== undefined);
+  }
+  defaultMessage() {
+    return "Укажите ровно одно: skuId или newSku";
+  }
+}
+export class CreateReceiptPalletDto {
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  skuId?: string;
+  @ApiPropertyOptional({ type: ReceiptNewSkuDto })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ReceiptNewSkuDto)
+  newSku?: ReceiptNewSkuDto;
+  @ApiProperty({ type: Number, default: 1000 })
+  @Validate(ReceiptSkuChoice)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  quantity!: number;
+  @ApiPropertyOptional({ type: Number, default: 1200 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  widthMm?: number;
+  @ApiPropertyOptional({ type: Number, default: 800 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  depthMm?: number;
+  @ApiPropertyOptional({ type: Number, default: 1400 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  heightMm?: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(100000)
+  weightKg?: number | null;
+}
+export class CreateReceiptDto extends CommandDto {
+  @ApiProperty({ type: String, format: "date-time" })
+  @IsISO8601({ strict: true, strictSeparator: true })
+  @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
+  receivedAt!: string;
+  @ApiProperty({ type: [CreateReceiptPalletDto], minItems: 1, maxItems: 100 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CreateReceiptPalletDto)
+  pallets!: CreateReceiptPalletDto[];
+}
+export class PlaceReceiptPalletDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() @MinLength(1) employeeId!: string;
+  @ApiProperty({ type: String }) @IsString() @MinLength(1) palletCode!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  locationCode!: string;
+}
+export class CreateEmployeeDto extends CommandDto {
+  @ApiProperty({ type: String, maxLength: 100 })
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+  @ApiPropertyOptional({ type: String, maxLength: 100 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  role?: string;
+}
+export class CreateTaskDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() skuId!: string;
+  @ApiProperty({ default: 10, type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  boxesTarget!: number;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  employeeId?: string;
+}
+export class ClaimTaskDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() @MinLength(1) employeeId!: string;
+}
+export class ClaimPutawayTaskDto extends ClaimTaskDto {}
+export class ConfirmPutawayTaskDto extends ClaimTaskDto {
+  @ApiProperty({ type: String }) @IsString() @MinLength(1) boxCode!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  locationCode!: string;
+}
+export class AssignTaskDto extends CommandDto {
+  @ApiProperty({ type: String, nullable: true })
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MinLength(1)
+  employeeId!: string | null;
+}
+export class ScanTaskDto extends ClaimTaskDto {
+  @ApiProperty({ enum: ["source", "box", "barcode"], type: String })
+  @IsIn(["source", "box", "barcode"])
+  kind!: "source" | "box" | "barcode";
+  @ApiProperty({
+    description: "Код/QR паллеты, текущего короба или штрихкод тематики",
+    type: String,
+  })
+  @IsString()
+  value!: string;
+}
+export class PackTaskDto extends ClaimTaskDto {
+  @ApiProperty({
+    description: "Scan the current unique box code",
+    type: String,
+  })
+  @IsString()
+  boxCode!: string;
+}
+export class UpdateTaskStatusDto extends ClaimTaskDto {
+  @ApiProperty({ enum: ["active", "paused"], type: String })
+  @IsIn(["active", "paused"])
+  status!: "active" | "paused";
+}
+export class CreateShipmentDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() skuId!: string;
+  @ApiProperty({ default: 5, type: Number })
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  boxesRequested!: number;
+}
+export class UpdateShiftDto extends CommandDto {
+  @ApiProperty({ enum: ["working", "break", "off"], type: String })
+  @IsIn(["working", "break", "off"])
+  status!: string;
+}
+export class LabelDto {
+  @ApiProperty({ type: String }) payload!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) title!: string;
+  @ApiProperty({ type: String }) svg!: string;
+}
+
+export class RackLevelInputDto {
+  @ApiProperty({ type: String }) @IsString() @MaxLength(40) code!: string;
+  @ApiProperty({ type: String }) @IsString() @MaxLength(100) name!: string;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  maxHeightMm!: number;
+  @ApiProperty({ type: Number }) @IsInt() @Min(1) @Max(1000) maxBoxes!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableWidthMm!: number;
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(100)
+  @Max(10000)
+  availableDepthMm!: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(100000)
+  maxWeightKg?: number | null;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  accessSides?: number;
+}
+export class CreateRackSectionDto extends CommandDto {
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+  @ApiProperty({ type: String }) @IsString() @MaxLength(40) code!: string;
+  @ApiProperty({ type: String }) @IsString() @MaxLength(100) name!: string;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) x!: number;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) y!: number;
+  @ApiProperty({ type: Number, minimum: 0.1 })
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  width!: number;
+  @ApiProperty({ type: Number, minimum: 0.1 })
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  depth!: number;
+  @ApiProperty({ type: [RackLevelInputDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => RackLevelInputDto)
+  levels!: RackLevelInputDto[];
+}
+export class CopyRackSectionDto extends CommandDto {
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    maximum: 1000,
+    description: "Новая глобальная координата X секции в метрах",
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x!: number;
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    maximum: 1000,
+    description: "Новая глобальная координата Y секции в метрах",
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y!: number;
+}
+export class UpdateRackSectionDto extends CommandDto {
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(40)
+  code?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y?: number;
+  @ApiPropertyOptional({ type: Number, minimum: 0.1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  width?: number;
+  @ApiPropertyOptional({ type: Number, minimum: 0.1 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.1)
+  @Max(1000)
+  depth?: number;
+}
+export class CreateRackLevelDto extends RackLevelInputDto {
+  @ApiProperty({ type: String }) @IsString() @MaxLength(150) requestId!: string;
+}
+export class UpdateSkuPackagingDto extends CommandDto {
+  @ApiProperty({ type: PackagingProfileDto })
+  @IsDefined()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PackagingProfileDto)
+  packaging!: PackagingProfileDto;
+}
+export class CreateMovementDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() palletId!: string;
+  @ApiProperty({ type: String }) @IsString() toLocationId!: string;
+  @ApiProperty({ type: String, enum: ["transfer", "lower", "return"] })
+  @IsIn(["transfer", "lower", "return"])
+  kind!: string;
+  @ApiProperty({ type: String }) @IsString() employeeId!: string;
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: "Для lower по умолчанию true; для остальных false",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsBoolean()
+  keepSourceReserved?: boolean;
+}
+export class ConfirmMovementDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() palletCode!: string;
+  @ApiProperty({ type: String }) @IsString() locationCode!: string;
+}
+export class RetireEmptyPalletDto extends ConfirmMovementDto {}
+
+export class UpdateWarehousePlanDto extends CommandDto {
+  @ApiPropertyOptional({ type: String, enum: ["rectangle", "spaces"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["rectangle", "spaces"])
+  layoutMode?: string;
+
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(1)
+  @Max(1000)
+  width?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(1)
+  @Max(1000)
+  depth?: number;
+}
+export class CreateAisleDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() @MaxLength(100) name!: string;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) x!: number;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) y!: number;
+  @ApiProperty({ type: Number })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width!: number;
+  @ApiProperty({ type: Number })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  depth!: number;
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+}
+export class UpdateAisleDto extends CommandDto {
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  depth?: number;
+  @ApiPropertyOptional({ type: Number, enum: [0, 90, 180, 270] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
+}
+export class CreateEntranceDto extends CommandDto {
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsString()
+  spaceId?: string | null;
+
+  @ApiProperty({ type: String }) @IsString() @MaxLength(100) name!: string;
+  @ApiProperty({ type: String, enum: ["north", "east", "south", "west"] })
+  @IsIn(["north", "east", "south", "west"])
+  wall!: string;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) offset!: number;
+  @ApiProperty({ type: Number })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width!: number;
+}
+export class UpdateEntranceDto extends CommandDto {
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsString()
+  spaceId?: string | null;
+
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({
+    type: String,
+    enum: ["north", "east", "south", "west"],
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["north", "east", "south", "west"])
+  wall?: string;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  offset?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width?: number;
+}
+
+export class CreateSpaceDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() @MaxLength(100) name!: string;
+  @ApiProperty({ type: String, enum: ["room", "corridor"] })
+  @IsIn(["room", "corridor"])
+  kind!: string;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) x!: number;
+  @ApiProperty({ type: Number }) @IsNumber() @Min(0) @Max(1000) y!: number;
+  @ApiProperty({ type: Number })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width!: number;
+  @ApiProperty({ type: Number })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  depth!: number;
+}
+export class ResizeSpaceDto extends CommandDto {
+  @ApiProperty({
+    type: Number,
+    description:
+      "Новая левая граница в метрах; содержимое сохраняет координаты",
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x!: number;
+  @ApiProperty({
+    type: Number,
+    description:
+      "Новая верхняя граница в метрах; содержимое сохраняет координаты",
+  })
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y!: number;
+  @ApiProperty({ type: Number, minimum: 0.5, maximum: 1000 })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width!: number;
+  @ApiProperty({ type: Number, minimum: 0.5, maximum: 1000 })
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  depth!: number;
+}
+export class UpdateSpaceDto extends CommandDto {
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  name?: string;
+  @ApiPropertyOptional({ type: String, enum: ["room", "corridor"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["room", "corridor"])
+  kind?: string;
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      "Глобальная координата X в метрах. Изменение переносит участок и его содержимое относительно исходного положения.",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  x?: number;
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      "Глобальная координата Y в метрах. Изменение переносит участок и его содержимое относительно исходного положения.",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  y?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  width?: number;
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsNumber()
+  @Min(0.5)
+  @Max(1000)
+  depth?: number;
+}

@@ -1,0 +1,1557 @@
+.feature {
+  --map-accent: var(--accent);
+  --map-muted: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.eyebrow {
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: var(--map-muted);
+  margin-bottom: 8px;
+}
+.headingDot {
+  display: inline-block;
+  background: var(--map-accent);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-left: 12px;
+  box-shadow: 0 0 18px oklch(78% 0.16 162 / 0.3);
+}
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  padding: 4px 0 6px;
+}
+.summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--map-muted);
+  font-size: 12px;
+}
+.summary .metricValue {
+  font-size: 26px;
+  font-weight: 550;
+  letter-spacing: -0.05em;
+  color: oklch(95% 0.01 165);
+  font-variant-numeric: tabular-nums;
+}
+.summary .summaryNote {
+  margin-left: auto;
+  font-size: 11px;
+  gap: 7px;
+}
+.liveDot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background: var(--map-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 10px oklch(78% 0.16 162 / 0.22);
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: 20px;
+  align-items: start;
+}
+.planCard {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  border-radius: 20px;
+}
+.toolbar {
+  padding: 17px 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid oklch(96% 0.01 165 / 0.07);
+}
+.modeSwitch {
+  display: flex;
+  gap: 3px;
+  background: oklch(5% 0.01 165 / 0.35);
+  padding: 3px;
+  border: 1px solid oklch(96% 0.01 165 / 0.05);
+  border-radius: 10px;
+}
+.modeSwitch button,
+.zoomControls button {
+  font: inherit;
+  color: var(--map-muted);
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.modeSwitch button {
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-size: 11px;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.modeSwitch button.modeActive {
+  color: oklch(94% 0.01 165);
+  background: oklch(96% 0.01 165 / 0.08);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.2);
+}
+.zoomControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--map-muted);
+}
+.zoomControls span {
+  width: 42px;
+  text-align: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.zoomControls button {
+  width: 27px;
+  height: 29px;
+  border-radius: 6px;
+}
+.zoomControls button:hover,
+.modeSwitch button:hover {
+  background: oklch(96% 0.01 165 / 0.07);
+  color: oklch(95% 0.01 165);
+}
+.zoomControls button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.toolbar button:focus-visible {
+  outline: 2px solid var(--map-accent);
+  outline-offset: 2px;
+}
+.planScroll {
+  --plan-fit-height: 660px;
+  overflow: auto;
+  max-height: var(--plan-fit-height);
+  min-height: 400px;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(35% 0.02 165) transparent;
+  background: radial-gradient(
+    ellipse at 40% 40%,
+    oklch(32% 0.06 165 / 0.08),
+    transparent 70%
+  );
+}
+.plan {
+  display: block;
+  min-width: 0;
+  margin-inline: auto;
+  height: auto;
+  aspect-ratio: 1.43;
+}
+.grid {
+  color: oklch(53% 0.025 165 / 0.36);
+}
+.boundary {
+  fill: transparent;
+  stroke: oklch(60% 0.025 165 / 0.16);
+  stroke-width: 0.035;
+}
+.planLabel {
+  fill: oklch(58% 0.02 165);
+  font-family: inherit;
+  font-size: 0.24px;
+  font-weight: 500;
+  letter-spacing: 0.045px;
+}
+.location {
+  outline: none;
+  cursor: pointer;
+  --location-fill: oklch(48% 0.08 164 / 0.13);
+  --location-stroke: oklch(65% 0.1 164 / 0.42);
+  --location-text: oklch(85% 0.055 164);
+}
+.locationBody {
+  fill: var(--location-fill);
+  stroke: var(--location-stroke);
+  stroke-width: 0.035;
+  transition:
+    fill 0.18s,
+    stroke 0.18s;
+}
+.location:hover .locationBody,
+.location:focus-visible .locationBody {
+  fill: oklch(70% 0.13 163 / 0.2);
+  stroke: oklch(80% 0.14 163);
+}
+.selected .locationBody {
+  fill: oklch(68% 0.14 163 / 0.2);
+  stroke: var(--map-accent);
+  stroke-width: 0.055;
+}
+.selectionHalo {
+  fill: none;
+  stroke: oklch(78% 0.16 162 / 0.25);
+  stroke-width: 0.025;
+}
+.rackRail {
+  stroke: var(--location-stroke);
+  stroke-width: 0.045;
+}
+.locationCode {
+  fill: var(--location-text);
+  font-family: inherit;
+  font-size: 0.32px;
+  letter-spacing: 0.025px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+.locationSubtitle {
+  fill: var(--location-text);
+  font-family: inherit;
+  font-size: 0.17px;
+  letter-spacing: 0.02px;
+  opacity: 0.65;
+  pointer-events: none;
+  user-select: none;
+}
+.occupiedDot {
+  fill: var(--map-accent);
+}
+.floor {
+  --location-fill: oklch(60% 0.03 210 / 0.09);
+  --location-stroke: oklch(70% 0.03 210 / 0.35);
+  --location-text: oklch(85% 0.02 210);
+}
+.floor .locationBody {
+  stroke-dasharray: 0.12 0.07;
+}
+.receiving,
+.assembly,
+.shipping {
+  --location-fill: oklch(70% 0.08 80 / 0.065);
+  --location-stroke: oklch(76% 0.08 80 / 0.32);
+  --location-text: oklch(83% 0.07 80);
+}
+.receiving .locationBody,
+.assembly .locationBody,
+.shipping .locationBody {
+  stroke-dasharray: 0.17 0.11;
+}
+.blocked {
+  opacity: 0.48;
+  --location-stroke: oklch(65% 0.02 165);
+}
+.draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.draggable:active {
+  cursor: grabbing;
+}
+.scaleLine {
+  stroke: oklch(63% 0.02 165);
+  stroke-width: 0.025;
+}
+.planFooter {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid oklch(96% 0.01 165 / 0.07);
+}
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--map-muted);
+  font-size: 10px;
+}
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid;
+}
+.rackKey {
+  color: oklch(75% 0.12 164);
+  background: oklch(75% 0.12 164 / 0.12);
+}
+.floorKey {
+  color: oklch(70% 0.03 210);
+  background: oklch(70% 0.03 210 / 0.1);
+}
+.zoneKey {
+  color: oklch(76% 0.08 80);
+  background: oklch(76% 0.08 80 / 0.1);
+}
+.planInstruction {
+  font-size: 10px;
+  color: var(--map-muted);
+  text-align: right;
+}
+.details {
+  padding: 22px;
+  border-radius: 20px;
+  min-width: 0;
+}
+.detailsHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 25px;
+}
+.detailIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid oklch(78% 0.16 162 / 0.17);
+  border-radius: 12px;
+  background: oklch(78% 0.16 162 / 0.07);
+  color: var(--map-accent);
+}
+.address {
+  font-size: 30px;
+  letter-spacing: -0.035em;
+  font-weight: 550;
+  line-height: 1.2;
+  margin: 0 0 7px;
+  color: oklch(96% 0.01 165);
+}
+.locationName {
+  font-size: 12px;
+  color: var(--map-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.dimensions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 22px 0;
+  border-bottom: 1px solid oklch(96% 0.01 165 / 0.07);
+  margin-bottom: 18px;
+}
+.dimensions span {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: oklch(94% 0.01 165);
+}
+.dimensions small {
+  font-size: 11px;
+  color: var(--map-muted);
+  margin-left: 5px;
+}
+.dimensions p {
+  font-size: 10px;
+  color: var(--map-muted);
+  margin: 6px 0 0;
+}
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  margin: 17px 0;
+  color: oklch(83% 0.01 165);
+}
+.detailRow > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--map-muted);
+}
+.detailRow strong {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.levels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.levels > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 11px;
+  background: oklch(96% 0.01 165 / 0.025);
+  border: 1px solid oklch(96% 0.01 165 / 0.07);
+  border-radius: 5px;
+  font-size: 10px;
+  color: oklch(76% 0.02 165);
+}
+.levels > div span + span {
+  color: var(--map-muted);
+}
+.hint {
+  color: var(--map-muted);
+  font-size: 10px;
+  line-height: 1.65;
+  margin: 10px 0 0;
+}
+.inventoryHeading {
+  margin-top: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  color: var(--map-muted);
+}
+.inventoryHeading > span {
+  font-size: 11px;
+  letter-spacing: 0;
+  color: oklch(82% 0.01 165);
+}
+.inventory {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sku {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid oklch(96% 0.01 165 / 0.055);
+  background: oklch(96% 0.01 165 / 0.025);
+  padding: 11px 9px;
+  border-radius: 10px;
+}
+.skuMark {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(78% 0.16 162 / 0.06);
+  color: oklch(77% 0.08 163);
+  border-radius: 7px;
+}
+.sku > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sku strong {
+  font-size: 11px;
+  color: oklch(90% 0.01 165);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.sku span:not(.skuMark) {
+  font-size: 10px;
+  color: var(--map-muted);
+}
+.sku > svg {
+  color: var(--map-muted);
+}
+.freePlace {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--map-muted);
+  font-size: 11px;
+  padding: 20px 0 8px;
+}
+.detailsActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+}
+.detailsActions button {
+  justify-content: center;
+  width: 100%;
+  font-size: 11px;
+}
+.detailsActions button > svg:last-child:not(:first-child) {
+  margin-left: auto;
+}
+.blockedNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: oklch(80% 0.1 80);
+  margin-top: 16px;
+}
+.mapError,
+.error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: oklch(80% 0.12 30);
+  border: 1px solid oklch(72% 0.12 30 / 0.18);
+  background: oklch(72% 0.12 30 / 0.07);
+  border-radius: 8px;
+  padding: 12px;
+}
+.mapError {
+  margin: 12px 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mapError button {
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.fullWidth {
+  grid-column: 1/-1;
+}
+.formFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 8px;
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: oklch(82% 0.01 165);
+}
+.checkbox input {
+  accent-color: var(--map-accent);
+  width: 15px;
+  height: 15px;
+}
+.fieldError {
+  font-size: 11px;
+  color: oklch(80% 0.12 30);
+  font-weight: 400;
+}
+.labelPreview {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 0 18px;
+  text-align: center;
+}
+.labelPreview img {
+  display: block;
+  background: white;
+  border-radius: 12px;
+  padding: 14px;
+  box-sizing: content-box;
+}
+.labelPreview p {
+  font-size: 13px;
+  color: var(--map-muted);
+}
+.labelCode {
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.emptyOverlay {
+  position: absolute;
+  inset: 90px 0 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.emptyOverlay button {
+  pointer-events: auto;
+}
+@media (min-width: 1500px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+  .details {
+    padding: 26px;
+  }
+  .planScroll {
+    --plan-fit-height: 760px;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 14px;
+  }
+  .details {
+    padding: 18px;
+  }
+  .summary {
+    gap: 22px;
+  }
+  .planFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .planInstruction {
+    text-align: left;
+  }
+  .toolbar {
+    padding: 14px;
+  }
+  .modeSwitch button {
+    font-size: 10px;
+    padding: 7px 8px;
+  }
+}
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+  }
+  .detailsHeading,
+  .details > .eyebrow,
+  .address,
+  .locationName,
+  .dimensions,
+  .detailsActions {
+    grid-column: 1/-1;
+  }
+  .detailsHeading {
+    margin-bottom: 16px;
+  }
+  .detailsActions {
+    flex-direction: row;
+  }
+  .inventoryHeading,
+  .inventory,
+  .freePlace,
+  .blockedNotice {
+    grid-column: 1/-1;
+  }
+  .summary .summaryNote {
+    display: none;
+  }
+  .planScroll {
+    min-height: 320px;
+  }
+  .feature {
+    gap: 20px;
+  }
+}
+@media (max-width: 580px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .header > button {
+    align-self: flex-start;
+  }
+  .summary {
+    gap: 14px;
+    justify-content: space-between;
+  }
+  .summary > div {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 10px;
+  }
+  .summary .metricValue {
+    font-size: 24px;
+  }
+  .toolbar {
+    gap: 7px;
+    padding: 10px;
+    flex-wrap: wrap;
+  }
+  .modeSwitch button {
+    font-size: 10px;
+    padding: 8px;
+  }
+  .zoomControls {
+    margin-left: auto;
+  }
+  .planFooter {
+    padding: 14px;
+  }
+  .legend {
+    gap: 10px;
+  }
+  .details {
+    display: block;
+  }
+  .detailsActions {
+    flex-direction: column;
+  }
+  .formGrid {
+    gap: 12px;
+  }
+  .formFooter {
+    flex-wrap: wrap;
+  }
+  .formFooter button {
+    flex: 1;
+  }
+  .labelPreview img {
+    width: 200px;
+    height: 200px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feature * {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Addressable rack sections and real level addresses. */
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.address {
+  overflow-wrap: anywhere;
+}
+.headerActions button {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.formSectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.formSectionHeading h3 {
+  font-size: 13px;
+}
+.formSectionHeading .detailRow {
+  gap: 8px;
+  margin: 10px 0;
+}
+.profileFieldset {
+  margin: 0;
+  padding: 17px 15px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.profileFieldset legend {
+  color: var(--accent);
+  font-size: 11px;
+  padding: 0 7px;
+  letter-spacing: 0.02em;
+}
+.profileFieldset > button {
+  margin-top: 13px;
+}
+.addressLevels {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 6px 0 10px;
+}
+.addressLevel {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: oklch(1 0 0 / 0.02);
+}
+.addressLevelSelected {
+  background: oklch(0.7 0.13 156 / 0.065);
+  border-color: oklch(0.75 0.13 156 / 0.35);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.levelSelect {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 5px;
+  text-align: left;
+  background: transparent;
+  padding: 11px 10px;
+  min-width: 0;
+}
+.levelSelect strong {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 550;
+}
+.levelSelect strong > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.levelSelect > span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.levelSelect small {
+  font-size: 9px;
+  color: var(--accent);
+}
+.levelSelect:hover,
+.levelQr:hover {
+  background: oklch(1 0 0 / 0.035);
+}
+.levelSelect:focus-visible,
+.levelQr:focus-visible {
+  outline-offset: -3px;
+}
+.levelQr {
+  width: 37px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border-left: 1px solid var(--border);
+  flex: none;
+}
+.chosenAddress {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  margin-top: 18px;
+}
+.chosenAddress .eyebrow {
+  display: block;
+}
+.chosenAddress h3 {
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+.chosenAddress p {
+  font-size: 11px;
+  margin-top: 6px;
+  color: var(--muted);
+}
+.physicalLimits {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 20px 0 3px;
+}
+.physicalLimits > div {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+.physicalLimits span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.physicalLimits strong {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.reservationNotice {
+  margin-top: 18px;
+  padding: 11px;
+  border: 1px solid oklch(0.82 0.12 84 / 0.22);
+  background: oklch(0.82 0.12 84 / 0.045);
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reservationNotice p {
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--warning);
+  overflow-wrap: anywhere;
+}
+.palletInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+.palletInfo strong {
+  font-size: 10px;
+  font-weight: 550;
+}
+.palletInfo span {
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.palletInfo p {
+  font-size: 10px;
+  color: var(--warning);
+  line-height: 1.6;
+}
+.reservedDot {
+  fill: transparent;
+  stroke: var(--warning);
+  stroke-width: 0.045;
+}
+.reserveKey {
+  color: var(--warning);
+  background: transparent;
+}
+.picking {
+  --location-fill: oklch(0.75 0.11 84 / 0.09);
+  --location-stroke: oklch(0.8 0.11 84 / 0.5);
+  --location-text: oklch(0.85 0.08 84);
+}
+@media (max-width: 1100px) {
+  .header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .headerActions {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 900px) {
+  .details {
+    display: flex;
+    flex-direction: column;
+  }
+  .addressLevels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .physicalLimits {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .detailsActions {
+    display: flex;
+  }
+}
+@media (max-width: 580px) {
+  .addressLevels {
+    display: flex;
+  }
+  .physicalLimits {
+    display: flex;
+  }
+  .headerActions {
+    width: 100%;
+  }
+  .headerActions button {
+    justify-content: center;
+    flex: 1;
+    font-size: 10px;
+  }
+  .formSectionHeading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .detailsActions {
+    flex-direction: column;
+  }
+  .profileFieldset {
+    padding: 13px 10px;
+  }
+}
+
+/* Fixed-room plan builder. The room never expands to follow its contents. */
+.roomFill {
+  fill: oklch(0.15 0.012 160 / 0.5);
+}
+.roomWall {
+  stroke: oklch(0.7 0.025 160 / 0.65);
+  stroke-width: 0.11;
+  stroke-linecap: square;
+  pointer-events: none;
+}
+.orientationMark {
+  stroke: var(--location-text);
+  stroke-width: 0.035;
+  fill: none;
+  opacity: 0.75;
+  pointer-events: none;
+}
+.aisleObject {
+  cursor: pointer;
+  outline: none;
+}
+.aisleBase {
+  fill: oklch(0.65 0.035 210 / 0.035);
+  stroke: oklch(0.65 0.035 210 / 0.35);
+  stroke-width: 0.03;
+  stroke-dasharray: 0.12 0.07;
+}
+.aislePattern {
+  opacity: 0.24;
+  pointer-events: none;
+}
+.aisleHatch {
+  stroke: oklch(0.7 0.035 210 / 0.28);
+  stroke-width: 0.045;
+}
+.aisleLabel {
+  fill: oklch(0.66 0.025 210);
+  font-family: inherit;
+  font-size: 0.23px;
+  font-weight: 500;
+  pointer-events: none;
+  user-select: none;
+}
+.aisleDirection {
+  stroke: oklch(0.7 0.035 210 / 0.7);
+  stroke-width: 0.035;
+  fill: none;
+  pointer-events: none;
+}
+.aisleSelected .aisleBase,
+.aisleObject:hover .aisleBase,
+.aisleObject:focus-visible .aisleBase {
+  stroke: var(--accent);
+  fill: oklch(0.7 0.13 156 / 0.07);
+}
+.aisleSelected .aisleLabel,
+.aisleObject:focus-visible .aisleLabel {
+  fill: var(--accent);
+}
+.aisleKey {
+  color: oklch(0.7 0.035 210);
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    oklch(0.7 0.035 210 / 0.2) 2px,
+    oklch(0.7 0.035 210 / 0.2) 3px
+  );
+}
+.entranceObject {
+  cursor: pointer;
+  outline: none;
+}
+.entranceHit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 0.03;
+  pointer-events: all;
+}
+.entranceJamb {
+  stroke: oklch(0.78 0.03 160);
+  stroke-width: 0.09;
+}
+.entranceThreshold {
+  stroke: oklch(0.78 0.13 156 / 0.65);
+  stroke-width: 0.035;
+  stroke-dasharray: 0.08 0.06;
+  pointer-events: none;
+}
+.entranceArrow {
+  stroke: var(--accent);
+  stroke-width: 0.045;
+  fill: none;
+  pointer-events: none;
+}
+.entranceLabel {
+  fill: oklch(0.79 0.06 156);
+  font-family: inherit;
+  font-size: 0.23px;
+  font-weight: 550;
+  user-select: none;
+  pointer-events: none;
+}
+.entranceSelected .entranceHit,
+.entranceObject:hover .entranceHit,
+.entranceObject:focus-visible .entranceHit {
+  stroke: oklch(0.78 0.13 156 / 0.4);
+  fill: oklch(0.78 0.13 156 / 0.06);
+}
+.entranceKey {
+  color: var(--accent);
+  background: oklch(0.78 0.13 156 / 0.12);
+  border-radius: 0 !important;
+  border-bottom-color: transparent !important;
+}
+.toolPalette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 13px 17px;
+  border-bottom: 1px solid var(--border);
+  background: oklch(0.13 0.009 160 / 0.2);
+}
+.toolPalette button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 66px;
+  min-height: 57px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  transition:
+    background 0.16s,
+    color 0.16s,
+    border-color 0.16s;
+}
+.toolPalette button:hover:not(:disabled) {
+  color: var(--accent);
+  background: oklch(0.7 0.13 156 / 0.065);
+  border-color: oklch(0.75 0.13 156 / 0.18);
+}
+.toolPalette button:focus-visible {
+  outline-offset: 2px;
+}
+.toolDivider {
+  display: block;
+  flex: none;
+  width: 1px;
+  height: 30px;
+  background: var(--border);
+  margin: 0 5px;
+}
+.zoomControls button.fitButton {
+  width: auto;
+  padding: 0 8px;
+  gap: 6px;
+  border-left: 1px solid var(--border);
+  margin-left: 5px;
+  border-radius: 0;
+}
+.zoomControls .fitButton span {
+  width: auto;
+  font-size: 10px;
+}
+.saveStatus {
+  min-height: 37px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+}
+.saveStatus > svg {
+  color: var(--accent);
+}
+.saveStatusDot {
+  width: 4px;
+  height: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.saveStatusError {
+  color: var(--danger);
+}
+.saveStatusError .saveStatusDot {
+  background: var(--danger);
+}
+.savingSpinner {
+  animation: map-saving-spin 1s linear infinite;
+}
+.layoutWarning {
+  padding: 11px 17px;
+  color: var(--warning);
+  background: oklch(0.82 0.12 84 / 0.045);
+  border-bottom: 1px solid oklch(0.82 0.12 84 / 0.15);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.layoutWarning button {
+  display: inline;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@keyframes map-saving-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 1100px) {
+  .toolPalette {
+    padding: 11px;
+    gap: 4px;
+  }
+  .toolPalette button {
+    min-width: 60px;
+    padding: 8px;
+    font-size: 9px;
+  }
+  .toolDivider {
+    margin: 0 2px;
+  }
+}
+@media (max-width: 580px) {
+  .toolPalette {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .toolPalette button {
+    min-height: 60px;
+    font-size: 10px;
+  }
+  .toolDivider {
+    display: none;
+  }
+  .zoomControls button.fitButton {
+    padding: 0 6px;
+  }
+  .saveStatus {
+    padding: 10px 14px;
+    font-size: 9px;
+  }
+  .layoutWarning {
+    font-size: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .savingSpinner {
+    animation: none;
+  }
+}
+
+/* Drawn floor spaces sit on a subdued working canvas. */
+.canvasFrame {
+  position: relative;
+  min-width: 0;
+}
+.canvasBackground {
+  fill: oklch(0.115 0.008 160 / 0.7);
+}
+.canvasBorder {
+  fill: none;
+  stroke: oklch(0.6 0.02 160 / 0.17);
+  stroke-width: 0.025;
+  stroke-dasharray: 0.1 0.12;
+}
+.spaceObject {
+  cursor: pointer;
+  outline: none;
+}
+.spaceFloor {
+  fill: oklch(0.28 0.027 160 / 0.35);
+  stroke: transparent;
+  stroke-width: 0.045;
+}
+.corridorSpace .spaceFloor {
+  fill: oklch(0.31 0.026 210 / 0.32);
+}
+.spaceObject:hover .spaceFloor,
+.spaceObject:focus-visible .spaceFloor {
+  fill: oklch(0.39 0.045 160 / 0.3);
+  stroke: oklch(0.75 0.13 156 / 0.5);
+}
+.spaceSelected .spaceFloor {
+  fill: oklch(0.4 0.065 156 / 0.22);
+  stroke: oklch(0.78 0.13 156 / 0.7);
+}
+.spaceName {
+  fill: oklch(0.8 0.03 160);
+  font-family: inherit;
+  font-weight: 550;
+  user-select: none;
+}
+.spaceArea {
+  fill: oklch(0.6 0.025 160);
+  font-family: inherit;
+  font-weight: 450;
+  user-select: none;
+}
+.corridorSpace .spaceName {
+  fill: oklch(0.77 0.03 210);
+}
+.spaceDraft {
+  fill: oklch(0.75 0.13 156 / 0.14);
+  stroke: var(--accent);
+  stroke-width: 0.045;
+  stroke-dasharray: 0.13 0.08;
+}
+.draftDimension {
+  fill: var(--accent);
+  font-family: inherit;
+  font-size: 0.24px;
+  font-weight: 550;
+  user-select: none;
+}
+.drawingPlan {
+  cursor: crosshair;
+  touch-action: none;
+}
+.drawingPlan .spaceObject {
+  cursor: crosshair;
+}
+.drawingReadout {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  top: 14px;
+  max-width: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 14px;
+  color: var(--text);
+  background: oklch(0.18 0.015 160 / 0.94);
+  border: 1px solid oklch(0.78 0.13 156 / 0.22);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.2);
+  border-radius: 10px;
+  pointer-events: none;
+  backdrop-filter: blur(12px);
+}
+.drawingReadout strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.drawingReadout span {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.toolPalette button[aria-pressed="true"] {
+  color: var(--accent);
+  background: oklch(0.7 0.13 156 / 0.08);
+  border-color: oklch(0.75 0.13 156 / 0.26);
+}
+.toolPalette {
+  gap: 5px;
+}
+.toolPalette button {
+  min-width: 60px;
+  padding: 9px 8px;
+}
+@media (max-width: 1100px) {
+  .toolPalette button {
+    min-width: 57px;
+    padding: 8px 6px;
+  }
+}
+@media (max-width: 580px) {
+  .toolPalette {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .toolPalette button {
+    min-width: 0;
+    min-height: 58px;
+    font-size: 9px;
+    white-space: normal;
+  }
+  .drawingReadout {
+    left: 10px;
+    top: 10px;
+    padding: 9px 11px;
+  }
+  .drawingReadout strong {
+    font-size: 10px;
+  }
+  .drawingReadout span {
+    font-size: 9px;
+  }
+}
+
+/* A stable viewport; zoom changes pixels per metre, never physical dimensions. */
+.planScroll {
+  height: var(--plan-fit-height);
+  max-height: var(--plan-fit-height);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.plan {
+  max-width: none;
+  flex: none;
+  margin: 0;
+}
+.panViewport,
+.panViewport svg,
+.panViewport .location,
+.panViewport .aisleObject,
+.panViewport .entranceObject,
+.panViewport .spaceObject {
+  cursor: grab !important;
+  touch-action: none;
+}
+.panningViewport,
+.panningViewport svg,
+.panningViewport .location,
+.panningViewport .aisleObject,
+.panningViewport .entranceObject,
+.panningViewport .spaceObject {
+  cursor: grabbing !important;
+}
+.plan :is(line, path, rect, circle) {
+  vector-effect: non-scaling-stroke;
+}
+.roomWall {
+  stroke-width: 2;
+}
+.locationBody {
+  stroke-width: 1;
+}
+.selected .locationBody {
+  stroke-width: 1.5;
+}
+.selectionHalo {
+  stroke-width: 1;
+}
+.rackRail,
+.orientationMark,
+.scaleLine {
+  stroke-width: 1;
+  pointer-events: none;
+}
+.aisleBase {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.aisleHatch {
+  stroke-width: 0.75;
+}
+.aisleDirection,
+.entranceThreshold,
+.reservedDot {
+  stroke-width: 1;
+}
+.entranceThreshold {
+  stroke-dasharray: 3 3;
+}
+.entranceJamb {
+  stroke-width: 2;
+}
+.entranceArrow {
+  stroke-width: 1.5;
+}
+.entranceHit,
+.spaceFloor,
+.canvasBorder {
+  stroke-width: 1;
+}
+.canvasBorder {
+  stroke-dasharray: 4 4;
+}
+.spaceDraft {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.screenCallout rect {
+  fill: oklch(0.19 0.018 160 / 0.97);
+  stroke: oklch(0.78 0.13 156 / 0.5);
+  stroke-width: 1;
+}
+.screenCallout text {
+  fill: var(--accent);
+  font-family: inherit;
+  font-weight: 600;
+}
+
+/* Storage footprints occlude floor labels and grid; glass stays on surrounding panels. */
+.locationBody {
+  fill: oklch(0.205 0.012 160);
+}
+.location:hover .locationBody,
+.location:focus-visible .locationBody {
+  fill: oklch(0.24 0.022 160);
+}
+.selected .locationBody {
+  fill: oklch(0.255 0.035 160);
+}
+@media (max-width: 900px) {
+  .planScroll {
+    --plan-fit-height: 560px;
+  }
+}
+@media (max-width: 580px) {
+  .planScroll {
+    --plan-fit-height: 440px;
+  }
+}
+
+.dragHint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  color: var(--map-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.dragHint svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--map-accent);
+}
+.dragHint p {
+  margin: 0;
+}
+.spaceObject.draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.spaceObject.draggable:active {
+  cursor: grabbing;
+}
+.spaceDragOutline {
+  fill: none;
+  stroke: var(--map-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}

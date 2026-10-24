@@ -1,0 +1,30 @@
+{
+  "name": "artmate-wms",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "yarn db:start && yarn api:generate && turbo run dev --ui=stream",
+    "api:generate": "yarn workspace @artmate-wms/api openapi && yarn workspace @artmate-wms/web api:generate",
+    "build": "yarn api:generate && turbo run build",
+    "check-types": "yarn api:generate && turbo run check-types",
+    "lint": "node scripts/check-architecture.mjs",
+    "test": "yarn workspace @artmate-wms/api test && yarn workspace @artmate-wms/web test",
+    "start": "node scripts/start.mjs",
+    "db:start": "node scripts/local-postgres.mjs start",
+    "db:stop": "node scripts/local-postgres.mjs stop",
+    "db:status": "node scripts/local-postgres.mjs status",
+    "db:docker": "docker compose up -d postgres"
+  },
+  "devDependencies": {
+    "turbo": "2.9.16",
+    "typescript": "5.9.2",
+    "prettier": "3.7.4"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

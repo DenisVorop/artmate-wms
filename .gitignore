@@ -1,0 +1,19 @@
+node_modules/
+.next/
+dist/
+.data/
+.env
+.env.local
+*.tsbuildinfo
+playwright-report/
+test-results/
+.original-docs-manifest.json
+
+# Local tooling and generated API artifacts
+.turbo/
+.DS_Store
+.env.*
+!.env.example
+/openapi.json
+/apps/web/src/shared/api/generated/
+/apps/web/next-env.d.ts

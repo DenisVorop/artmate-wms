@@ -1,0 +1,244 @@
+"use client";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { WorkspaceDto } from "@/shared/api/generated/model";
+import { Button, Modal } from "@/shared/ui";
+import {
+  canReturn,
+  wholePalletMovementAllowed,
+  movementDefaults,
+  movementSchema,
+  targetHint,
+  type MovementValues,
+} from "../lib/movement-form";
+import styles from "./movements.module.css";
+
+type Props = {
+  open: boolean;
+  data: WorkspaceDto;
+  pending: boolean;
+  error: string | null;
+  onClose: () => void;
+  onCreate: (values: MovementValues) => Promise<unknown>;
+};
+export function MovementCreateForm({
+  open,
+  data,
+  pending,
+  error,
+  onClose,
+  onCreate,
+}: Props) {
+  const {
+    register,
+    watch,
+    reset,
+    setValue,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<MovementValues>({
+    resolver: zodResolver(movementSchema),
+    defaultValues: movementDefaults,
+  });
+  const [palletId, kind] = watch(["palletId", "kind"]);
+  const pallet = data.pallets.find((item) => item.id === palletId);
+  const available = data.pallets.filter(
+    (item) =>
+      wholePalletMovementAllowed(data, item) &&
+      item.status === "stored" &&
+      item.quantity > 0 &&
+      (kind !== "return" || canReturn(data, item)) &&
+      !data.movements.some(
+        (movement) =>
+          movement.palletId === item.id &&
+          ["planned", "in_transit"].includes(movement.status),
+      ),
+  );
+  useEffect(() => {
+    if (open) reset(movementDefaults);
+  }, [open, reset]);
+  useEffect(() => {
+    setValue("keepSourceReserved", kind === "lower");
+    setValue(
+      "toLocationId",
+      kind === "return" ? (pallet?.returnLocationId ?? "") : "",
+    );
+  }, [kind, palletId, pallet?.returnLocationId, setValue]);
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Новое перемещение"
+      description="Назначьте паллету, целевой адрес и исполнителя."
+    >
+      <form
+        className="ops-form"
+        onSubmit={handleSubmit(async (values) => {
+          try {
+            await onCreate(values);
+            onClose();
+          } catch {
+            /* API error remains beside the form. */
+          }
+        })}
+      >
+        <label>
+          Паллета
+          <select {...register("palletId")}>
+            <option value="">Выберите паллету</option>
+            {available.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.code} ·{" "}
+                {data.skus.find((sku) => sku.id === item.skuId)?.name} ·{" "}
+                {
+                  data.locations.find(
+                    (location) => location.id === item.locationId,
+                  )?.code
+                }
+              </option>
+            ))}
+          </select>
+          {errors.palletId && (
+            <span className="ops-field-error">{errors.palletId.message}</span>
+          )}
+        </label>
+        <label>
+          Операция
+          <select {...register("kind")}>
+            <option value="transfer">Перемещение на другой адрес</option>
+            <option value="lower" disabled={!!pallet?.returnLocationId}>
+              Спуск для отбора с четырёх сторон
+            </option>
+            <option
+              value="return"
+              disabled={!!pallet && !canReturn(data, pallet)}
+            >
+              Возврат остатка на хранение
+            </option>
+          </select>
+        </label>
+        {kind === "return" && pallet && (
+          <div className={styles.hint}>
+            {pallet.returnLocationId ? (
+              <>
+                Удерживаемый адрес возврата:{" "}
+                <strong>
+                  {
+                    data.locations.find(
+                      (item) => item.id === pallet.returnLocationId,
+                    )?.code
+                  }
+                </strong>
+                . Остаток:{" "}
+                <strong>
+                  {pallet.quantity} {pallet.kind === "raw" ? "шт." : "кор."}
+                </strong>
+              </>
+            ) : (
+              "Исходный адрес не удерживается. Выберите подходящее свободное место хранения для текущего остатка."
+            )}
+          </div>
+        )}
+        {kind === "transfer" && pallet?.returnLocationId && (
+          <p className={styles.hint}>
+            Адрес возврата{" "}
+            <strong>
+              {
+                data.locations.find(
+                  (item) => item.id === pallet.returnLocationId,
+                )?.code
+              }
+            </strong>{" "}
+            сохранится. Можно перевезти паллету из зоны отбора в зону отгрузки,
+            чтобы освободить место для следующей паллеты.
+          </p>
+        )}
+        <label>
+          Целевой адрес
+          <select {...register("toLocationId")}>
+            <option value="">Выберите адрес</option>
+            {data.locations
+              .filter((l) => !l.archived)
+              .filter((item) =>
+                kind === "lower"
+                  ? item.kind === "picking" && item.accessSides === 4
+                  : kind === "return"
+                    ? pallet?.returnLocationId
+                      ? item.id === pallet.returnLocationId
+                      : ["rack", "floor"].includes(item.kind)
+                    : true,
+              )
+              .map((item) => {
+                const hint = targetHint(data, item.id, pallet, kind);
+                return (
+                  <option key={item.id} value={item.id} disabled={!!hint}>
+                    {item.code} · {item.name}
+                    {hint ? ` — ${hint}` : ""}
+                  </option>
+                );
+              })}
+          </select>
+          {errors.toLocationId && (
+            <span className="ops-field-error">
+              {errors.toLocationId.message}
+            </span>
+          )}
+        </label>
+        <label>
+          Исполнитель
+          <select {...register("employeeId")}>
+            <option value="">Выберите сотрудника на смене</option>
+            {data.employees
+              .filter((item) => item.status === "working")
+              .map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                  disabled={data.putawayTasks.some(
+                    (task) =>
+                      task.employeeId === item.id &&
+                      ["claimed", "in_transit"].includes(task.status),
+                  )}
+                >
+                  {item.name}
+                  {data.putawayTasks.some(
+                    (task) =>
+                      task.employeeId === item.id &&
+                      ["claimed", "in_transit"].includes(task.status),
+                  )
+                    ? " — размещает короб"
+                    : ""}
+                </option>
+              ))}
+          </select>
+          {errors.employeeId && (
+            <span className="ops-field-error">{errors.employeeId.message}</span>
+          )}
+        </label>
+        {kind === "lower" && (
+          <label className={styles.checkbox}>
+            <input type="checkbox" {...register("keepSourceReserved")} />
+            <span>Сохранить исходный адрес для возврата остатка</span>
+          </label>
+        )}
+        <p className={styles.hint}>
+          Общая паллета сборки остаётся на месте. Разместите её короба по
+          тематическим паллетам через второстепенные задания.
+        </p>
+        <p className={styles.hint}>
+          Создание задания резервирует цель. Паллета сменит адрес только после
+          подтверждения забора и размещения по QR.
+        </p>
+        {error && (
+          <div className="ops-error" role="alert">
+            {error}
+          </div>
+        )}
+        <Button type="submit" disabled={pending}>
+          {pending ? "Создаём…" : "Создать перемещение"}
+        </Button>
+      </form>
+    </Modal>
+  );
+}

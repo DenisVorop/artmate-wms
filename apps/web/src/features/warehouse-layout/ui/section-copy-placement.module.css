@@ -1,0 +1,107 @@
+.panel {
+  padding: 24px;
+  align-self: start;
+  min-width: 0;
+}
+.panel h2 {
+  margin: 8px 0 12px;
+  font-size: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 12px 0;
+}
+.facts {
+  margin: 20px 0;
+  display: grid;
+  gap: 12px;
+}
+.facts div {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  font-size: 12px;
+}
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  text-align: right;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.grid {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+.error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 20px;
+}
+.overlay {
+  cursor: crosshair;
+  touch-action: none;
+}
+.surface {
+  fill: transparent;
+}
+.ghost {
+  vector-effect: non-scaling-stroke;
+  fill: oklch(0.65 0.13 156 / 0.15);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.orientation {
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.ghostLabel {
+  fill: var(--accent);
+  font-weight: 600;
+  text-anchor: middle;
+}
+.pending {
+  cursor: wait;
+}
+@media (max-width: 600px) {
+  .panel {
+    padding: 20px;
+  }
+}
+
+.hand {
+  cursor: grab;
+}

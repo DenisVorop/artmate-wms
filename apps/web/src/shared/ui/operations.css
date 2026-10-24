@@ -1,0 +1,703 @@
+/* Operational views share the visual tokens, not workflow state. */
+.ops-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+.ops-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ops-panel {
+  padding: 24px;
+}
+.ops-panel h2 {
+  font-size: 17px;
+  letter-spacing: -0.03em;
+  margin: 0 0 18px;
+}
+.ops-panel h3 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.ops-description {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ops-form {
+  display: grid;
+  gap: 17px;
+}
+.ops-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ops-form input,
+.ops-form select {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: oklch(15% 0.012 160 / 0.8);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+}
+.ops-form :is(input, select):focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(80% 0.14 160 / 0.1);
+}
+.ops-field-error,
+.ops-error {
+  color: oklch(78% 0.13 30);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ops-error {
+  padding: 12px;
+  border-radius: 12px;
+  background: oklch(60% 0.18 30 / 0.08);
+  border: 1px solid oklch(60% 0.18 30 / 0.2);
+}
+.ops-success {
+  color: var(--accent);
+  font-size: 13px;
+  padding: 12px;
+  border: 1px solid oklch(80% 0.14 160 / 0.2);
+  border-radius: 12px;
+  background: oklch(80% 0.14 160 / 0.05);
+}
+.ops-table-wrap {
+  overflow: auto;
+}
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.ops-table th {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ops-table td {
+  padding: 17px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ops-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ops-table tbody tr:hover {
+  background: oklch(90% 0 0 / 0.025);
+}
+.ops-sku {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.ops-swatch {
+  height: 34px;
+  width: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 650;
+  border: 1px solid oklch(90% 0 0 / 0.12);
+}
+.ops-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.ops-mono {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+}
+.ops-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.ops-metric {
+  padding: 18px 20px;
+}
+.ops-metric span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.ops-metric strong {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.06em;
+}
+.ops-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.ops-toolbar input {
+  max-width: 320px;
+}
+.ops-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: oklch(10% 0.01 160 / 0.4);
+  width: max-content;
+}
+.ops-tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.ops-tab[aria-selected="true"] {
+  background: oklch(90% 0 0 / 0.08);
+  color: var(--text);
+}
+.ops-list {
+  display: grid;
+  gap: 12px;
+}
+.ops-task-card {
+  padding: 20px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  width: 100%;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: oklch(90% 0 0 / 0.025);
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.ops-task-card:hover,
+.ops-task-card[data-selected="true"] {
+  border-color: oklch(80% 0.14 160 / 0.45);
+  background: oklch(80% 0.14 160 / 0.045);
+}
+.ops-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ops-card-name {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.ops-progress {
+  height: 5px;
+  background: oklch(90% 0 0 / 0.06);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 16px;
+}
+.ops-progress > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 10px;
+}
+.ops-counter {
+  font-size: 62px;
+  letter-spacing: -0.07em;
+  line-height: 1.1;
+  font-weight: 450;
+  margin: 22px 0 10px;
+}
+.ops-counter small {
+  font-size: 24px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.ops-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.ops-source {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 10px 0;
+}
+.ops-source[data-active="true"] {
+  border-color: oklch(80% 0.14 160 / 0.4);
+  background: oklch(80% 0.14 160 / 0.04);
+}
+.ops-employee-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.ops-avatar {
+  height: 48px;
+  width: 48px;
+  border-radius: 16px;
+  background: oklch(80% 0.14 160 / 0.1);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 500;
+}
+.ops-team-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.ops-team-stat {
+  display: flex;
+  gap: 30px;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+.ops-team-stat strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 500;
+}
+.ops-team-stat span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ops-note {
+  border-left: 2px solid var(--accent);
+  padding: 0 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.ops-scan-input {
+  font-family: ui-monospace, monospace !important;
+  letter-spacing: 0.03em;
+}
+.ops-empty {
+  text-align: center;
+  padding: 44px 24px;
+  color: var(--muted);
+}
+.ops-qr {
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  max-width: 300px;
+  margin: auto;
+}
+.ops-qr svg {
+  width: 100%;
+  height: auto;
+}
+.ops-label {
+  text-align: center;
+  max-width: 440px;
+  margin: 30px auto;
+  padding: 30px;
+}
+.ops-label h1 {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+.ops-label-code {
+  font-family: monospace;
+  font-size: 21px;
+  letter-spacing: 0.05em;
+  margin-top: 20px;
+}
+.ops-form-button {
+  width: 100%;
+}
+@media (max-width: 1100px) {
+  .ops-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  .ops-panel {
+    padding: 20px;
+  }
+}
+@media (max-width: 850px) {
+  .ops-layout {
+    grid-template-columns: 1fr;
+  }
+  .ops-employee-grid {
+    grid-template-columns: 1fr;
+  }
+  .ops-metrics {
+    gap: 8px;
+  }
+  .ops-metric {
+    padding: 16px 12px;
+  }
+  .ops-metric strong {
+    font-size: 24px;
+  }
+  .ops-panel {
+    padding: 18px;
+  }
+  .ops-table th,
+  .ops-table td {
+    padding: 12px;
+  }
+  .ops-counter {
+    font-size: 52px;
+  }
+}
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .workspace-sidebar,
+  .workspace-topbar,
+  .no-print {
+    display: none !important;
+  }
+  .ops-label {
+    color: black;
+  }
+  .ops-label .ops-description {
+    color: #444;
+  }
+}
+
+/* Shared reading rhythm and working surfaces. */
+.ops-panel > h2 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+}
+.ops-panel > h2 > .ops-sub {
+  margin: 0;
+}
+.ops-panel .empty-state {
+  min-height: 240px;
+}
+.ops-layout > section {
+  min-height: 290px;
+}
+.ops-form label {
+  color: oklch(0.78 0.012 155);
+}
+.ops-form label > input::placeholder {
+  color: oklch(0.5 0.01 155);
+}
+.ops-form .button {
+  min-height: 42px;
+  font-size: 12px;
+}
+.ops-form > .ops-source {
+  margin-top: 0;
+}
+.ops-table :is(th, td) > a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 7px;
+  color: oklch(0.72 0.025 155);
+}
+.ops-table :is(th, td) > a:hover {
+  background: oklch(0.65 0.1 155 / 0.08);
+  color: var(--accent);
+}
+.ops-table th {
+  text-transform: none;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.ops-table .ops-sub {
+  max-width: 290px;
+  white-space: normal;
+  line-height: 1.7;
+}
+.ops-task-card {
+  cursor: default;
+  box-shadow: inset 0 1px 0 oklch(0.95 0.01 150 / 0.02);
+}
+button.ops-task-card {
+  cursor: pointer;
+}
+button.ops-task-card[data-selected="true"] {
+  box-shadow: inset 3px 0 0 oklch(0.8 0.12 155 / 0.7);
+}
+.ops-task-card > .ops-sub {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.ops-source {
+  align-items: center;
+  font-size: 12px;
+}
+.ops-source .button {
+  min-width: 34px;
+}
+.ops-source[data-active="true"] {
+  box-shadow: inset 2px 0 0 oklch(0.8 0.12 155 / 0.65);
+}
+.ops-source > span:last-child {
+  text-align: right;
+}
+.ops-team-head h2 {
+  line-height: 1.45;
+}
+.ops-team-head > div:nth-child(2) {
+  min-width: 0;
+}
+.ops-team-head .ops-description {
+  font-size: 11px;
+}
+.ops-team-stat {
+  margin-top: 17px;
+}
+.ops-team-stat strong {
+  font-variant-numeric: tabular-nums;
+}
+.ops-counter {
+  font-variant-numeric: tabular-nums;
+}
+.ops-success > svg,
+.ops-error > svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.ops-error {
+  margin-bottom: 16px;
+}
+.ops-toolbar > .ops-tabs {
+  margin-left: auto;
+}
+.ops-note {
+  font-size: 12px;
+  color: oklch(0.7 0.014 155);
+}
+@media (max-width: 1120px) {
+  .ops-layout {
+    grid-template-columns: 1fr;
+  }
+  .ops-layout > .ops-stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 680px) {
+  .ops-panel {
+    padding: 19px 17px;
+  }
+  .ops-panel h2 {
+    font-size: 16px;
+  }
+  .ops-description {
+    font-size: 12px;
+  }
+  .ops-table {
+    font-size: 12px;
+  }
+  .ops-table th,
+  .ops-table td {
+    padding: 13px 12px;
+  }
+  .ops-table .ops-sub {
+    font-size: 10px;
+  }
+  .ops-toolbar {
+    gap: 10px;
+  }
+  .ops-toolbar > svg {
+    display: none;
+  }
+  .ops-toolbar > input {
+    max-width: none;
+    width: 100%;
+    flex: auto;
+  }
+  .ops-toolbar > .ops-tabs {
+    margin-left: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .ops-tab {
+    padding: 8px 9px;
+    font-size: 11px;
+    flex: 1;
+    white-space: nowrap;
+  }
+  .ops-form :is(input, select) {
+    min-height: 46px;
+    font-size: 16px;
+  }
+  .ops-form .button {
+    min-height: 46px;
+  }
+  .ops-task-card {
+    padding: 17px;
+  }
+  .ops-task-card .ops-card-name {
+    font-size: 17px;
+  }
+  .ops-task-card .ops-card-top .badge {
+    font-size: 10px;
+  }
+  .ops-team-head {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .ops-team-head h2 {
+    font-size: 15px;
+  }
+  .ops-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+  .ops-team-head > div:nth-child(2) {
+    flex: 1;
+  }
+  .ops-team-head > div:last-child {
+    margin-left: 50px !important;
+    width: calc(100% - 50px);
+  }
+  .ops-team-head > div:last-child .badge {
+    font-size: 10px;
+  }
+  .ops-team-stat {
+    gap: 24px;
+  }
+  .ops-action-row > .button {
+    font-size: 11px;
+    min-height: 40px;
+  }
+  .ops-source .button {
+    min-width: 42px;
+    min-height: 42px;
+  }
+  .ops-metrics {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .ops-metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+  }
+  .ops-metric > span {
+    margin-bottom: 0;
+    font-size: 12px;
+  }
+  .ops-metric > strong {
+    font-size: 27px;
+  }
+  .ops-table-wrap {
+    margin-right: -17px;
+    margin-left: -17px;
+    width: calc(100% + 34px);
+  }
+  .ops-table tr > :first-child {
+    padding-left: 17px;
+  }
+  .ops-table tr > :last-child {
+    padding-right: 17px;
+  }
+}
+
+.ops-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.ops-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.ops-profile-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.ops-profile-title h3 {
+  margin: 0;
+}
+.ops-profile-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 20px;
+}
+.ops-profile-facts span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.ops-profile-facts strong {
+  font-weight: 500;
+  font-size: 15px;
+}
+.ops-profile-form legend {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.ops-profile-form fieldset {
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 18px 0 0;
+  margin: 0;
+}
+.ops-profile-form .ops-form-grid {
+  row-gap: 18px;
+}
+.ops-profile-block {
+  margin-top: 26px;
+}
+@media (max-width: 850px) {
+  .ops-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 450px) {
+  .ops-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

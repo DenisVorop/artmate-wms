@@ -1,0 +1,56 @@
+.handle {
+  outline: none;
+  touch-action: none;
+}
+.hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+.knob {
+  fill: oklch(0.19 0.015 160);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.handle:hover .knob,
+.handle:focus-visible .knob {
+  fill: var(--accent);
+  stroke: oklch(0.96 0.01 150);
+}
+.handle:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+.n,
+.s {
+  cursor: ns-resize;
+}
+.e,
+.w {
+  cursor: ew-resize;
+}
+.nw,
+.se {
+  cursor: nwse-resize;
+}
+.ne,
+.sw {
+  cursor: nesw-resize;
+}
+.readout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+}
+.readout strong {
+  color: var(--accent);
+  font-weight: 600;
+}

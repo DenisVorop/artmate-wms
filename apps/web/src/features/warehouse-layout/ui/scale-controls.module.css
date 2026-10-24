@@ -1,0 +1,14 @@
+.ruler {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--map-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rulerLine {
+  display: inline-block;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-top: 0;
+}
