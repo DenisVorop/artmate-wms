@@ -1,7 +1,10 @@
 "use client";
 import type { ReactNode } from "react";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { LocationMapButton } from "@/entities/warehouse-map";
+import {
+  LocationMapButton,
+  type WorkRouteRequest,
+} from "@/entities/warehouse-map";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import { usePairScan } from "../lib/use-pair-scan";
 import { matchesScan } from "../lib/handling";
@@ -69,6 +72,7 @@ export function PairScan({
   code,
   addressCode,
   addressId,
+  routeRequest,
   data,
   phase,
   pending,
@@ -83,9 +87,10 @@ export function PairScan({
   code: string;
   addressCode: string;
   addressId?: string | null;
+  routeRequest?: WorkRouteRequest;
   data: Pick<
     WorkspaceDto,
-    "warehouse" | "locations" | "sections" | "aisles" | "entrances"
+    "warehouse" | "locations" | "sections" | "aisles" | "entrances" | "revision"
   >;
   phase: "take" | "place";
   pending: boolean;
@@ -134,6 +139,7 @@ export function PairScan({
       <LocationMapButton
         data={data}
         locationId={addressId}
+        routeRequest={routeRequest}
         intent={phase}
         contextKey={`${contextKey}:${scan.first ? "address" : "object"}:${addressId ?? "missing"}`}
       />

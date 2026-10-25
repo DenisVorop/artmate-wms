@@ -73,6 +73,26 @@ export class WarehouseController {
   getWorkspace() {
     return this.warehouse.snapshot();
   }
+  @Get("work-route")
+  @ApiOperation({ operationId: "getWorkRoute" })
+  @ApiQuery({ name: "kind", enum: D.WORK_ROUTE_KINDS })
+  @ApiQuery({ name: "id", type: String })
+  @ApiQuery({ name: "palletId", required: false, type: String })
+  @ApiQuery({ name: "boxId", required: false, type: String })
+  @ApiOkResponse({ type: D.WorkRouteDto })
+  getWorkRoute(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.WorkRouteQueryDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: D.WorkRouteQueryDto,
+  ) {
+    return this.warehouse.getWorkRoute(query);
+  }
   @Get("performance")
   @ApiOperation({ operationId: "getPerformance" })
   @workforceFilters()

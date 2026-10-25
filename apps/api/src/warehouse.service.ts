@@ -49,6 +49,7 @@ import {
 } from "./work-zones";
 import { generateSectionIdentity } from "./section-identity";
 import { seedWorkspace } from "./seed";
+import { workRoute, validateWorkRouteQuery } from "./work-route";
 import {
   rankPlacementLocations,
   receiptSourceLocation,
@@ -1492,6 +1493,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (row.placedAt !== null || pallet.status !== "awaiting_placement")
       fail("Паллета уже размещена");
     return { receipt, row, pallet };
+  }
+  async getWorkRoute(query: D.WorkRouteQueryDto): Promise<D.WorkRouteDto> {
+    validateWorkRouteQuery(query);
+    const state = await this._readState("getWorkRoute");
+    const context = requestAuth.getStore();
+    return workRoute(state, query, context?.http ? context : undefined);
   }
   async getReceiptPlacementOptions(
     id: string,

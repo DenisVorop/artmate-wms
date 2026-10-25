@@ -8,6 +8,12 @@ import {
   type LocationMapData,
   type MapRectangle,
 } from "../lib/location-map";
+import {
+  createWorkRouteMap,
+  workRouteRequestKey,
+  type WorkRouteRequest,
+} from "../lib/work-route";
+import { RouteLayoutChangedError, useWorkRoute } from "../model/use-work-route";
 import styles from "./location-map.module.css";
 
 type Props = {
@@ -15,12 +21,14 @@ type Props = {
   locationId: string | null | undefined;
   intent: "take" | "place";
   contextKey: string;
+  routeRequest?: WorkRouteRequest;
 };
 type OpenContext = {
   key: string;
   locationId: Props["locationId"];
   intent: Props["intent"];
   epoch: number;
+  routeKey: string;
 };
 
 export function LocationMapButton({
@@ -28,16 +36,19 @@ export function LocationMapButton({
   locationId,
   intent,
   contextKey,
+  routeRequest,
 }: Props) {
   const [opened, setOpened] = useState<OpenContext | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const live = useRef({ contextKey, locationId, intent });
-  live.current = { contextKey, locationId, intent };
+  const routeKey = workRouteRequestKey(routeRequest);
+  const live = useRef({ contextKey, locationId, intent, routeKey });
+  live.current = { contextKey, locationId, intent, routeKey };
   const current = (snapshot: OpenContext) =>
     snapshot.epoch === getAuthEpoch() &&
     snapshot.key === live.current.contextKey &&
     snapshot.locationId === live.current.locationId &&
-    snapshot.intent === live.current.intent;
+    snapshot.intent === live.current.intent &&
+    snapshot.routeKey === live.current.routeKey;
   useEffect(() => {
     if (!opened) return;
     const timer = window.setInterval(() => {
@@ -60,6 +71,7 @@ export function LocationMapButton({
             locationId,
             intent,
             epoch: getAuthEpoch(),
+            routeKey,
           });
         }}
       >
@@ -70,6 +82,8 @@ export function LocationMapButton({
           data={data}
           locationId={locationId}
           intent={intent}
+          contextKey={contextKey}
+          routeRequest={routeRequest}
           current={() => current(opened)}
           restoreFocus={() => {
             const field = trigger.current
@@ -94,10 +108,12 @@ function LocationMapDialog({
   data,
   locationId,
   intent,
+  contextKey,
+  routeRequest,
   current,
   restoreFocus,
   onClose,
-}: Omit<Props, "contextKey"> & {
+}: Props & {
   current: () => boolean;
   restoreFocus: () => void;
   onClose: () => void;
@@ -108,6 +124,16 @@ function LocationMapDialog({
   live.current = { current, onClose, restoreFocus };
   const [overview, setOverview] = useState(false);
   const model = createLocationMap(data, locationId);
+  const query = useWorkRoute(routeRequest, data, contextKey);
+  const route =
+    query.data && !query.isError
+      ? createWorkRouteMap(data, query.data, query.data.verifiedLayoutKey, {
+          intent,
+          locationId,
+        })
+      : null;
+  const drawableRoute = route?.available && route.line ? route : null;
+  const routeProblem = route && !route.available ? route.message : null;
   useEffect(() => {
     const element = dialog.current;
     const previousFocus =
@@ -147,7 +173,11 @@ function LocationMapDialog({
     >
       <header className={styles.header}>
         <h2 id={`${id}-title`}>
-          {intent === "take" ? "Откуда забрать" : "Куда поставить"}
+          {routeRequest
+            ? "Маршрут"
+            : intent === "take"
+              ? "Откуда забрать"
+              : "Куда поставить"}
         </h2>
         <button
           type="button"
@@ -161,29 +191,108 @@ function LocationMapDialog({
       </header>
       {model.available ? (
         <>
-          <div id={`${id}-address`} className={styles.address}>
-            <strong>{model.location.code}</strong>
-            <span>{model.location.name}</span>
-            <p>
-              {model.detail}
-              {model.room && <> · {model.room.name}</>}
-            </p>
-          </div>
+          {route?.available ? (
+            <div id={`${id}-address`} className={styles.routeAddresses}>
+              <RouteAddress model={route.source} intent="take" />
+              <span className={styles.routeDirection} aria-hidden="true">
+                →
+              </span>
+              <RouteAddress model={route.destination} intent="place" />
+            </div>
+          ) : (
+            <div id={`${id}-address`} className={styles.address}>
+              <strong>{model.location.code}</strong>
+              <span>{model.location.name}</span>
+              <p>
+                {model.detail}
+                {model.room && <> · {model.room.name}</>}
+              </p>
+            </div>
+          )}
+          {routeRequest && (
+            <div className={styles.routeStatus} role="status">
+              {query.isPending ? (
+                "Строим маршрут…"
+              ) : query.isError ? (
+                <>
+                  {query.error instanceof RouteLayoutChangedError
+                    ? query.error.message
+                    : "Не удалось загрузить маршрут."}{" "}
+                  <button
+                    type="button"
+                    className={styles.retry}
+                    disabled={query.isFetching}
+                    onClick={() => void query.refetch()}
+                  >
+                    Повторить
+                  </button>
+                </>
+              ) : routeProblem ? (
+                <>
+                  {routeProblem}{" "}
+                  <button
+                    type="button"
+                    className={styles.retry}
+                    disabled={query.isFetching}
+                    onClick={() => void query.refetch()}
+                  >
+                    Обновить
+                  </button>
+                </>
+              ) : drawableRoute && query.data ? (
+                <>
+                  <strong>
+                    {query.data.distanceMeters === null
+                      ? "Маршрут"
+                      : `≈ ${Math.round(query.data.distanceMeters)} м`}
+                  </strong>
+                  {query.data.status === "floor" && (
+                    <span>
+                      Оценка по свободному полу: проходы не заданы полностью.
+                    </span>
+                  )}
+                </>
+              ) : (
+                query.data?.note ||
+                "Маршрут недоступен. Уточните проход у руководителя."
+              )}
+            </div>
+          )}
           <div className={styles.mapFrame}>
-            <MapDrawing model={model} overview={overview} id={id} />
+            <MapDrawing
+              model={model}
+              route={drawableRoute}
+              overview={overview}
+              id={id}
+            />
           </div>
           <div className={styles.footer}>
             <span className={styles.legend}>
-              <i aria-hidden="true" /> Нужное место
+              <i aria-hidden="true" />{" "}
+              {drawableRoute ? "Взять" : "Нужное место"}
+              {drawableRoute && (
+                <>
+                  <span aria-hidden="true">→</span>
+                  <i
+                    className={styles.destinationLegend}
+                    aria-hidden="true"
+                  />{" "}
+                  Нести
+                </>
+              )}
             </span>
-            {model.room && (
+            {(model.room || drawableRoute) && (
               <button
                 type="button"
                 className={styles.overview}
                 aria-pressed={overview}
                 onClick={() => setOverview((value) => !value)}
               >
-                {overview ? "Ближе к месту" : "Весь склад"}
+                {overview
+                  ? drawableRoute
+                    ? "Маршрут"
+                    : "Ближе к месту"
+                  : "Весь склад"}
               </button>
             )}
           </div>
@@ -201,16 +310,39 @@ type AvailableMap = Extract<
   ReturnType<typeof createLocationMap>,
   { available: true }
 >;
+type AvailableRoute = Extract<
+  ReturnType<typeof createWorkRouteMap>,
+  { available: true }
+>;
+function RouteAddress({
+  model,
+  intent,
+}: {
+  model: AvailableMap;
+  intent: Props["intent"];
+}) {
+  return (
+    <div className={styles.routeAddress}>
+      <span>{intent === "take" ? "Взять" : "Нести"}</span>
+      <strong>{model.location.code}</strong>
+      <small>{model.detail}</small>
+    </div>
+  );
+}
 function MapDrawing({
   model,
+  route,
   overview,
   id,
 }: {
   model: AvailableMap;
+  route: AvailableRoute | null;
   overview: boolean;
   id: string;
 }) {
-  const bounds = overview ? model.wholeBounds : model.focusedBounds;
+  const bounds = overview
+    ? model.wholeBounds
+    : (route?.bounds ?? model.focusedBounds);
   const width = 480,
     height = 310,
     inset = 14;
@@ -229,6 +361,7 @@ function MapDrawing({
     height: shape.depth * scale,
   });
   const clipId = `${id}-map-clip`;
+  const arrowId = `${id}-route-arrow`;
   const target = rect(model.target);
   const centerX = target.x + target.width / 2;
   const centerY = target.y + target.height / 2;
@@ -240,16 +373,30 @@ function MapDrawing({
       aria-labelledby={`${id}-map-title ${id}-map-description`}
     >
       <title id={`${id}-map-title`}>
-        Место {model.location.code} на карте склада
+        {route
+          ? `Маршрут: ${route.source.location.code} → ${route.destination.location.code}`
+          : `Место ${model.location.code} на карте склада`}
       </title>
       <desc id={`${id}-map-description`}>
-        {model.room?.name ?? "Общий план склада"}. {model.detail}. Нужное место
-        выделено мятным цветом и меткой.
+        {route
+          ? `От ${route.source.location.code}, ${route.source.detail}, до ${route.destination.location.code}, ${route.destination.detail}. Линия со стрелкой показывает направление от места получения к месту назначения.`
+          : `${model.room?.name ?? "Общий план склада"}. ${model.detail}. Нужное место выделено мятным цветом и меткой.`}
       </desc>
       <defs>
         <clipPath id={clipId}>
           <rect x="0" y="0" width={width} height={height} />
         </clipPath>
+        <marker
+          id={arrowId}
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" className={styles.arrow} />
+        </marker>
       </defs>
       <g clipPath={`url(#${clipId})`}>
         {model.spaces.map((space) => (
@@ -277,7 +424,12 @@ function MapDrawing({
           <rect key={index} {...rect(aisle)} className={styles.aisle} />
         ))}
         {model.shapes
-          .filter((shape) => shape.id !== model.targetShapeId)
+          .filter((shape) =>
+            route
+              ? shape.id !== route.source.targetShapeId &&
+                shape.id !== route.destination.targetShapeId
+              : shape.id !== model.targetShapeId,
+          )
           .map((shape) => {
             const bounds = rect(shape);
             const horizontalLabel =
@@ -325,34 +477,79 @@ function MapDrawing({
             className={styles.entrance}
           />
         ))}
-        <rect
-          {...target}
-          rx="3"
-          className={styles.target}
-          data-highlighted-location={model.location.id}
-          data-location-id={model.location.id}
-        />
-        <circle
-          cx={centerX}
-          cy={centerY}
-          r={Math.max(
-            13,
-            Math.min(20, Math.max(target.width, target.height) / 2 + 5),
-          )}
-          className={styles.targetRing}
-        />
-        <circle cx={centerX} cy={centerY} r="5" className={styles.targetDot} />
-        {target.width > model.location.code.length * 11 + 10 &&
-          target.height > 48 && (
-            <text
-              x={centerX}
-              y={target.y + target.height - 8}
-              textAnchor="middle"
-              className={styles.targetLabel}
-            >
-              {model.location.code}
-            </text>
-          )}
+        {route ? (
+          <>
+            <rect
+              {...rect(route.source.target)}
+              rx="3"
+              className={styles.source}
+              data-route-source-location={route.source.location.id}
+            />
+            <rect
+              {...rect(route.destination.target)}
+              rx="3"
+              className={styles.target}
+              data-route-target-location={route.destination.location.id}
+            />
+            <polyline
+              points={route
+                .line!.map((point) => `${x(point.x)},${y(point.y)}`)
+                .join(" ")}
+              className={styles.routeLine}
+              markerEnd={`url(#${arrowId})`}
+              data-route-line="true"
+              data-route-layout-key={route.layoutKey}
+            />
+            <circle
+              cx={x(route.line![0].x)}
+              cy={y(route.line![0].y)}
+              r="7"
+              className={styles.sourceMarker}
+            />
+            <circle
+              cx={x(route.line!.at(-1)!.x)}
+              cy={y(route.line!.at(-1)!.y)}
+              r="6"
+              className={styles.destinationMarker}
+            />
+          </>
+        ) : (
+          <>
+            <rect
+              {...target}
+              rx="3"
+              className={styles.target}
+              data-highlighted-location={model.location.id}
+              data-location-id={model.location.id}
+            />
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={Math.max(
+                13,
+                Math.min(20, Math.max(target.width, target.height) / 2 + 5),
+              )}
+              className={styles.targetRing}
+            />
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r="5"
+              className={styles.targetDot}
+            />
+            {target.width > model.location.code.length * 11 + 10 &&
+              target.height > 48 && (
+                <text
+                  x={centerX}
+                  y={target.y + target.height - 8}
+                  textAnchor="middle"
+                  className={styles.targetLabel}
+                >
+                  {model.location.code}
+                </text>
+              )}
+          </>
+        )}
       </g>
     </svg>
   );

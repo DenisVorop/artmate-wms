@@ -6,6 +6,9 @@ export type PlacementRoute = {
   distanceMeters: number | null;
   note: string;
 };
+export type PlacementRoutePath = PlacementRoute & {
+  points: { x: number; y: number }[];
+};
 type Plan = Pick<
   D.WorkspaceDto,
   "warehouse" | "locations" | "sections" | "aisles" | "entrances"
@@ -23,9 +26,10 @@ type Room = Rect & {
 };
 type Cell = Rect & { nodes: [number, number, number, number] };
 type Door = { a: number; b: number; points: Point[] };
-type Edge = { to: number; distance: number };
-type Node = { edges: Edge[]; floor: boolean };
-type Attachment = { node: number; distance: number };
+type Edge = { to: number; distance: number; points?: Point[] };
+type Node = { edges: Edge[]; floor: boolean; point: Point };
+type Attachment = { node: number; distance: number; points?: Point[] };
+type Predecessor = { node: number; points?: Point[] };
 const EPS = 1e-8;
 
 /** Only the short, unobstructed access between an address/door and a drawn aisle. */
@@ -37,6 +41,7 @@ export const PLACEMENT_ROUTING_LIMITS = {
   cells: 12000,
   nodes: 60000,
   checks: 2000000,
+  pathPoints: 12000,
 } as const;
 class RoutingLimit extends Error {}
 class Budget {
@@ -95,9 +100,23 @@ function owner(rooms: Room[], rect: Rect): number {
   const indices = rooms.flatMap((r, i) => (contains(r, rect) ? [i] : []));
   return indices.length === 1 ? indices[0] : -1;
 }
-function addEdge(nodes: Node[], a: number, b: number, length: number) {
-  nodes[a].edges.push({ to: b, distance: length });
-  nodes[b].edges.push({ to: a, distance: length });
+function addEdge(
+  nodes: Node[],
+  a: number,
+  b: number,
+  length: number,
+  points?: Point[],
+) {
+  nodes[a].edges.push({
+    to: b,
+    distance: length,
+    ...(points ? { points } : {}),
+  });
+  nodes[b].edges.push({
+    to: a,
+    distance: length,
+    ...(points ? { points: [...points].reverse() } : {}),
+  });
 }
 
 /** Independent corner nodes are joined only across a positive-length cell edge.
@@ -146,7 +165,13 @@ function buildRoom(room: Room, nodes: Node[], budget: Budget) {
         depth: ys[j + 1] - ys[j],
         nodes: [base, base + 1, base + 2, base + 3],
       };
-      nodes.push(...cell.nodes.map(() => ({ edges: [], floor: room.floor })));
+      nodes.push(
+        ...corners(cell).map((point) => ({
+          edges: [],
+          floor: room.floor,
+          point,
+        })),
+      );
       addEdge(nodes, base, base + 1, cell.width);
       addEdge(nodes, base + 1, base + 2, cell.depth);
       addEdge(nodes, base + 2, base + 3, cell.width);
@@ -207,8 +232,13 @@ function segmentClear(room: Room, from: Point, to: Point, budget: Budget) {
 }
 
 /** Address/door connectors are terminal edges, never a free-floor transit graph. */
-function attachments(room: Room, endpoint: Rect | Point, budget: Budget) {
-  const result = new Map<number, number>();
+function attachments(
+  room: Room,
+  endpoint: Rect | Point,
+  budget: Budget,
+  trace: boolean,
+) {
+  const result = new Map<number, Attachment>();
   const point = !("width" in endpoint);
   const limit = room.restricted ? MAX_LOCAL_ACCESS_METERS : 0;
   const attach = (cell: Cell, a: Point, b: Point, only?: number) => {
@@ -218,7 +248,12 @@ function attachments(room: Room, endpoint: Rect | Point, budget: Budget) {
       if (only !== undefined && only !== i) return;
       const cost = length + distance(b, corner);
       const node = cell.nodes[i];
-      if (cost < (result.get(node) ?? Infinity)) result.set(node, cost);
+      if (cost < (result.get(node)?.distance ?? Infinity))
+        result.set(node, {
+          node,
+          distance: cost,
+          ...(trace ? { points: [a, b, { x: corner.x, y: b.y }, corner] } : {}),
+        });
     });
   };
   for (const cell of room.cells) {
@@ -279,7 +314,7 @@ function attachments(room: Room, endpoint: Rect | Point, budget: Budget) {
       });
     }
   }
-  return [...result].map(([node, length]) => ({ node, distance: length }));
+  return [...result.values()];
 }
 
 /** Small binary heap: one Dijkstra run services every destination. */
@@ -320,21 +355,35 @@ class Heap {
     return first;
   }
 }
-function shortestPaths(nodes: Node[], initial: Attachment[], budget: Budget) {
+function shortestPaths(
+  nodes: Node[],
+  initial: Attachment[],
+  budget: Budget,
+  trace: boolean,
+) {
   const lengths = new Float64Array(nodes.length).fill(Infinity);
   const floors = new Uint8Array(nodes.length);
   const heap = new Heap();
-  const update = (node: number, value: number, floor: boolean) => {
+  const predecessors = trace ? new Map<number, Predecessor>() : undefined;
+  const update = (
+    node: number,
+    value: number,
+    floor: boolean,
+    previous: number,
+    points?: Point[],
+  ) => {
     if (
       value < lengths[node] - EPS ||
       (Math.abs(value - lengths[node]) < EPS && !floor && floors[node])
     ) {
       lengths[node] = value;
       floors[node] = Number(floor);
+      predecessors?.set(node, { node: previous, points });
       heap.push({ node, value, floor });
     }
   };
-  for (const a of initial) update(a.node, a.distance, nodes[a.node].floor);
+  for (const a of initial)
+    update(a.node, a.distance, nodes[a.node].floor, -1, a.points);
   for (let item = heap.pop(); item; item = heap.pop()) {
     if (
       item.value > lengths[item.node] + EPS ||
@@ -347,20 +396,75 @@ function shortestPaths(nodes: Node[], initial: Attachment[], budget: Budget) {
         edge.to,
         item.value + edge.distance,
         item.floor || nodes[edge.to].floor,
+        item.node,
+        edge.points,
       );
     }
   }
-  return { lengths, floors };
+  return { lengths, floors, predecessors };
+}
+
+/** Every segment is either a graph edge or a terminal connector inside one cell.
+ * Only remove collinear points when travel continues in the same direction;
+ * backtracking has real distance and must not disappear from the displayed path. */
+function tracePath(
+  nodes: Node[],
+  predecessors: Map<number, Predecessor>,
+  target: Attachment,
+  budget: Budget,
+): Point[] {
+  const segments: Point[][] = [];
+  let current = target.node;
+  let count = 0;
+  for (;;) {
+    budget.check();
+    if (++count > nodes.length + 1) throw new RoutingLimit();
+    const previous = predecessors.get(current);
+    if (!previous) throw new RoutingLimit();
+    const points = previous.points ?? [
+      nodes[previous.node].point,
+      nodes[current].point,
+    ];
+    segments.push(points);
+    if (previous.node < 0) break;
+    current = previous.node;
+  }
+  const points: Point[] = [];
+  const append = (p: Point) => {
+    budget.check();
+    const last = points.at(-1);
+    if (last && distance(last, p) < EPS) return;
+    const before = points.at(-2);
+    if (
+      before &&
+      last &&
+      ((Math.abs(before.x - last.x) < EPS &&
+        Math.abs(last.x - p.x) < EPS &&
+        (last.y - before.y) * (p.y - last.y) >= 0) ||
+        (Math.abs(before.y - last.y) < EPS &&
+          Math.abs(last.y - p.y) < EPS &&
+          (last.x - before.x) * (p.x - last.x) >= 0))
+    )
+      points.pop();
+    points.push({ x: p.x, y: p.y });
+    if (points.length > PLACEMENT_ROUTING_LIMITS.pathPoints)
+      throw new RoutingLimit();
+  };
+  for (const segment of segments.reverse())
+    for (const point of segment) append(point);
+  for (const point of [...(target.points ?? [])].reverse()) append(point);
+  return points;
 }
 
 /** Read-only routing on the actual plan; distances are point-access estimates,
  * not vehicle-clearance, rack-front or safe travel instructions.
  */
-export function placementRoutes(
+function calculateRoutes(
   s: Plan,
   sourceId: string | null,
   candidateIds: string[],
-): Map<string, PlacementRoute> {
+  trace: boolean,
+): Map<string, PlacementRoute & { points?: Point[] }> {
   const ids = [...new Set(candidateIds)];
   const allUnknown = (note: string) =>
     new Map(ids.map((id) => [id, unknown(note)]));
@@ -545,15 +649,21 @@ export function placementRoutes(
     for (const door of doors) {
       let connected = false;
       for (const point of door.points) {
-        const a = attachments(rooms[door.a], point, budget);
-        const b = attachments(rooms[door.b], point, budget);
+        const a = attachments(rooms[door.a], point, budget, trace);
+        const b = attachments(rooms[door.b], point, budget, trace);
         if (!a.length || !b.length) continue;
         connected = true;
         const node = nodes.length;
         if (node + 1 > PLACEMENT_ROUTING_LIMITS.nodes) throw new RoutingLimit();
-        nodes.push({ edges: [], floor: false });
+        nodes.push({ edges: [], floor: false, point });
         for (const attachment of [...a, ...b])
-          addEdge(nodes, node, attachment.node, attachment.distance);
+          addEdge(
+            nodes,
+            node,
+            attachment.node,
+            attachment.distance,
+            attachment.points,
+          );
       }
       if (!connected) {
         uncertainRooms.add(door.a);
@@ -573,7 +683,7 @@ export function placementRoutes(
               changed = true;
             }
     }
-    const initial = attachments(rooms[source.owner], source, budget);
+    const initial = attachments(rooms[source.owner], source, budget, trace);
     if (!initial.length)
       return rooms[source.owner].restricted
         ? allUnknown(
@@ -587,8 +697,8 @@ export function placementRoutes(
                 : unknown("Адрес не найден на действующей схеме"),
             ]),
           );
-    const paths = shortestPaths(nodes, initial, budget);
-    const result = new Map<string, PlacementRoute>();
+    const paths = shortestPaths(nodes, initial, budget, trace);
+    const result = new Map<string, PlacementRoute & { points?: Point[] }>();
     for (const id of ids) {
       const target = locations.get(id);
       if (!target) {
@@ -600,10 +710,11 @@ export function placementRoutes(
           status: rooms[source.owner].floor ? "floor" : "aisles",
           distanceMeters: 0,
           note: "Тот же физический участок; ярус учитывается отдельно",
+          ...(trace ? { points: [] } : {}),
         });
         continue;
       }
-      const options = attachments(rooms[target.owner], target, budget);
+      const options = attachments(rooms[target.owner], target, budget, trace);
       if (!options.length && rooms[target.owner].restricted) {
         result.set(
           id,
@@ -613,6 +724,7 @@ export function placementRoutes(
       }
       let best = Infinity,
         floor = true;
+      let selected: Attachment | undefined;
       for (const a of options) {
         const length = paths.lengths[a.node] + a.distance;
         const usedFloor =
@@ -623,6 +735,7 @@ export function placementRoutes(
         ) {
           best = length;
           floor = usedFloor;
+          selected = a;
         }
       }
       if (!Number.isFinite(best)) {
@@ -635,6 +748,9 @@ export function placementRoutes(
         continue;
       }
       result.set(id, {
+        ...(trace && selected
+          ? { points: tracePath(nodes, paths.predecessors!, selected, budget) }
+          : {}),
         status: floor ? "floor" : "aisles",
         distanceMeters: Math.round(Math.max(0, best) * 100) / 100,
         note: floor
@@ -650,4 +766,28 @@ export function placementRoutes(
       );
     return allUnknown("Схема не позволяет надёжно рассчитать путь");
   }
+}
+
+/** Distances for candidate ranking never allocate route polylines/predecessors. */
+export function placementRoutes(
+  s: Plan,
+  sourceId: string | null,
+  candidateIds: string[],
+): Map<string, PlacementRoute> {
+  return calculateRoutes(s, sourceId, candidateIds, false);
+}
+
+/** One source → destination, with the exact orthogonal geometry used by Dijkstra. */
+export function placementRoutePath(
+  s: Plan,
+  sourceId: string | null,
+  targetId: string | null,
+): PlacementRoutePath {
+  if (!targetId)
+    return {
+      ...unknown("Не определён адрес назначения для расчёта пути"),
+      points: [],
+    };
+  const route = calculateRoutes(s, sourceId, [targetId], true).get(targetId)!;
+  return { ...route, points: route.points ?? [] };
 }

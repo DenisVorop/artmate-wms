@@ -25,6 +25,56 @@ import {
   ValidationArguments,
 } from "class-validator";
 
+export const WORK_ROUTE_KINDS = [
+  "assembly",
+  "receiving",
+  "putaway",
+  "movement",
+  "shipping",
+] as const;
+export class WorkRouteQueryDto {
+  @ApiProperty({ enum: WORK_ROUTE_KINDS })
+  @IsIn(WORK_ROUTE_KINDS)
+  kind!: (typeof WORK_ROUTE_KINDS)[number];
+  @ApiProperty({ type: String, maxLength: 160 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  id!: string;
+  @ApiPropertyOptional({ type: String, maxLength: 160 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  palletId?: string;
+  @ApiPropertyOptional({ type: String, maxLength: 160 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  boxId?: string;
+}
+export class RoutePointDto {
+  @ApiProperty({ type: Number }) x!: number;
+  @ApiProperty({ type: Number }) y!: number;
+}
+export class WorkRouteDto {
+  @ApiProperty({ type: String, description: "Стабильный ключ геометрии плана" })
+  layoutKey!: string;
+  @ApiProperty({ type: Number, minimum: 0, format: "int64" }) revision!: number;
+  @ApiProperty({ type: String, nullable: true }) sourceLocationId!:
+    | string
+    | null;
+  @ApiProperty({ type: String, nullable: true }) targetLocationId!:
+    | string
+    | null;
+  @ApiProperty({ enum: ["aisles", "floor", "unknown", "unreachable"] })
+  status!: "aisles" | "floor" | "unknown" | "unreachable";
+  @ApiProperty({ type: Number, nullable: true }) distanceMeters!: number | null;
+  @ApiProperty({ type: String }) note!: string;
+  @ApiProperty({ type: [RoutePointDto] }) points!: RoutePointDto[];
+}
+
 export class LotContentDto {
   @ApiProperty({ type: String }) lotId!: string;
   @ApiProperty({ type: Number }) quantity!: number;

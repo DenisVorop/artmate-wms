@@ -123,6 +123,11 @@ export function EmployeeShipping({
                     <LocationMapButton
                       data={data}
                       locationId={nextAddress?.id}
+                      routeRequest={{
+                        kind: "shipping",
+                        id: shipment.id,
+                        boxId: nextBox.id,
+                      }}
                       intent="take"
                       contextKey={`shipping:${user?.employeeId ?? ""}:${shipment.id}:${nextBox.id}:${nextAddress?.id ?? "missing"}`}
                     />

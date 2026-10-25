@@ -92,6 +92,7 @@ export function EmployeePutaway({
             <LocationMapButton
               data={data}
               locationId={target.id}
+              routeRequest={{ kind: "putaway", id: carrying.id }}
               intent="place"
               contextKey={`putaway:${employeeId}:${carrying.id}:place:${target.id}`}
             />

@@ -162,6 +162,11 @@ export function EmployeeReceiving({
                   : "Ожидаем свободный адрес")
               }
               addressId={suggested?.id}
+              routeRequest={{
+                kind: "receiving",
+                id: receipt.id,
+                palletId: pallet.id,
+              }}
               data={data}
               phase="place"
               pending={commands.pending}

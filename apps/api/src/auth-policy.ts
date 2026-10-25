@@ -16,6 +16,7 @@ export const warehouseOperations = new Set([
   "leaveZoneWork",
   "scanShipmentWork",
   "finishShipmentWork",
+  "getWorkRoute",
   "getWorkspace",
   "getStocktakes",
   "getStocktake",
@@ -87,6 +88,7 @@ export const warehouseOperations = new Set([
   "updateShift",
 ]);
 const workerReads = new Set([
+  "getWorkRoute",
   "getWorkspace",
   "getStocktakes",
   "getStocktake",

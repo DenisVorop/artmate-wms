@@ -7,7 +7,7 @@ import type {
 export type LocationMapData = Pick<
   WorkspaceDto,
   "warehouse" | "locations" | "sections" | "aisles" | "entrances"
->;
+> & { revision?: number };
 export type MapRectangle = {
   x: number;
   y: number;

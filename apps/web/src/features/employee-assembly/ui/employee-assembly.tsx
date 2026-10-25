@@ -203,6 +203,7 @@ export function EmployeeAssembly({
                   <LocationMapButton
                     data={data}
                     locationId={location?.id}
+                    routeRequest={{ kind: "assembly", id: task.id }}
                     intent="take"
                     contextKey={`assembly:${user?.employeeId ?? ""}:${context}:${location?.id ?? "missing"}`}
                   />

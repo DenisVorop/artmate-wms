@@ -6,6 +6,7 @@ import {
   MAX_LOCAL_ACCESS_METERS,
   PLACEMENT_ROUTING_LIMITS,
   placementRoutes,
+  placementRoutePath,
 } from "../src/placement-routing";
 
 type Plan = Parameters<typeof placementRoutes>[0];
@@ -359,4 +360,222 @@ test("candidate and compressed-grid caps return unknown, never unreachable or a 
   const limited = route(s);
   assert.equal(limited.status, "unknown");
   assert.match(limited.note, /лимит/);
+});
+
+type Point = { x: number; y: number };
+const manhattan = (a: Point, b: Point) =>
+  Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+function checkedPath(s: Plan, source = "source", target = "target") {
+  const before = JSON.stringify(s);
+  const result = placementRoutePath(s, source, target);
+  const { points, ...summary } = result;
+  assert.deepEqual(
+    summary,
+    route(s, target, source),
+    "tracing preserves ranking",
+  );
+  assert.equal(JSON.stringify(s), before, "read-only projection");
+  if (result.distanceMeters === null || result.distanceMeters === 0) {
+    assert.deepEqual(points, []);
+    return result;
+  }
+  assert.ok(points.length >= 2, JSON.stringify(result));
+  const blockers = [
+    ...s.sections.filter((r) => !r.archived),
+    ...s.locations.filter((r) => !r.archived && !r.sectionId),
+  ].map((r) => ({
+    ...r,
+    width: r.rotation % 180 ? r.depth : r.width,
+    depth: r.rotation % 180 ? r.width : r.depth,
+  }));
+  let length = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1],
+      b = points[i];
+    assert.ok(Number.isFinite(b.x) && Number.isFinite(b.y));
+    assert.ok(
+      Math.abs(a.x - b.x) < 1e-8 || Math.abs(a.y - b.y) < 1e-8,
+      "no diagonal shortcut",
+    );
+    assert.ok(manhattan(a, b) > 1e-8, "no duplicate adjacent points");
+    length += manhattan(a, b);
+    for (const rect of blockers) {
+      const crosses =
+        Math.abs(a.y - b.y) < 1e-8
+          ? a.y > rect.y + 1e-8 &&
+            a.y < rect.y + rect.depth - 1e-8 &&
+            Math.min(Math.max(a.x, b.x), rect.x + rect.width) >
+              Math.max(Math.min(a.x, b.x), rect.x) + 1e-8
+          : a.x > rect.x + 1e-8 &&
+            a.x < rect.x + rect.width - 1e-8 &&
+            Math.min(Math.max(a.y, b.y), rect.y + rect.depth) >
+              Math.max(Math.min(a.y, b.y), rect.y) + 1e-8;
+      assert.equal(
+        crosses,
+        false,
+        `segment ${JSON.stringify([a, b])} crosses ${rect.id}`,
+      );
+    }
+  }
+  assert.ok(
+    Math.abs(length - result.distanceMeters) <= 0.01,
+    `${length} ≠ ${result.distanceMeters}`,
+  );
+  return result;
+}
+
+test("trace starts/ends on address perimeters and ranking never includes polylines", () => {
+  const s = plan([
+    location("source", 1, 2, 2, 2),
+    location("target", 3.2, 2, 2, 2),
+  ]);
+  const path = checkedPath(s);
+  assert.deepEqual(path.points, [
+    { x: 3, y: 2 },
+    { x: 3.2, y: 2 },
+  ]);
+  assert.ok(
+    [...placementRoutes(s, "source", ["source", "target"]).values()].every(
+      (r) => !("points" in r),
+    ),
+  );
+});
+
+test("trace follows a U-shaped aisle detour in both directions", () => {
+  const s = plan([location("source", 1, 6), location("target", 9, 6)], {
+    aisles: [
+      aisle("left", 2, 1, 1, 6),
+      aisle("right", 8, 1, 1, 6),
+      aisle("top", 2, 1, 7, 1),
+    ],
+  });
+  for (const [from, to] of [
+    ["source", "target"],
+    ["target", "source"],
+  ]) {
+    const path = checkedPath(s, from, to);
+    assert.equal(path.status, "aisles");
+    assert.ok(
+      path.points.some((p) => p.y <= 2),
+      "reach connecting top aisle",
+    );
+    assert.ok(path.distanceMeters! >= 14);
+    for (let i = 1; i < path.points.length; i++) {
+      const a = path.points[i - 1],
+        b = path.points[i];
+      if (Math.min(a.x, b.x) < 8 && Math.max(a.x, b.x) > 3)
+        assert.ok(
+          a.y <= 2 && b.y <= 2,
+          "cross-room segment stays in top aisle",
+        );
+    }
+  }
+});
+
+test("traced doors reverse correctly and cross shared walls only through openings", () => {
+  const s = spaces(plan([location("source", 1, 1), location("target", 9, 1)]), [
+    room("left", 0, 0, 6, 8),
+    room("right", 6, 0, 6, 8),
+  ]);
+  s.entrances = [entrance("left", "east", 6)];
+  for (const [from, to] of [
+    ["source", "target"],
+    ["target", "source"],
+  ]) {
+    const path = checkedPath(s, from, to);
+    assert.ok(
+      path.points.some((p) => Math.abs(p.x - 6) < 1e-8 && p.y >= 6 && p.y <= 7),
+    );
+    for (let i = 1; i < path.points.length; i++) {
+      const a = path.points[i - 1],
+        b = path.points[i];
+      if (Math.min(a.x, b.x) < 6 - 1e-8 && Math.max(a.x, b.x) > 6 + 1e-8)
+        assert.ok(a.y >= 6 && a.y <= 7, "no solid wall crossing");
+    }
+  }
+  s.entrances = [];
+  assert.equal(checkedPath(s).status, "unreachable");
+});
+
+test("trace avoids rotated equipment and blocked parts of wide doorways", () => {
+  const s = spaces(
+    plan([
+      location("source", 1, 1),
+      location("target", 9, 1),
+      location("obstacle", 5, 3, 2, 1, { rotation: 90 }),
+    ]),
+    [room("left", 0, 0, 6, 8), room("right", 6, 0, 6, 8)],
+  );
+  s.entrances = [entrance("left", "east", 2, 4)];
+  checkedPath(s);
+  checkedPath(s, "target", "source");
+  const detour = plan([
+    location("source", 1, 4),
+    location("target", 9, 4),
+    location("rotated-rack", 4, 0, 8, 2, { rotation: 270, blocked: true }),
+  ]);
+  assert.ok(checkedPath(detour).points.some((p) => p.y >= 8));
+});
+
+test("mixed aisle/corridor trace has connected orthogonal door approaches", () => {
+  const s = spaces(
+    plan([location("source", 0.5, 3), location("target", 13, 3)]),
+    [
+      room("left", 0, 0, 6, 8),
+      room("hall", 6, 0, 3, 8, "corridor"),
+      room("right", 9, 0, 6, 8),
+    ],
+  );
+  s.warehouse.width = 15;
+  s.aisles = [aisle("left", 2, 0, 3, 8), aisle("right", 10, 0, 3, 8)];
+  s.entrances = [entrance("left", "east", 3), entrance("hall", "east", 3)];
+  assert.equal(checkedPath(s).status, "aisles");
+  checkedPath(s, "target", "source");
+});
+
+test("same rack levels have zero horizontal distance without invented vertical path", () => {
+  const section: D.RackSectionDto = {
+    ...archive,
+    id: "rack",
+    code: "A",
+    name: "Стеллаж",
+    x: 3,
+    y: 3,
+    width: 2,
+    depth: 1,
+    rotation: 90,
+    archivedLocationIds: [],
+  };
+  const s = plan(
+    [
+      location("source", 3, 3, 2, 1, { sectionId: "rack", level: 1 }),
+      location("target", 3, 3, 2, 1, { sectionId: "rack", level: 3 }),
+    ],
+    { sections: [section] },
+  );
+  const result = checkedPath(s);
+  assert.equal(result.distanceMeters, 0);
+  assert.match(result.note, /ярус/);
+});
+
+test("unknown, disconnected and capped traces never invent straight paths", () => {
+  const s = plan([location("source", 1, 3), location("target", 9, 3)], {
+    aisles: [aisle("left", 2, 1, 1, 6), aisle("right", 8, 1, 1, 6)],
+  });
+  assert.equal(checkedPath(s).status, "unreachable");
+  assert.deepEqual(placementRoutePath(s, null, "target").points, []);
+  assert.deepEqual(placementRoutePath(s, "source", null).points, []);
+  assert.equal(checkedPath(s, "source", "missing").status, "unknown");
+  s.aisles = [aisle("left", 2, 1, 1, 6)];
+  assert.equal(checkedPath(s).status, "unknown");
+  s.aisles = [];
+  s.warehouse.width = 20;
+  s.warehouse.depth = 20;
+  for (let i = 0; i < 120; i++)
+    s.locations.push(
+      location(`dense-${i}`, 1 + i * 0.08, 1 + i * 0.08, 0.04, 0.04),
+    );
+  const capped = checkedPath(s);
+  assert.equal(capped.status, "unknown");
+  assert.match(capped.note, /лимит/);
 });

@@ -85,6 +85,7 @@ export function EmployeeMovements({
                 code={pallet.code}
                 addressCode={address.code}
                 addressId={address.id}
+                routeRequest={{ kind: "movement", id: movement.id }}
                 data={data}
                 phase={carrying ? "place" : "take"}
                 pending={commands.pending}
