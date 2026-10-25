@@ -160,6 +160,11 @@ export function PutawayDetails({
                   ? ""
                   : ` · до ${suggested.maxWeightKg} кг`}
               </p>
+              {options.data?.recommendation && (
+                <p className={styles.help}>
+                  {options.data.recommendation.explanation}
+                </p>
+              )}
               <p className={styles.help}>
                 Адрес будет выбран и зарезервирован сервером при взятии. Здесь
                 хранится одна тематика с совместимым профилем короба.

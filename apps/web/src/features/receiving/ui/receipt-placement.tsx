@@ -118,6 +118,9 @@ export function ReceiptPlacement({
                   ? ""
                   : ` · до ${suggested.maxWeightKg} кг`}
               </p>
+              {options.data?.recommendation && (
+                <p>{options.data.recommendation.explanation}</p>
+              )}
               <p>
                 Адрес пока не зарезервирован. Разместите паллету и подтвердите
                 оба кода сканером или введите их вручную.

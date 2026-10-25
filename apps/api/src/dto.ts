@@ -358,7 +358,39 @@ export class BalanceDto {
   @ApiProperty({ type: Number }) awaitingPlacementUnits!: number;
   @ApiProperty({ type: Number }) awaitingPlacementPallets!: number;
 }
+export class PlacementRecommendationDto {
+  @ApiProperty({ type: String }) locationId!: string;
+  @ApiProperty({ type: String, nullable: true }) sourceLocationId!:
+    | string
+    | null;
+  @ApiProperty({
+    type: String,
+    enum: ["aisles", "floor", "unknown", "unreachable"],
+  })
+  routeStatus!: "aisles" | "floor" | "unknown" | "unreachable";
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: "Оценка длины пути по схеме, без условной стоимости яруса",
+  })
+  distanceMeters!: number | null;
+  @ApiProperty({
+    type: Number,
+    description: "0 — напольное место, 1 и выше — ярус",
+  })
+  level!: number;
+  @ApiProperty({
+    type: Number,
+    description:
+      "Мягкий вес дополнительного подъёма в эквивалентных метрах, не длина пути",
+  })
+  levelPenaltyMeters!: number;
+  @ApiProperty({ type: Boolean }) sameSkuPallet!: boolean;
+  @ApiProperty({ type: String }) explanation!: string;
+}
 export class ReceiptPlacementOptionsDto {
+  @ApiProperty({ type: PlacementRecommendationDto, nullable: true })
+  recommendation!: PlacementRecommendationDto | null;
   @ApiProperty({ type: String }) palletId!: string;
   @ApiProperty({ type: String, nullable: true }) suggestedLocationId!:
     | string
@@ -399,6 +431,8 @@ export class PutawayTaskDto {
   @ApiProperty({ type: String, nullable: true }) completedAt!: string | null;
 }
 export class PutawayPlacementOptionsDto {
+  @ApiProperty({ type: PlacementRecommendationDto, nullable: true })
+  recommendation!: PlacementRecommendationDto | null;
   @ApiProperty({ type: String }) boxId!: string;
   @ApiProperty({ type: [LocationDto] }) locations!: LocationDto[];
   @ApiProperty({ type: String, nullable: true }) suggestedLocationId!:

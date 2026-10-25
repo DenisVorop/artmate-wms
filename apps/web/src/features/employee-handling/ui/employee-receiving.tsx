@@ -155,7 +155,12 @@ export function EmployeeReceiving({
               type="pallet"
               id={pallet.id}
               code={pallet.code}
-              addressCode={suggested?.code ?? "Ожидаем свободный адрес"}
+              addressCode={
+                suggested?.code ??
+                (options.data?.locations.length
+                  ? "Выберите адрес хранения"
+                  : "Ожидаем свободный адрес")
+              }
               addressId={suggested?.id}
               data={data}
               phase="place"

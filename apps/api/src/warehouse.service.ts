@@ -50,6 +50,10 @@ import {
 import { generateSectionIdentity } from "./section-identity";
 import { seedWorkspace } from "./seed";
 import {
+  rankPlacementLocations,
+  receiptSourceLocation,
+} from "./placement-ranking";
+import {
   checkRect,
   checkBounds,
   checkEntrance,
@@ -1495,20 +1499,23 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   ): Promise<D.ReceiptPlacementOptionsDto> {
     const s = await this._readState(`getReceiptPlacementOptions/${id}`);
     const { pallet } = this._pendingReceiptPallet(s, id, palletId);
-    const locations = s.locations
-      .filter(
-        (l) =>
-          ["rack", "floor"].includes(l.kind) && !placementError(s, l, pallet),
-      )
-      .sort(
-        (a, b) => a.maxHeightMm - b.maxHeightMm || a.code.localeCompare(b.code),
-      );
+    const candidates = s.locations.filter(
+      (l) =>
+        ["rack", "floor"].includes(l.kind) && !placementError(s, l, pallet),
+    );
+    const ranked = rankPlacementLocations(
+      s,
+      candidates,
+      receiptSourceLocation(s, id, palletId),
+    );
     return {
       palletId,
-      locations,
-      suggestedLocationId: locations[0]?.id ?? null,
-      reason: locations.length
-        ? null
+      locations: ranked.locations,
+      suggestedLocationId: ranked.suggestedLocationId,
+      recommendation: ranked.recommendation,
+      reason: candidates.length
+        ? ranked.reason &&
+          `${ranked.reason} Можно вручную подтвердить физически подходящий адрес сканом.`
         : "Нет свободного подходящего адреса хранения по габаритам, высоте и массе",
     };
   }
@@ -2138,32 +2145,43 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     t: D.PutawayTaskDto,
   ): D.PutawayPlacementOptionsDto {
     const box = find(s.boxes, t.boxId, "Короб");
-    const locations = s.locations
-      .filter((l) => !putawayPlacementError(s, l, box, t.id))
-      .sort(
-        (a, b) =>
-          Number(
-            !s.pallets.some(
-              (p) => p.status === "stored" && p.locationId === a.id,
-            ),
-          ) -
-            Number(
-              !s.pallets.some(
-                (p) => p.status === "stored" && p.locationId === b.id,
-              ),
-            ) ||
-          a.maxHeightMm - b.maxHeightMm ||
-          a.code.localeCompare(b.code),
-      );
+    const candidates = s.locations.filter(
+      (l) => !putawayPlacementError(s, l, box, t.id),
+    );
+    // Once assigned, physical carry and its reserved destination are authoritative.
+    // Read-only polling must never suggest a new address after a layout change.
+    const fixed = ["claimed", "in_transit"].includes(t.status)
+      ? t.toLocationId
+      : null;
+    const ranked = rankPlacementLocations(
+      s,
+      fixed ? s.locations.filter((l) => l.id === fixed) : candidates,
+      t.fromLocationId,
+      box.skuId,
+    );
     return {
       boxId: box.id,
-      locations,
-      suggestedLocationId: locations[0]?.id ?? null,
-      reason: locations.length
-        ? null
-        : "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
+      locations: fixed
+        ? [
+            ...s.locations.filter((l) => l.id === fixed),
+            ...candidates.filter((l) => l.id !== fixed),
+          ]
+        : ranked.locations,
+      suggestedLocationId: fixed ?? ranked.suggestedLocationId,
+      recommendation: ranked.recommendation,
+      reason: fixed
+        ? (putawayPlacementError(
+            s,
+            find(s.locations, fixed, "Адрес"),
+            box,
+            t.id,
+          ) ?? ranked.reason)
+        : candidates.length
+          ? ranked.reason
+          : "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
     };
   }
+
   async getPutawayPlacementOptions(id: string) {
     const s = await this._readState(`getPutawayPlacementOptions/${id}`),
       t = find(s.putawayTasks, id, "Задание размещения");
@@ -2193,11 +2211,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     )
       fail("Сначала завершите или приостановите текущее задание сотрудника");
     this._putawaySource(s, t);
-    const target = this._putawayOptions(s, t).suggestedLocationId;
-    if (!target)
-      fail(
-        "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
-      );
+    const options = this._putawayOptions(s, t);
+    const target = options.suggestedLocationId;
+    if (!target) fail(options.reason ?? "Нет подходящего адреса хранения");
     t.status = "claimed";
     t.employeeId = employeeId;
     t.toLocationId = target;
