@@ -19,8 +19,16 @@ const options = (
   fetch: (async (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(init?.redirect, "error");
     assert.ok(init?.signal);
+    const url = new URL(String(input));
+    if (
+      url.hostname === "supplies-api.wildberries.ru" &&
+      url.pathname === "/api/v1/supplies"
+    )
+      return json([]);
+    if (url.pathname === "/v3/supply-order/list")
+      return json({ order_ids: [], last_id: "" });
     return handler(
-      new URL(String(input)),
+      url,
       init?.body
         ? (JSON.parse(String(init.body)) as Record<string, unknown>)
         : {},
@@ -109,7 +117,8 @@ test("WB current stocks, FBS exclusion, pagination dedup and consumer transit ne
   assert.equal(result.stocks[0]!.availableUnits, 12);
   assert.equal(result.stocks[0]!.inboundUnits, null);
   assert.equal(result.stocks[0]!.reservedUnits, null);
-  assert.equal(result.coverage.inbound, false);
+  assert.equal(result.coverage.inbound, true);
+  assert.equal(result.inbound?.[0]?.units, 0);
   assert.deepEqual(result.demand, [
     {
       externalId: "101",

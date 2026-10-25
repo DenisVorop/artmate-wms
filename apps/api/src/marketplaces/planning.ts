@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as W from "../dto";
 import { MarketplaceState } from "./storage";
-import { MarketplacePlanDto } from "./dto";
+import { MarketplacePlanDto, MarketplaceInboundSourceDto } from "./dto";
 const day = 86400000;
 export function marketplacePlan(
   w: W.WorkspaceDto,
@@ -107,28 +107,105 @@ export function marketplacePlan(
       averageDailyUnits *
         (m.settings.horizonDays + m.settings.safetyDays + m.settings.leadDays),
     );
-    const relatedInbound = snapshots.flatMap((snapshot) =>
-      mappings
-        .filter((mapping) => mapping.provider === snapshot.provider)
-        .flatMap((mapping) =>
+    const inboundSources: MarketplaceInboundSourceDto[] =
+      snapshots.flatMap<MarketplaceInboundSourceDto>((snapshot) => {
+        const related = mappings.filter(
+          (mapping) => mapping.provider === snapshot.provider,
+        );
+        if (!related.length) return [];
+        if (snapshot.inbound !== undefined) {
+          const entries = related.map((mapping) => ({
+            mapping,
+            value: snapshot.inbound!.find(
+              (entry) => entry.externalId === mapping.externalId,
+            ),
+          }));
+          const known = entries.every((entry) => entry.value?.units != null);
+          const sourceWarnings = [
+            ...new Set(
+              entries.flatMap(
+                (entry) =>
+                  entry.value?.warnings ?? [
+                    "Нет подтверждённого количества поставок для карточки",
+                  ],
+              ),
+            ),
+          ];
+          const supplyIds = new Set(
+            entries.flatMap((entry) => entry.value?.supplyIds ?? []),
+          );
+          return [
+            {
+              provider: snapshot.provider,
+              units: known
+                ? entries.reduce(
+                    (sum, entry) =>
+                      sum + entry.value!.units! * entry.mapping.unitsPerItem,
+                    0,
+                  )
+                : null,
+              source:
+                snapshot.provider === "wildberries"
+                  ? ("wb_supplies" as const)
+                  : ("ozon_analytics" as const),
+              asOf: snapshot.asOf,
+              supplyCount: supplyIds.size,
+              warnings: sourceWarnings,
+            },
+          ];
+        }
+        // Snapshots saved before supply import retain their original coverage semantics.
+        const entries = related.flatMap((mapping) =>
           snapshot.stocks
             .filter((stock) => stock.externalId === mapping.externalId)
-            .map((stock) => ({
-              stock,
-              mapping,
-              covered: snapshot.coverage.inbound,
-            })),
-        ),
-    );
+            .map((stock) => ({ mapping, stock })),
+        );
+        const known =
+          entries.length > 0 &&
+          snapshot.coverage.inbound &&
+          related.every((mapping) =>
+            entries.some(
+              (entry) => entry.mapping.externalId === mapping.externalId,
+            ),
+          ) &&
+          entries.every((entry) => entry.stock.inboundUnits !== null);
+        return [
+          {
+            provider: snapshot.provider,
+            units: known
+              ? entries.reduce(
+                  (sum, entry) =>
+                    sum +
+                    entry.stock.inboundUnits! * entry.mapping.unitsPerItem,
+                  0,
+                )
+              : null,
+            source: known ? ("legacy" as const) : ("unknown" as const),
+            asOf: snapshot.asOf,
+            supplyCount: 0,
+            warnings: known
+              ? []
+              : ["Обновите данные площадки для загрузки поставок"],
+          },
+        ];
+      });
     const loadedInbound =
-      relatedInbound.length > 0 &&
-      relatedInbound.every((x) => x.covered && x.stock.inboundUnits !== null)
-        ? relatedInbound.reduce(
-            (sum, x) => sum + x.stock.inboundUnits! * x.mapping.unitsPerItem,
-            0,
-          )
+      inboundSources.length &&
+      inboundSources.every((source) => source.units !== null)
+        ? inboundSources.reduce((sum, source) => sum + source.units!, 0)
         : null;
     const inTransitUnits = m.transit[sku.id] ?? loadedInbound;
+    const inboundSource =
+      m.transit[sku.id] !== undefined
+        ? ("manual" as const)
+        : loadedInbound !== null
+          ? ("api" as const)
+          : ("unknown" as const);
+    warnings.push(
+      ...inboundSources.flatMap((source) =>
+        source.warnings.map((warning) => `${source.provider}: ${warning}`),
+      ),
+    );
     warnings.push(
       m.transit[sku.id] !== undefined
         ? "Товар в пути подтверждён вручную суммарно по маркетплейсам; актуальность проверяет руководитель"
@@ -258,6 +335,8 @@ export function marketplacePlan(
       targetUnits,
       marketplaceUnits,
       inTransitUnits,
+      inboundSource,
+      inboundSources,
       readyUnits,
       shippingReadyUnits,
       shipmentReservedUnits,

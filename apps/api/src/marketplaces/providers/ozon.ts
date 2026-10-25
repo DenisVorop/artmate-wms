@@ -1,3 +1,4 @@
+import { ozonInbound, ozonSupplies } from "./ozon-supplies";
 import {
   barcodes,
   client,
@@ -188,6 +189,7 @@ export async function ozon(
     cursors.add(next);
     cursor = next;
   }
+  const supplies = await ozonSupplies(request, products);
   const stockProducts = new Set(
     [...stocks.values()].map((stock) => stock.externalId),
   );
@@ -201,14 +203,15 @@ export async function ozon(
         reservedUnits: null,
         inboundUnits: null,
       });
-  const inboundComplete =
-    stocks.size > 0 &&
-    [...stocks.values()].every((stock) => stock.inboundUnits !== null);
+  const inbound = ozonInbound(products.values(), stocks.values(), supplies);
+  const inboundComplete = inbound.every((item) => item.units !== null);
   return {
     provider: "ozon",
     ...period,
     asOf: new Date().toISOString(),
     products: [...products.values()],
+    inbound,
+    supplies,
     stocks: [...stocks.values()],
     demand: [...demand.values()],
     coverage: {
@@ -219,7 +222,7 @@ export async function ozon(
     },
     warnings: [
       "Ozon: спрос считается по дате создания FBO-отправления с учётом его текущей отмены. Выкупы и возвраты по финансовым отчётам не загружены; returnedUnits=0 здесь не подтверждает отсутствие возвратов.",
-      "Ozon: входящие — только transit_stock_count (поставки в пути); заявки на поставку и внутренние перемещения не прибавляются.",
+      "Ozon: количество в пути — только transit_stock_count из аналитики. Документы поставок загружаются для проверки; их количества повторно не прибавляются. Черновики и запланированные поставки не считаются отправленными.",
       "Ozon: отсутствие строки остатков не подтверждает нулевой остаток товара. Резервы не загружены.",
     ],
   };

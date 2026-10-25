@@ -29,10 +29,39 @@ export interface MarketplaceDemand {
   returnedUnits: number;
   soldUnits: number | null;
 }
+export interface MarketplaceInbound {
+  externalId: string;
+  units: number | null;
+  source: "wb_supplies" | "ozon_analytics";
+  supplyIds: string[];
+  warnings: string[];
+}
+export interface MarketplaceSupplyItem {
+  externalId: string;
+  name: string;
+  plannedUnits: number | null;
+  acceptedUnits: number | null;
+  readyUnits: number | null;
+  pendingUnits: number | null;
+}
+export interface MarketplaceSupply {
+  id: string;
+  statusCode: string;
+  statusLabel: string;
+  expectedAt: string | null;
+  receivedAt: string | null;
+  updatedAt: string | null;
+  calculation: "document" | "analytics" | "excluded" | "review";
+  items: MarketplaceSupplyItem[];
+  warnings: string[];
+}
 export interface MarketplaceSnapshot extends MarketplacePeriod {
   provider: MarketplaceProvider;
   asOf: string;
   products: MarketplaceProduct[];
+  /** Optional only for snapshots saved before supply import was introduced. */
+  inbound?: MarketplaceInbound[];
+  supplies?: MarketplaceSupply[];
   stocks: MarketplaceStock[];
   demand: MarketplaceDemand[];
   coverage: {

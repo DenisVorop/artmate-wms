@@ -9,4 +9,6 @@ export type {
   MarketplaceOverviewDto,
   MarketplaceConnectionDto,
   MarketplaceProductDto,
+  MarketplaceSupplyDto,
+  MarketplaceSupplyItemDto,
 } from "@/shared/api/generated/model";

@@ -11,6 +11,7 @@ import { connectionPayload, mappingPayload } from "../lib/integration-form";
 import { ConnectionCard } from "./connection-card";
 import { ProductMapping } from "./product-mapping";
 import { SkuCreate } from "./sku-create";
+import { SupplyDocuments } from "./supply-documents";
 import styles from "./marketplace-integration.module.css";
 
 export function MarketplaceIntegrationFeature() {
@@ -31,8 +32,8 @@ export function MarketplaceIntegrationFeature() {
           <p className="eyebrow">ВНЕШНИЕ ДАННЫЕ</p>
           <h1 className="page-heading">Маркетплейсы</h1>
           <p>
-            Продажи и остатки Wildberries и Ozon для плана сборки. Товар на
-            маркетплейсах учитывается отдельно от баланса склада.
+            Продажи, остатки и поставки Wildberries и Ozon для плана сборки.
+            Товар на маркетплейсах учитывается отдельно от баланса склада.
           </p>
         </div>
         <Link className="button button--secondary" href="/planning">
@@ -93,6 +94,7 @@ export function MarketplaceIntegrationFeature() {
           />
         ))}
       </div>
+      <SupplyDocuments supplies={data.supplies} />
       <section
         className={`glass-panel ${styles.catalog}`}
         aria-labelledby="marketplace-catalog-title"
@@ -157,9 +159,10 @@ export function MarketplaceIntegrationFeature() {
         )}
       </section>
       <p className={styles.footnote}>
-        Загрузка запускается вручную. Сохранение ключа не подтверждает доступ к
-        API. При ошибке прежние данные сохраняются и помечаются; неполные данные
-        не становятся нулевыми остатками.
+        Загрузка продаж, остатков и поставок запускается кнопкой «Загрузить
+        данные». Сохранение ключа не подтверждает доступ к API. При ошибке
+        прежние данные сохраняются и помечаются; неполные данные не становятся
+        нулевыми остатками.
       </p>
     </div>
   );

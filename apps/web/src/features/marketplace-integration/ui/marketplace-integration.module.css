@@ -229,3 +229,141 @@
     grid-template-columns: 1fr;
   }
 }
+
+.supplies {
+  min-width: 0;
+  overflow: hidden;
+}
+.supplyNotice {
+  padding: 16px 24px 0;
+}
+.supplyList {
+  padding: 18px 24px 22px;
+}
+.supplyList > summary {
+  width: fit-content;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.supplyList > .footnote {
+  margin: 16px 0;
+  max-width: 800px;
+}
+.supply {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.supply > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.supply > summary::before {
+  content: "+";
+  color: var(--muted);
+}
+.supply[open] > summary::before {
+  content: "−";
+}
+.supplyTitle {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.supplyTitle small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+.supplyFacts {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 1fr;
+  max-width: 500px;
+  gap: 8px 16px;
+  margin: 18px 0;
+  font-size: 12px;
+}
+.supplyFacts dt {
+  color: var(--muted);
+}
+.supplyFacts dd {
+  margin: 0;
+  color: var(--text);
+}
+.supply > .warning,
+.supply > .footnote {
+  margin: 12px 0;
+}
+.supplyTableScroll {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.supplyTable {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 610px;
+  font-size: 12px;
+}
+.supplyTable caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 10px;
+}
+.supplyTable th,
+.supplyTable td {
+  border-top: 1px solid var(--border);
+  padding: 12px 10px;
+  text-align: right;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+.supplyTable th {
+  font-weight: 500;
+}
+.supplyTable thead th {
+  color: var(--muted);
+  font-weight: 400;
+}
+.supplyTable th:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+.supplyTable tbody th {
+  min-width: 190px;
+}
+.supplyTable small {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.supplyList summary:focus-visible,
+.supplyTableScroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+@media (max-width: 540px) {
+  .supplyList {
+    padding: 18px;
+  }
+  .supplyNotice {
+    padding: 16px 18px 0;
+  }
+  .supply > summary {
+    flex-wrap: wrap;
+  }
+  .supply > summary > :last-child {
+    margin-left: 20px;
+  }
+}

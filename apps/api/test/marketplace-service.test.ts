@@ -46,6 +46,11 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
       async (provider, credentials, period) => {
         calls++;
         assert.equal(credentials.apiKey, "private-api-key-123");
+        assert.equal(
+          (Date.parse(period.to) - Date.parse(period.from)) / 86_400_000 + 1,
+          28,
+          "sync uses configured history without an implicit 56-day overfetch",
+        );
         if (mode === "fail") throw new Error("private-api-key-123 raw error");
         const s: MarketplaceSnapshot = {
           provider,
@@ -80,6 +85,28 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
             demand: mode !== "partial",
             inbound: false,
           },
+          supplies: [
+            {
+              id: "supply:123",
+              statusCode: "6",
+              statusLabel: "Отгружена на воротах",
+              expectedAt: null,
+              receivedAt: null,
+              updatedAt: null,
+              calculation: "document",
+              warnings: [],
+              items: [
+                {
+                  externalId: "p1",
+                  name: "Котики",
+                  plannedUnits: 20,
+                  acceptedUnits: 0,
+                  readyUnits: 0,
+                  pendingUnits: 20,
+                },
+              ],
+            },
+          ],
           warnings: [],
         };
         return s;
@@ -134,6 +161,18 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     assert.equal(loaded.products[0].suggestedSkuId, "sku-cats");
     assert.equal(loaded.products[0].skuId, null);
     assert.equal(loaded.connections[0].syncStatus, "success");
+    assert.equal(loaded.supplies[0].items[0].skuId, null);
+    assert.equal(loaded.supplies[0].provider, "wildberries");
+    await w.authTransaction(async (tx) => {
+      const persisted = await tx.query<{ payload: MarketplaceSnapshot }>(
+        "SELECT payload FROM marketplace_snapshots",
+      );
+      assert.equal(
+        persisted.rows[0].payload.supplies![0].items[0].pendingUnits,
+        20,
+      );
+      assert.ok(!JSON.stringify(persisted.rows).includes(connect.apiKey));
+    });
     await as("manager", () => service.syncMarketplace(sync));
     assert.equal(calls, 1);
     await as("manager", () =>
@@ -145,6 +184,8 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
         unitsPerItem: 1,
       }),
     );
+    const reloaded = await as("manager", () => service.getMarketplaces());
+    assert.equal(reloaded.supplies[0].items[0].skuId, "sku-cats");
     await as("manager", () =>
       service.setMarketplaceTransit({
         ...req(),

@@ -49,6 +49,49 @@ function product(value: unknown) {
     nullableText(value.suggestedSkuId)
   );
 }
+function inboundSource(value: unknown) {
+  return (
+    record(value) &&
+    provider(value.provider) &&
+    (value.units === null || integer(value.units)) &&
+    ["wb_supplies", "ozon_analytics", "legacy", "unknown"].includes(
+      String(value.source),
+    ) &&
+    nullableTimestamp(value.asOf) &&
+    integer(value.supplyCount) &&
+    strings(value.warnings)
+  );
+}
+function supplyItem(value: unknown) {
+  return (
+    record(value) &&
+    text(value.externalId) &&
+    text(value.name) &&
+    nullableText(value.skuId) &&
+    (value.plannedUnits === null || integer(value.plannedUnits)) &&
+    [value.acceptedUnits, value.readyUnits, value.pendingUnits].every(
+      (item) => item === null || integer(item),
+    )
+  );
+}
+function supply(value: unknown) {
+  return (
+    record(value) &&
+    provider(value.provider) &&
+    text(value.id) &&
+    text(value.statusCode) &&
+    text(value.statusLabel) &&
+    [value.expectedAt, value.receivedAt, value.updatedAt].every(
+      nullableTimestamp,
+    ) &&
+    ["document", "analytics", "excluded", "review"].includes(
+      String(value.calculation),
+    ) &&
+    strings(value.warnings) &&
+    Array.isArray(value.items) &&
+    value.items.every(supplyItem)
+  );
+}
 function settings(value: unknown) {
   return (
     record(value) &&
@@ -81,6 +124,9 @@ function planRow(value: unknown) {
       value.recommendedBoxes,
     ].every(integer) &&
     (value.inTransitUnits === null || integer(value.inTransitUnits)) &&
+    ["api", "manual", "unknown"].includes(String(value.inboundSource)) &&
+    Array.isArray(value.inboundSources) &&
+    value.inboundSources.every(inboundSource) &&
     typeof value.canCreate === "boolean" &&
     strings(value.blockers) &&
     strings(value.warnings) &&
@@ -96,6 +142,8 @@ export function isMarketplaceOverviewResponse(
     value.connections.every(connection) &&
     Array.isArray(value.products) &&
     value.products.every(product) &&
+    Array.isArray(value.supplies) &&
+    value.supplies.every(supply) &&
     settings(value.settings) &&
     record(value.plan) &&
     timestamp(value.plan.generatedAt) &&

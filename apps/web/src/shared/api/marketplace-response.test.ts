@@ -31,6 +31,30 @@ const overview = () => ({
       suggestedSkuId: null,
     },
   ],
+  supplies: [
+    {
+      provider: "wildberries",
+      id: "supply-1",
+      statusCode: "5",
+      statusLabel: "Приёмка разрешена",
+      expectedAt: now,
+      receivedAt: null,
+      updatedAt: now,
+      calculation: "document",
+      warnings: [],
+      items: [
+        {
+          externalId: "listing-1",
+          name: "Котики",
+          skuId: null,
+          plannedUnits: 20,
+          acceptedUnits: null,
+          readyUnits: null,
+          pendingUnits: 20,
+        },
+      ],
+    },
+  ],
   settings: { historyDays: 28, horizonDays: 14, safetyDays: 3, leadDays: 7 },
   plan: {
     generatedAt: now,
@@ -45,6 +69,17 @@ const overview = () => ({
         targetUnits: 0,
         marketplaceUnits: 0,
         inTransitUnits: null,
+        inboundSource: "unknown",
+        inboundSources: [
+          {
+            provider: "wildberries",
+            units: null,
+            source: "unknown",
+            asOf: null,
+            supplyCount: 0,
+            warnings: [],
+          },
+        ],
         readyUnits: 40,
         shippingReadyUnits: 20,
         shipmentReservedUnits: 0,
@@ -114,4 +149,99 @@ test("rejects unknown sync status, malformed nullable timestamp and zero mapping
   const units = overview();
   units.products[0]!.unitsPerItem = 0;
   assert.equal(isMarketplaceOverviewResponse(units), false);
+});
+
+test("requires provenance and supply documents rather than silently accepting an older response", () => {
+  for (const patch of [
+    { inboundSource: undefined },
+    { inboundSources: undefined },
+    { inboundSource: "guessed" },
+    { inboundSources: [null] },
+    {
+      inboundSources: [
+        {
+          provider: "ozon",
+          units: undefined,
+          source: "ozon_analytics",
+          asOf: now,
+          supplyCount: 1,
+          warnings: [],
+        },
+      ],
+    },
+  ]) {
+    const data = overview();
+    Object.assign(data.plan.rows[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
+  assert.equal(
+    isMarketplaceOverviewResponse({ ...overview(), supplies: undefined }),
+    false,
+  );
+});
+test("accepts known zero and explicit unknown supply quantities without conflating them", () => {
+  const data = overview();
+  Object.assign(data.plan.rows[0]!, {
+    inTransitUnits: 0,
+    inboundSource: "api",
+    inboundSources: [
+      {
+        provider: "wildberries",
+        units: 0,
+        source: "wb_supplies",
+        asOf: now,
+        supplyCount: 0,
+        warnings: [],
+      },
+      {
+        provider: "ozon",
+        units: 0,
+        source: "ozon_analytics",
+        asOf: now,
+        supplyCount: 1,
+        warnings: [],
+      },
+    ],
+  });
+  Object.assign(data.supplies[0]!.items[0]!, {
+    plannedUnits: null,
+    acceptedUnits: 0,
+    readyUnits: null,
+    pendingUnits: null,
+  });
+  assert.equal(isMarketplaceOverviewResponse(data), true);
+});
+test("rejects malformed document dates, quantities, review status and source metadata", () => {
+  for (const patch of [
+    { expectedAt: "tomorrow" },
+    { calculation: "added" },
+    { warnings: [false] },
+    { items: [null] },
+    { statusLabel: undefined },
+  ]) {
+    const data = overview();
+    Object.assign(data.supplies[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
+  for (const patch of [
+    { plannedUnits: -1 },
+    { pendingUnits: undefined },
+    { acceptedUnits: Infinity },
+    { readyUnits: 0.5 },
+  ]) {
+    const data = overview();
+    Object.assign(data.supplies[0]!.items[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
+  for (const patch of [
+    { source: "client_guess" },
+    { asOf: "yesterday" },
+    { supplyCount: -1 },
+    { units: 0.5 },
+    { provider: "other" },
+  ]) {
+    const data = overview();
+    Object.assign(data.plan.rows[0]!.inboundSources[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
 });

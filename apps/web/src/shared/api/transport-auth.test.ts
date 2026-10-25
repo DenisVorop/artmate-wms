@@ -165,6 +165,7 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
       return json({
         connections: [],
         products: [],
+        supplies: [],
         settings: {
           historyDays: 28,
           horizonDays: 14,

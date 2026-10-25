@@ -10,6 +10,7 @@ import {
   units,
   MarketplaceProviderError,
 } from "./http";
+import { wbSupplies } from "./wb-supplies";
 import type {
   MarketplaceCredentials,
   MarketplaceDemand,
@@ -102,6 +103,8 @@ export async function wildberries(
     }
     if (batch.length < 10_000) break;
   }
+  const asOf = new Date().toISOString();
+  const supplyData = await wbSupplies(request, products, asOf);
   const demand = new Map<string, MarketplaceDemand>();
   let unknownWarehouse = false;
   const cell = (externalId: string, date: string) => {
@@ -184,10 +187,21 @@ export async function wildberries(
         reservedUnits: null,
         inboundUnits: null,
       });
+  const inboundIds = new Set(supplyData.inbound.map((item) => item.externalId));
+  for (const externalId of products.keys())
+    if (!inboundIds.has(externalId))
+      supplyData.inbound.push({
+        externalId,
+        units: 0,
+        source: "wb_supplies",
+        supplyIds: [],
+        warnings: [],
+      });
   return {
     provider: "wildberries",
     ...period,
-    asOf: new Date().toISOString(),
+    asOf,
+    ...supplyData,
     products: [...products.values()],
     stocks: [...stocks.values()],
     demand: [...demand.values()],
@@ -195,11 +209,16 @@ export async function wildberries(
       catalog: true,
       stocks: true,
       demand: !unknownWarehouse,
-      inbound: false,
+      inbound: supplyData.inbound.every((item) => item.units !== null),
     },
     warnings: [
       "WB: оперативные заказы и продажи предварительные; неоплаченные заказы могут отсутствовать. История ограничена 90 днями.",
-      "WB: поставки на склад в пути и резервы не загружены. Доставка покупателю и возврат от покупателя не считаются входящей поставкой.",
+      "WB: входящие поставки учитываются отдельно от доставки покупателю и возвратов; резервы не загружены.",
+      ...(supplyData.inbound.some((item) => item.units === null)
+        ? [
+            "WB: отдельные входящие поставки требуют проверки; неизвестный остаток не заменяется нулём.",
+          ]
+        : []),
       "WB: текущий API может объединять склады в «Склад WB».",
       ...(unknownWarehouse
         ? [

@@ -214,3 +214,69 @@ test("missing data never claims no demand; confirmed zero demand remains a valid
   assert.equal(row.recommendedBoxes, 0);
   assert.ok(row.blockers.some((reason) => reason.includes("не требуется")));
 });
+
+test("persistent per-product supplies override legacy counters without double counting", () => {
+  const { w, m } = fixture();
+  m.transit = {};
+  m.snapshots.forEach((s) => {
+    s.stocks[0].inboundUnits = 9999;
+    s.inbound = [
+      {
+        externalId: "one",
+        units: s.provider === "ozon" ? 7 : 0,
+        source: s.provider === "ozon" ? "ozon_analytics" : "wb_supplies",
+        supplyIds: ["delivery"],
+        warnings: [],
+      },
+      {
+        externalId: "unrelated",
+        units: null,
+        source: "wb_supplies",
+        supplyIds: [],
+        warnings: ["stale unrelated"],
+      },
+    ];
+  });
+  let row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, 14);
+  assert.equal(row.inboundSource, "api");
+  assert.equal(row.inboundSources.length, 2);
+  assert.equal(row.dataComplete, true);
+  assert.ok(!row.warnings.includes("stale unrelated"));
+  m.snapshots[0].inbound![0].units = null;
+  m.snapshots[0].inbound![0].warnings = ["Проверьте старую поставку"];
+  row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, null);
+  assert.equal(row.inboundSource, "unknown");
+  assert.equal(row.dataComplete, false);
+  assert.ok(
+    row.warnings.some((warning) =>
+      warning.includes("Проверьте старую поставку"),
+    ),
+  );
+  m.transit["sku-cats"] = 0;
+  row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, 0);
+  assert.equal(row.inboundSource, "manual");
+  assert.equal(row.dataComplete, true);
+});
+
+test("known API zero supplies need no manual confirmation", () => {
+  const { w, m } = fixture();
+  m.transit = {};
+  m.snapshots.forEach((s) => {
+    s.inbound = [
+      {
+        externalId: "one",
+        units: 0,
+        source: s.provider === "ozon" ? "ozon_analytics" : "wb_supplies",
+        supplyIds: [],
+        warnings: [],
+      },
+    ];
+  });
+  const row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, 0);
+  assert.equal(row.inboundSource, "api");
+  assert.equal(row.dataComplete, true);
+});

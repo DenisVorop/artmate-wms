@@ -9,12 +9,19 @@ const operations = {
     "/api/v1/supplier/sales",
   "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses":
     "/api/analytics/v1/stocks-report/wb-warehouses",
+  "https://supplies-api.wildberries.ru/api/v1/supplies": "/api/v1/supplies",
+  "https://api-seller.ozon.ru/v3/supply-order/list": "/v3/supply-order/list",
+  "https://api-seller.ozon.ru/v3/supply-order/get": "/v3/supply-order/get",
+  "https://api-seller.ozon.ru/v1/supply-order/bundle":
+    "/v1/supply-order/bundle",
   "https://api-seller.ozon.ru/v3/product/list": "/v3/product/list",
   "https://api-seller.ozon.ru/v3/product/info/list": "/v3/product/info/list",
   "https://api-seller.ozon.ru/v1/analytics/stocks": "/v1/analytics/stocks",
   "https://api-seller.ozon.ru/v3/posting/fbo/list": "/v3/posting/fbo/list",
 } as const;
-export type MarketplaceOperation = (typeof operations)[keyof typeof operations];
+export type MarketplaceOperation =
+  | (typeof operations)[keyof typeof operations]
+  | "/api/v1/supplies/{ID}/goods";
 export interface MarketplaceProviderDiagnostic {
   readonly operation: MarketplaceOperation;
   readonly status?: number;
@@ -135,21 +142,35 @@ export function client(
   return async (url: string, body?: unknown): Promise<unknown> => {
     const parsed = new URL(url);
     const key = `${parsed.origin}${parsed.pathname}`;
-    if (!Object.hasOwn(operations, key) || parsed.username || parsed.password)
+    const supplyGoods =
+      parsed.origin === "https://supplies-api.wildberries.ru" &&
+      /^\/api\/v1\/supplies\/[1-9]\d{0,19}\/goods$/.test(parsed.pathname);
+    if (
+      (!Object.hasOwn(operations, key) && !supplyGoods) ||
+      parsed.username ||
+      parsed.password
+    )
       throw new MarketplaceProviderError(
         "limit",
         "Загрузка превысила безопасный размер. Сократите период.",
       );
     // A fake transport is used only by fixture tests; real HTTP respects endpoint pacing.
-    const operation = operations[key as keyof typeof operations];
+    const operation: MarketplaceOperation = supplyGoods
+      ? "/api/v1/supplies/{ID}/goods"
+      : operations[key as keyof typeof operations];
+    // The supplies API shares one bucket across list, goods and retries.
+    const pacingKey =
+      parsed.hostname === "supplies-api.wildberries.ru" ? "wb:supplies" : key;
     const interval =
-      parsed.hostname === "statistics-api.wildberries.ru"
-        ? 60_100
-        : parsed.hostname === "seller-analytics-api.wildberries.ru"
-          ? 20_100
-          : parsed.hostname === "content-api.wildberries.ru"
-            ? 650
-            : 250;
+      parsed.hostname === "supplies-api.wildberries.ru"
+        ? 2_100
+        : parsed.hostname === "statistics-api.wildberries.ru"
+          ? 60_100
+          : parsed.hostname === "seller-analytics-api.wildberries.ru"
+            ? 20_100
+            : parsed.hostname === "content-api.wildberries.ru"
+              ? 650
+              : 250;
     let response: Response;
     for (let attempt = 1; ; attempt++) {
       if (count >= 180)
@@ -160,7 +181,8 @@ export function client(
         );
       // Pacing is checked on every real HTTP attempt, including a 429 retry.
       if (!options.fetch) {
-        const remaining = (lastRequests.get(key) ?? 0) + interval - Date.now();
+        const remaining =
+          (lastRequests.get(pacingKey) ?? 0) + interval - Date.now();
         if (remaining > 0) await wait(remaining, runSignal);
       }
       if (runSignal.aborted || Date.now() >= deadline)
@@ -169,7 +191,7 @@ export function client(
           attempt,
         });
       count++;
-      if (!options.fetch) lastRequests.set(key, Date.now());
+      if (!options.fetch) lastRequests.set(pacingKey, Date.now());
       try {
         response = await (options.fetch ?? globalThis.fetch)(url, {
           method: body === undefined ? "GET" : "POST",

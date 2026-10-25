@@ -152,6 +152,48 @@ export class MarketplaceProductDto {
   @ApiProperty({ type: Number }) unitsPerItem!: number;
   @ApiProperty({ type: String, nullable: true }) suggestedSkuId!: string | null;
 }
+export class MarketplaceSupplyItemDto {
+  @ApiProperty({ type: String }) externalId!: string;
+  @ApiProperty({ type: String }) name!: string;
+  @ApiProperty({ type: String, nullable: true }) skuId!: string | null;
+  @ApiProperty({ type: Number, nullable: true }) plannedUnits!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) acceptedUnits!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) readyUnits!: number | null;
+  @ApiProperty({ type: Number, nullable: true }) pendingUnits!: number | null;
+}
+export class MarketplaceSupplyDto {
+  @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) statusCode!: string;
+  @ApiProperty({ type: String }) statusLabel!: string;
+  @ApiProperty({ type: String, nullable: true }) expectedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) receivedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) updatedAt!: string | null;
+  @ApiProperty({
+    enum: ["document", "analytics", "excluded", "review"],
+    type: String,
+  })
+  calculation!: "document" | "analytics" | "excluded" | "review";
+  @ApiProperty({ type: [MarketplaceSupplyItemDto] })
+  items!: MarketplaceSupplyItemDto[];
+  @ApiProperty({ type: [String] }) warnings!: string[];
+}
+export class MarketplaceInboundSourceDto {
+  @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: Number, nullable: true }) units!: number | null;
+  @ApiProperty({
+    enum: ["wb_supplies", "ozon_analytics", "legacy", "unknown"],
+    type: String,
+  })
+  source!: "wb_supplies" | "ozon_analytics" | "legacy" | "unknown";
+  @ApiProperty({ type: String, nullable: true }) asOf!: string | null;
+  @ApiProperty({ type: Number }) supplyCount!: number;
+  @ApiProperty({ type: [String] }) warnings!: string[];
+}
 export class MarketplacePlanRowDto {
   @ApiProperty({ type: Boolean }) dataComplete!: boolean;
   @ApiProperty({ type: String }) skuId!: string;
@@ -161,6 +203,10 @@ export class MarketplacePlanRowDto {
   @ApiProperty({ type: Number }) targetUnits!: number;
   @ApiProperty({ type: Number }) marketplaceUnits!: number;
   @ApiProperty({ type: Number, nullable: true }) inTransitUnits!: number | null;
+  @ApiProperty({ enum: ["api", "manual", "unknown"], type: String })
+  inboundSource!: "api" | "manual" | "unknown";
+  @ApiProperty({ type: [MarketplaceInboundSourceDto] })
+  inboundSources!: MarketplaceInboundSourceDto[];
   @ApiProperty({ type: Number }) readyUnits!: number;
   @ApiProperty({ type: Number }) shippingReadyUnits!: number;
   @ApiProperty({ type: Number }) shipmentReservedUnits!: number;
@@ -182,6 +228,8 @@ export class MarketplacePlanDto {
 export class MarketplaceOverviewDto {
   @ApiProperty({ type: [MarketplaceConnectionDto] })
   connections!: MarketplaceConnectionDto[];
+  @ApiProperty({ type: [MarketplaceSupplyDto] })
+  supplies!: MarketplaceSupplyDto[];
   @ApiProperty({ type: [MarketplaceProductDto] })
   products!: MarketplaceProductDto[];
   @ApiProperty({ type: MarketplaceSettingsDto })

@@ -124,6 +124,20 @@ export class MarketplaceService {
           warnings: c?.warnings ?? [],
         };
       }),
+      supplies: m.snapshots.flatMap((snapshot) =>
+        (snapshot.supplies ?? []).map((supply) => ({
+          ...supply,
+          provider: snapshot.provider,
+          items: supply.items.map((item) => {
+            const mapping = m.mappings.find(
+              (entry) =>
+                entry.provider === snapshot.provider &&
+                entry.externalId === item.externalId,
+            );
+            return { ...item, skuId: mapping?.skuId ?? null };
+          }),
+        })),
+      ),
       products: m.snapshots.flatMap((s) =>
         s.products.map((p) => {
           const map = m.mappings.find(
@@ -339,7 +353,7 @@ export class MarketplaceService {
         runId,
         version: c.version,
         fp,
-        historyDays: b.historyDays ?? Math.max(56, loaded.settings.historyDays),
+        historyDays: b.historyDays ?? loaded.settings.historyDays,
       };
     });
     if (start.cached) return start.cached;

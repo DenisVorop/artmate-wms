@@ -1,8 +1,10 @@
 "use client";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
+import { marketplaceDate, providerName } from "@/entities/marketplaces";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
 import styles from "./assembly-planning.module.css";
@@ -48,9 +50,13 @@ export function PlanningRow({
             ? "Можно собирать"
             : row.dataComplete && row.recommendedBoxes === 0
               ? "Запаса достаточно"
-              : row.blockers.length
-                ? "Проверьте данные"
-                : "Запаса достаточно"}
+              : row.dataComplete && row.recommendedBoxes > 0
+                ? shortage > 0
+                  ? "Нужно сырьё"
+                  : "Нужна сборка"
+                : row.blockers.length
+                  ? "Проверьте данные"
+                  : "Запаса достаточно"}
         </Badge>
       </div>
       <div className={styles.recommendation}>
@@ -61,8 +67,8 @@ export function PlanningRow({
               : "Расчёт пока недоступен"}
           </strong>
           <span>
-            {row.dataComplete ? number(row.recommendedUnits) : "—"} раскрасок ·
-            по {number(row.unitsPerBox)} в коробе
+            {row.dataComplete ? number(row.recommendedUnits) : "—"} единиц · по{" "}
+            {number(row.unitsPerBox)} в коробе
           </span>
         </div>
         <Button
@@ -77,18 +83,32 @@ export function PlanningRow({
         <Metric
           label="Спрос в день"
           value={row.dataComplete ? number(row.averageDailyUnits, 1) : "—"}
-          note="Раскрасок · оба маркетплейса"
+          note="Единиц товара · оба маркетплейса"
         />
         <Metric
           label="На маркетплейсах"
           value={row.dataComplete ? number(row.marketplaceUnits) : "—"}
-          note="Раскрасок на их складах"
+          note="Единиц товара на их складах"
         />
-        <Metric
-          label="В пути на маркетплейсы"
-          value={number(row.inTransitUnits)}
-          note="Из API или подтверждено вручную"
-        />
+        <div className={styles.metric}>
+          <span>В пути на маркетплейсы</span>
+          <strong>{number(row.inTransitUnits)}</strong>
+          <small>
+            {row.inboundSource === "api"
+              ? "Из API поставок"
+              : row.inboundSource === "manual"
+                ? "Подтверждено вручную"
+                : "Нужна проверка данных"}
+          </small>
+          <div className={styles.sources}>
+            {row.inboundSources.map((source) => (
+              <small key={source.provider}>
+                {providerName(source.provider)}: {number(source.units)}
+                {row.inboundSource === "manual" && " · API"}
+              </small>
+            ))}
+          </div>
+        </div>
         <Metric
           label="Готово у нас"
           value={number(row.readyUnits)}
@@ -110,24 +130,24 @@ export function PlanningRow({
         </div>
       )}
       {!!row.warnings.length && (
-        <div className={styles.blockers}>
+        <details className={styles.detail}>
+          <summary>Примечания к расчёту · {row.warnings.length}</summary>
           {row.warnings.map((warning) => (
             <p key={warning} className={styles.help}>
               {warning}
             </p>
           ))}
-        </div>
+        </details>
       )}
       {row.dataComplete && shortage > 0 && (
         <p className={styles.warning}>
-          Для рекомендации не хватает {number(shortage)} доступных раскрасок
-          сырья.
+          Для рекомендации не хватает {number(shortage)} доступных единиц сырья.
         </p>
       )}
-      <details className={styles.detail} open={row.inTransitUnits == null}>
+      <details className={styles.detail}>
         <summary>Расчёт и товар в пути</summary>
         <dl>
-          <dt>Целевой запас, раскрасок</dt>
+          <dt>Целевой запас, единиц товара</dt>
           <dd>{row.dataComplete ? number(row.targetUnits) : "—"}</dd>
           <dt>Готово к отгрузке со склада</dt>
           <dd>{number(row.shippingReadyUnits)}</dd>
@@ -136,49 +156,86 @@ export function PlanningRow({
           <dt>Сырья доступно для новых заданий</dt>
           <dd>{number(row.rawAvailableUnits)}</dd>
         </dl>
-        <form
-          noValidate
-          className={styles.transit}
-          onSubmit={form.handleSubmit(async (values) => {
-            if (!pending && (await onTransit(values.inTransitUnits)))
-              form.reset(values);
-          })}
-        >
-          <label className="field">
-            Раскрасок в пути на маркетплейсы
-            <Input
-              type="number"
-              min={0}
-              max={100000000}
-              {...form.register("inTransitUnits", { valueAsNumber: true })}
-              disabled={pending}
-              placeholder="Укажите количество"
-              aria-invalid={!!form.formState.errors.inTransitUnits}
-            />
-          </label>
-          <Button
-            type="submit"
-            variant="secondary"
-            size="sm"
-            disabled={
-              pending || (row.inTransitUnits != null && !form.formState.isDirty)
-            }
-          >
-            Подтвердить
-          </Button>
-          {form.formState.errors.inTransitUnits && (
-            <span className={styles.error}>
-              {form.formState.errors.inTransitUnits.message}
-            </span>
-          )}
-        </form>
+        <div className={styles.sourceDetails}>
+          {row.inboundSources.map((source) => (
+            <div key={source.provider}>
+              <strong>
+                {providerName(source.provider)} · {number(source.units)}
+              </strong>
+              <p className={styles.help}>
+                {source.source === "wb_supplies"
+                  ? "По документам поставок WB"
+                  : source.source === "ozon_analytics"
+                    ? "По аналитике Ozon: в пути и на приёмке"
+                    : source.source === "legacy"
+                      ? "Ранее загруженные данные"
+                      : "Источник не подтверждён"}
+                {source.asOf
+                  ? ` · ${marketplaceDate(source.asOf)}`
+                  : " · Дата загрузки неизвестна"}
+                {source.supplyCount > 0 &&
+                  ` · документов: ${number(source.supplyCount)}`}
+              </p>
+              {source.warnings.map((warning) => (
+                <p key={warning} className={styles.warning}>
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ))}
+        </div>
         <p className={styles.help}>
-          Ручное подтверждение заменяет расчёт товара в пути из API. Укажите
-          общий объём отправленного, ещё не принятого товара по обоим
-          маркетплейсам. Если данных нет и товара в пути нет, явно подтвердите
-          0. Уже принятый товар сюда не входит. После новой загрузки данных
-          ручное подтверждение сбрасывается.
+          <Link href="/integrations#marketplace-supplies-title">
+            Посмотреть документы поставок →
+          </Link>
         </p>
+        <details className={styles.manual}>
+          <summary>Указать товар в пути вручную</summary>
+          <form
+            noValidate
+            className={styles.transit}
+            onSubmit={form.handleSubmit(async (values) => {
+              if (!pending && (await onTransit(values.inTransitUnits)))
+                form.reset(values);
+            })}
+          >
+            <label className="field">
+              Единиц товара в пути на маркетплейсы
+              <Input
+                type="number"
+                min={0}
+                max={100000000}
+                {...form.register("inTransitUnits", { valueAsNumber: true })}
+                disabled={pending}
+                placeholder="Укажите количество"
+                aria-invalid={!!form.formState.errors.inTransitUnits}
+              />
+            </label>
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              disabled={
+                pending ||
+                (row.inTransitUnits != null && !form.formState.isDirty)
+              }
+            >
+              Подтвердить
+            </Button>
+            {form.formState.errors.inTransitUnits && (
+              <span className={styles.error}>
+                {form.formState.errors.inTransitUnits.message}
+              </span>
+            )}
+          </form>
+          <p className={styles.help}>
+            Ручное подтверждение заменяет расчёт товара в пути из API. Укажите
+            общий объём отправленного, ещё не принятого товара по обоим
+            маркетплейсам. Ноль подтверждайте только после проверки фактических
+            поставок. Уже принятый товар сюда не входит. После новой загрузки
+            данных ручное подтверждение сбрасывается.
+          </p>
+        </details>
       </details>
     </article>
   );

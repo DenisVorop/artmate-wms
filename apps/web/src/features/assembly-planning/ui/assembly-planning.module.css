@@ -227,3 +227,36 @@
     font-size: 26px;
   }
 }
+
+.sources {
+  display: grid;
+  gap: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.sourceDetails {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.sourceDetails strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.manual {
+  margin-top: 18px;
+}
+.detail summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+@media (max-width: 540px) {
+  .sourceDetails {
+    grid-template-columns: 1fr;
+  }
+}
