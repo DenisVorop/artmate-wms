@@ -367,3 +367,64 @@
     margin-left: 20px;
   }
 }
+
+.freshness {
+  color: var(--muted);
+  font-size: 13px;
+}
+.connectionSettings {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.connectionSettings > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.connectionSettings > .actions,
+.connectionSettings > .form {
+  margin-top: 16px;
+}
+.connectionSettings > .form {
+  border-top: none;
+  padding-top: 0;
+}
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 22px 24px;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.disclosure > summary::before {
+  content: "+";
+  color: var(--muted);
+}
+.disclosure[open] > summary::before {
+  content: "−";
+}
+.disclosure[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.connectionSettings > summary:focus-visible,
+.disclosure > summary:focus-visible,
+.supply > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 3px;
+}
+@media (max-width: 540px) {
+  .disclosure > summary {
+    padding: 18px;
+  }
+  .disclosure > summary > .warning {
+    flex-basis: 100%;
+    margin-left: 20px;
+  }
+}

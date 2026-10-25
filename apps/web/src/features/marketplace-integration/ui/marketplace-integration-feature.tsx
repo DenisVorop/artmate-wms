@@ -29,12 +29,8 @@ export function MarketplaceIntegrationFeature() {
     <div className={styles.feature}>
       <header className={styles.header}>
         <div>
-          <p className="eyebrow">ВНЕШНИЕ ДАННЫЕ</p>
           <h1 className="page-heading">Маркетплейсы</h1>
-          <p>
-            Продажи, остатки и поставки Wildberries и Ozon для плана сборки.
-            Товар на маркетплейсах учитывается отдельно от баланса склада.
-          </p>
+          <p>Продажи, остатки и поставки для плана сборки.</p>
         </div>
         <Link className="button button--secondary" href="/planning">
           План сборки <ArrowUpRight size={16} />
@@ -53,7 +49,7 @@ export function MarketplaceIntegrationFeature() {
       )}
       {actions.error && (
         <p className={styles.error} role="alert">
-          {actions.error}
+          Не удалось сохранить изменения. Проверьте данные и повторите попытку.
         </p>
       )}
       <div className={styles.cards}>
@@ -68,17 +64,13 @@ export function MarketplaceIntegrationFeature() {
               );
               if (success)
                 setNotice(
-                  `${providerName(connection.provider)}: ключ сохранён. Нажмите «Загрузить данные», чтобы проверить подключение.`,
+                  `${providerName(connection.provider)}: подключение сохранено. Обновите данные.`,
                 );
               return success;
             }}
             onSync={async () => {
-              const success = await actions.sync(connection.provider);
-              if (success)
-                setNotice(
-                  `${providerName(connection.provider)}: запрос загрузки завершён. Результат указан в карточке подключения.`,
-                );
-              return success;
+              setNotice("");
+              return actions.sync(connection.provider);
             }}
             onToggle={async () => {
               const success = await actions.toggle(
@@ -95,22 +87,23 @@ export function MarketplaceIntegrationFeature() {
         ))}
       </div>
       <SupplyDocuments supplies={data.supplies} />
-      <section
-        className={`glass-panel ${styles.catalog}`}
-        aria-labelledby="marketplace-catalog-title"
-      >
+      <details className={`glass-panel ${styles.catalog} ${styles.disclosure}`}>
+        <summary>
+          <span>Товары · {data.products.length}</span>
+          {unmapped > 0 && (
+            <span className={styles.warning}>
+              Нужно связать с тематиками: {unmapped}
+            </span>
+          )}
+        </summary>
         <div className={styles.sectionHeading}>
-          <div>
-            <h2 id="marketplace-catalog-title">Каталог и тематики</h2>
-            <p>
-              Укажите, сколько книг или наборов маркеров содержит одна
-              продаваемая упаковка. Несколько карточек могут относиться к одной
-              тематике.
-            </p>
-          </div>
-          <span className={styles.count}>
-            {data.products.length} карточек · {unmapped} без тематики
-          </span>
+          <p>
+            {!data.products.length
+              ? "После загрузки свяжите товары с тематиками склада."
+              : unmapped > 0
+                ? "Выберите тематику для несвязанных товаров, чтобы они попали в план сборки."
+                : "Все товары связаны с тематиками склада."}
+          </p>
           <Button
             variant="ghost"
             size="sm"
@@ -132,7 +125,7 @@ export function MarketplaceIntegrationFeature() {
         {!data.products.length ? (
           <EmptyState
             title="Каталог ещё не загружен"
-            description="Подключите маркетплейс и загрузите данные. После этого сопоставьте его товары с тематиками WMS."
+            description="Подключите маркетплейс и обновите данные."
           />
         ) : !workspace.data ? (
           <ErrorState
@@ -157,13 +150,7 @@ export function MarketplaceIntegrationFeature() {
             />
           ))
         )}
-      </section>
-      <p className={styles.footnote}>
-        Загрузка продаж, остатков и поставок запускается кнопкой «Загрузить
-        данные». Сохранение ключа не подтверждает доступ к API. При ошибке
-        прежние данные сохраняются и помечаются; неполные данные не становятся
-        нулевыми остатками.
-      </p>
+      </details>
     </div>
   );
 }

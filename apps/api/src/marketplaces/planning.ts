@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import * as W from "../dto";
 import { MarketplaceState } from "./storage";
-import { MarketplacePlanDto, MarketplaceInboundSourceDto } from "./dto";
+import {
+  MarketplacePlanDto,
+  MarketplaceInboundSourceDto,
+  MarketplacePlanAdviceDto,
+} from "./dto";
 const day = 86400000;
 export function marketplacePlan(
   w: W.WorkspaceDto,
@@ -11,35 +15,48 @@ export function marketplacePlan(
   const generatedAt = clock.toISOString(),
     global: string[] = [];
   const enabled = m.connections.filter((c) => c.enabled);
+  let globalAdviceMessage: string | null = enabled.length
+    ? null
+    : "Подключите маркетплейс и загрузите продажи.";
   if (!enabled.length)
     global.push("Подключите и обновите хотя бы один маркетплейс");
   const snapshots = enabled.flatMap((c) => {
     const snapshot = m.snapshots.find((s) => s.provider === c.provider);
     if (!snapshot) {
       global.push(`${c.provider}: нет полной загрузки`);
+      globalAdviceMessage ??= "Загрузите данные маркетплейсов.";
       return [];
     }
-    if (c.syncStatus !== "success")
+    if (c.syncStatus !== "success") {
       global.push(`${c.provider}: последняя загрузка не завершена успешно`);
+      globalAdviceMessage ??= "Обновите данные маркетплейсов.";
+    }
     if (
       !Number.isFinite(Date.parse(snapshot.asOf)) ||
       clock.getTime() - Date.parse(snapshot.asOf) > day
-    )
+    ) {
       global.push(`${c.provider}: данные старше 24 часов`);
+      globalAdviceMessage ??= "Обновите данные маркетплейсов.";
+    }
     if (
       !snapshot.coverage.catalog ||
       !snapshot.coverage.stocks ||
       !snapshot.coverage.demand
-    )
+    ) {
       global.push(`${c.provider}: неполные данные`);
+      globalAdviceMessage ??= "Обновите данные маркетплейсов.";
+    }
     const missing = snapshot.products.filter(
       (p) =>
         !m.mappings.some(
           (x) => x.provider === c.provider && x.externalId === p.externalId,
         ),
     );
-    if (missing.length)
+    if (missing.length) {
       global.push(`${c.provider}: сопоставьте ${missing.length} карточек`);
+      globalAdviceMessage ??=
+        "Свяжите товары маркетплейсов с тематиками склада.";
+    }
     return [snapshot];
   });
   const today = new Date(clock.getTime() + 3 * 3600000)
@@ -55,19 +72,24 @@ export function marketplacePlan(
   const rows = w.skus.map((sku) => {
     const blockers = [...global],
       warnings: string[] = [];
+    let reviewMessage = globalAdviceMessage;
     let ordered = 0,
       marketplaceUnits = 0;
     const mappings = m.mappings.filter(
       (x) =>
         x.skuId === sku.id && enabled.some((c) => c.provider === x.provider),
     );
-    if (!mappings.length)
+    if (!mappings.length) {
       blockers.push("Тематика не сопоставлена с карточками маркетплейсов");
+      reviewMessage ??= "Свяжите товар маркетплейса с тематикой склада.";
+    }
     for (const snapshot of snapshots) {
       const related = mappings.filter((x) => x.provider === snapshot.provider);
       if (!related.length) continue;
-      if (snapshot.from > from || snapshot.to < to)
+      if (snapshot.from > from || snapshot.to < to) {
         blockers.push(`${snapshot.provider}: недостаточно дней истории`);
+        reviewMessage ??= "Загрузите продажи за весь расчётный период.";
+      }
       warnings.push(
         ...snapshot.warnings.map((v) => `${snapshot.provider}: ${v}`),
       );
@@ -75,10 +97,12 @@ export function marketplacePlan(
         const stocks = snapshot.stocks.filter(
           (x) => x.externalId === mapping.externalId,
         );
-        if (!stocks.length || stocks.some((x) => x.availableUnits === null))
+        if (!stocks.length || stocks.some((x) => x.availableUnits === null)) {
           blockers.push(
             `${snapshot.provider}: неизвестен остаток карточки ${mapping.externalId}`,
           );
+          reviewMessage ??= "Обновите остатки товара на маркетплейсах.";
+        }
         marketplaceUnits += stocks.reduce(
           (s, x) => s + (x.availableUnits ?? 0) * mapping.unitsPerItem,
           0,
@@ -314,6 +338,40 @@ export function marketplacePlan(
     warnings.push(
       "Средний спрос рассчитан по заказам за вычетом отмен; сезонность и дни отсутствия товара не восстановлены",
     );
+    const canCreate = !blockers.length;
+    // Presentation follows the same blockers; it never replaces missing quantities
+    // or grants permission to create a task.
+    const advice: MarketplacePlanAdviceDto = reviewMessage
+      ? { state: "review", message: reviewMessage, action: "integrations" }
+      : inTransitUnits === null
+        ? {
+            state: "review",
+            message: "Проверьте количество товара в пути.",
+            action: "transit",
+          }
+        : dataComplete && recommendedUnits > rawAvailableUnits
+          ? {
+              state: "raw_shortage",
+              message: `Примите и разместите товар: не хватает ${recommendedUnits - rawAvailableUnits} шт.`,
+              action: "receiving",
+            }
+          : canCreate
+            ? {
+                state: "ready",
+                message: "Можно передать в сборку.",
+                action: "create",
+              }
+            : dataComplete && recommendedBoxes === 0
+              ? {
+                  state: "covered",
+                  message: "Запаса и текущей сборки достаточно.",
+                  action: "none",
+                }
+              : {
+                  state: "review",
+                  message: "Рекомендация требует проверки руководителем.",
+                  action: "none",
+                };
     const proposalHash = createHash("sha256")
       .update(
         JSON.stringify({
@@ -327,6 +385,7 @@ export function marketplacePlan(
       )
       .digest("hex");
     return {
+      advice,
       dataComplete,
       skuId: sku.id,
       skuName: sku.name,
@@ -344,7 +403,7 @@ export function marketplacePlan(
       rawAvailableUnits,
       recommendedUnits,
       recommendedBoxes,
-      canCreate: !blockers.length,
+      canCreate,
       blockers: [...new Set(blockers)],
       warnings: [...new Set(warnings)],
       proposalHash,

@@ -6,10 +6,10 @@ import { Button, Input } from "@/shared/ui";
 import { planningSchema, type PlanningValues } from "../lib/planning-form";
 import styles from "./assembly-planning.module.css";
 const fields = [
-  { name: "historyDays", label: "История, дней", min: 7, max: 89 },
-  { name: "horizonDays", label: "Запас, дней", min: 1, max: 90 },
-  { name: "safetyDays", label: "Страховой запас, дней", min: 0, max: 60 },
-  { name: "leadDays", label: "Доставка, дней", min: 0, max: 60 },
+  { name: "historyDays", label: "Продажи за, дней", min: 7, max: 89 },
+  { name: "horizonDays", label: "Запас на, дней", min: 1, max: 90 },
+  { name: "safetyDays", label: "Дополнительный запас, дней", min: 0, max: 60 },
+  { name: "leadDays", label: "Доставка до складов, дней", min: 0, max: 60 },
 ] as const;
 export function PlanningSettings({
   settings,
@@ -25,19 +25,13 @@ export function PlanningSettings({
     defaultValues: settings,
   });
   return (
-    <section
-      className={`glass-panel ${styles.settings}`}
-      aria-labelledby="planning-settings-title"
-    >
-      <div className={styles.heading}>
-        <div>
-          <h2 id="planning-settings-title">Правила запаса</h2>
-          <p>
-            Сначала проверьте продажи и соответствия товаров. Изменения
-            пересчитывают рекомендации.
-          </p>
-        </div>
-      </div>
+    <details className={`glass-panel ${styles.settings}`}>
+      <summary className={styles.settingsSummary}>
+        <span>
+          Запас на <strong>{settings.horizonDays} дней</strong>
+        </span>
+        <span className={styles.settingsAction}>Настроить</span>
+      </summary>
       <form
         noValidate
         className={styles.fields}
@@ -64,9 +58,12 @@ export function PlanningSettings({
           </label>
         ))}
         <Button type="submit" disabled={pending || !form.formState.isDirty}>
-          Пересчитать
+          Сохранить настройки
         </Button>
       </form>
-    </section>
+      <p className={styles.help}>
+        Если увеличите период продаж, обновите данные маркетплейсов.
+      </p>
+    </details>
   );
 }

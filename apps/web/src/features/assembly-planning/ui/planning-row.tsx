@@ -1,19 +1,26 @@
 "use client";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
-import { marketplaceDate, providerName } from "@/entities/marketplaces";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
+import { boxesLabel } from "../lib/planning-view";
 import styles from "./assembly-planning.module.css";
 const number = (value: number | null, digits = 0) =>
   value == null
-    ? "Нет данных"
+    ? "Не уточнено"
     : new Intl.NumberFormat("ru-RU", { maximumFractionDigits: digits }).format(
         value,
       );
+const status = {
+  ready: "Можно собирать",
+  covered: "Запаса достаточно",
+  raw_shortage: "Не хватает сырья",
+  review: "Нужна проверка",
+};
 export function PlanningRow({
   row,
   pending,
@@ -25,172 +32,132 @@ export function PlanningRow({
   onCreate: () => Promise<void>;
   onTransit: (units: number) => Promise<boolean>;
 }) {
+  const id = useId();
+  const [expanded, setExpanded] = useState(false),
+    [manual, setManual] = useState(false);
   const form = useForm<TransitValues>({
     resolver: zodResolver(transitSchema),
     defaultValues:
       row.inTransitUnits == null ? {} : { inTransitUnits: row.inTransitUnits },
   });
-  const shortage = Math.max(0, row.recommendedUnits - row.rawAvailableUnits);
+  const { state, action, message } = row.advice;
+  const needsAssembly =
+    row.dataComplete && (state === "ready" || state === "raw_shortage");
   return (
     <article className={`glass-panel ${styles.row}`}>
-      <div className={styles.title}>
-        <h2>{row.skuName}</h2>
-        <Badge
-          tone={
-            row.canCreate
-              ? "success"
-              : row.dataComplete && row.recommendedBoxes === 0
-                ? "neutral"
-                : row.blockers.length
-                  ? "warning"
-                  : "neutral"
-          }
-        >
-          {row.canCreate
-            ? "Можно собирать"
-            : row.dataComplete && row.recommendedBoxes === 0
-              ? "Запаса достаточно"
-              : row.dataComplete && row.recommendedBoxes > 0
-                ? shortage > 0
-                  ? "Нужно сырьё"
-                  : "Нужна сборка"
-                : row.blockers.length
-                  ? "Проверьте данные"
-                  : "Запаса достаточно"}
-        </Badge>
-      </div>
-      <div className={styles.recommendation}>
-        <div>
-          <strong>
-            {row.dataComplete
-              ? `${number(row.recommendedBoxes)} коробов к сборке`
-              : "Расчёт пока недоступен"}
+      <div className={styles.rowMain}>
+        <div className={styles.title}>
+          <h2>{row.skuName}</h2>
+          <Badge
+            tone={
+              state === "ready"
+                ? "success"
+                : state === "covered"
+                  ? "neutral"
+                  : "warning"
+            }
+          >
+            {status[state]}
+          </Badge>
+        </div>
+        <div className={styles.quantity}>
+          <strong className={needsAssembly ? styles.quantityAccent : undefined}>
+            {needsAssembly
+              ? boxesLabel(row.recommendedBoxes)
+              : state === "covered"
+                ? "Собирать не нужно"
+                : "Расчёт ожидает проверки"}
           </strong>
-          <span>
-            {row.dataComplete ? number(row.recommendedUnits) : "—"} единиц · по{" "}
-            {number(row.unitsPerBox)} в коробе
-          </span>
+          {needsAssembly && (
+            <span>
+              {number(row.recommendedUnits)} шт. · по {number(row.unitsPerBox)}{" "}
+              в коробе
+            </span>
+          )}
         </div>
-        <Button
-          disabled={pending || !row.canCreate || row.recommendedBoxes < 1}
-          onClick={() => void onCreate()}
-        >
-          <Boxes size={17} />
-          Создать задание
-        </Button>
+        <div className={styles.rowAction}>
+          {action === "create" && (
+            <Button
+              disabled={pending || !row.canCreate}
+              onClick={() => void onCreate()}
+            >
+              <Boxes size={16} />
+              Создать задание
+            </Button>
+          )}
+          {action === "receiving" && (
+            <Link className="button button--secondary" href="/receiving">
+              Открыть приёмку
+            </Link>
+          )}
+          {action === "integrations" && (
+            <Link className="button button--ghost" href="/integrations">
+              Проверить данные
+            </Link>
+          )}
+          {action === "transit" && (
+            <Button
+              variant="secondary"
+              aria-expanded={expanded && manual}
+              aria-controls={`${id}-details`}
+              onClick={() => {
+                setExpanded(true);
+                setManual(true);
+              }}
+            >
+              Уточнить поставки
+            </Button>
+          )}
+        </div>
       </div>
-      <div className={styles.metrics}>
-        <Metric
-          label="Спрос в день"
-          value={row.dataComplete ? number(row.averageDailyUnits, 1) : "—"}
-          note="Единиц товара · оба маркетплейса"
-        />
-        <Metric
-          label="На маркетплейсах"
-          value={row.dataComplete ? number(row.marketplaceUnits) : "—"}
-          note="Единиц товара на их складах"
-        />
-        <div className={styles.metric}>
-          <span>В пути на маркетплейсы</span>
-          <strong>{number(row.inTransitUnits)}</strong>
-          <small>
-            {row.inboundSource === "api"
-              ? "Из API поставок"
-              : row.inboundSource === "manual"
-                ? "Подтверждено вручную"
-                : "Нужна проверка данных"}
-          </small>
-          <div className={styles.sources}>
-            {row.inboundSources.map((source) => (
-              <small key={source.provider}>
-                {providerName(source.provider)}: {number(source.units)}
-                {row.inboundSource === "manual" && " · API"}
-              </small>
-            ))}
-          </div>
-        </div>
-        <Metric
-          label="Готово у нас"
-          value={number(row.readyUnits)}
-          note="Включая общий накопитель"
-        />
-        <Metric
-          label="Уже в заданиях"
-          value={number(row.openTaskUnits)}
-          note="Оставшийся объём сборки"
-        />
-      </div>
-      {!!row.blockers.length && (
-        <div className={styles.blockers} role="status">
-          {row.blockers.map((reason) => (
-            <p key={reason} className={styles.warning}>
-              {reason}
-            </p>
-          ))}
-        </div>
+      {(state === "review" || state === "raw_shortage") && (
+        <p className={styles.reason}>{message}</p>
       )}
-      {!!row.warnings.length && (
-        <details className={styles.detail}>
-          <summary>Примечания к расчёту · {row.warnings.length}</summary>
-          {row.warnings.map((warning) => (
-            <p key={warning} className={styles.help}>
-              {warning}
-            </p>
-          ))}
-        </details>
-      )}
-      {row.dataComplete && shortage > 0 && (
-        <p className={styles.warning}>
-          Для рекомендации не хватает {number(shortage)} доступных единиц сырья.
-        </p>
-      )}
-      <details className={styles.detail}>
-        <summary>Расчёт и товар в пути</summary>
-        <dl>
-          <dt>Целевой запас, единиц товара</dt>
-          <dd>{row.dataComplete ? number(row.targetUnits) : "—"}</dd>
-          <dt>Готово к отгрузке со склада</dt>
-          <dd>{number(row.shippingReadyUnits)}</dd>
-          <dt>Зарезервировано под отгрузки</dt>
-          <dd>{number(row.shipmentReservedUnits)}</dd>
-          <dt>Сырья доступно для новых заданий</dt>
-          <dd>{number(row.rawAvailableUnits)}</dd>
+      <details
+        className={styles.detail}
+        id={`${id}-details`}
+        open={expanded}
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+      >
+        <summary>Подробнее</summary>
+        <dl className={styles.metrics}>
+          <Metric
+            label="Заказов в день"
+            value={
+              row.dataComplete
+                ? number(row.averageDailyUnits, 1)
+                : "Не уточнено"
+            }
+          />
+          <Metric
+            label="На маркетплейсах, шт."
+            value={
+              row.dataComplete ? number(row.marketplaceUnits) : "Не уточнено"
+            }
+          />
+          <Metric label="В пути, шт." value={number(row.inTransitUnits)} />
+          <Metric label="Готовых у нас, шт." value={number(row.readyUnits)} />
+          <Metric label="Уже в сборке, шт." value={number(row.openTaskUnits)} />
+          <Metric
+            label="Сырья для сборки, шт."
+            value={number(row.rawAvailableUnits)}
+          />
         </dl>
-        <div className={styles.sourceDetails}>
-          {row.inboundSources.map((source) => (
-            <div key={source.provider}>
-              <strong>
-                {providerName(source.provider)} · {number(source.units)}
-              </strong>
-              <p className={styles.help}>
-                {source.source === "wb_supplies"
-                  ? "По документам поставок WB"
-                  : source.source === "ozon_analytics"
-                    ? "По аналитике Ozon: в пути и на приёмке"
-                    : source.source === "legacy"
-                      ? "Ранее загруженные данные"
-                      : "Источник не подтверждён"}
-                {source.asOf
-                  ? ` · ${marketplaceDate(source.asOf)}`
-                  : " · Дата загрузки неизвестна"}
-                {source.supplyCount > 0 &&
-                  ` · документов: ${number(source.supplyCount)}`}
-              </p>
-              {source.warnings.map((warning) => (
-                <p key={warning} className={styles.warning}>
-                  {warning}
-                </p>
-              ))}
-            </div>
-          ))}
-        </div>
         <p className={styles.help}>
-          <Link href="/integrations#marketplace-supplies-title">
-            Посмотреть документы поставок →
-          </Link>
+          Готовый товар и текущие задания уже учтены в рекомендации.
         </p>
-        <details className={styles.manual}>
-          <summary>Указать товар в пути вручную</summary>
+        <Link
+          className={styles.textLink}
+          href="/integrations#marketplace-supplies-title"
+        >
+          Посмотреть поставки →
+        </Link>
+        <details
+          className={styles.manual}
+          open={manual}
+          onToggle={(event) => setManual(event.currentTarget.open)}
+        >
+          <summary>Уточнить товар в пути</summary>
           <form
             noValidate
             className={styles.transit}
@@ -199,9 +166,10 @@ export function PlanningRow({
                 form.reset(values);
             })}
           >
-            <label className="field">
-              Единиц товара в пути на маркетплейсы
+            <label className="field" htmlFor={`${id}-transit`}>
+              Товар в пути на маркетплейсы, шт.
               <Input
+                id={`${id}-transit`}
                 type="number"
                 min={0}
                 max={100000000}
@@ -209,6 +177,11 @@ export function PlanningRow({
                 disabled={pending}
                 placeholder="Укажите количество"
                 aria-invalid={!!form.formState.errors.inTransitUnits}
+                aria-describedby={
+                  form.formState.errors.inTransitUnits
+                    ? `${id}-error`
+                    : `${id}-help`
+                }
               />
             </label>
             <Button
@@ -220,40 +193,29 @@ export function PlanningRow({
                 (row.inTransitUnits != null && !form.formState.isDirty)
               }
             >
-              Подтвердить
+              Сохранить количество
             </Button>
             {form.formState.errors.inTransitUnits && (
-              <span className={styles.error}>
+              <span id={`${id}-error`} className={styles.error} role="alert">
                 {form.formState.errors.inTransitUnits.message}
               </span>
             )}
           </form>
-          <p className={styles.help}>
-            Ручное подтверждение заменяет расчёт товара в пути из API. Укажите
-            общий объём отправленного, ещё не принятого товара по обоим
-            маркетплейсам. Ноль подтверждайте только после проверки фактических
-            поставок. Уже принятый товар сюда не входит. После новой загрузки
-            данных ручное подтверждение сбрасывается.
+          <p className={styles.help} id={`${id}-help`}>
+            Укажите весь отправленный товар, который ещё не приняли
+            маркетплейсы. Уточнение заменит автоматическое количество до
+            следующего обновления данных.
           </p>
         </details>
       </details>
     </article>
   );
 }
-function Metric({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note: string;
-}) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.metric}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }

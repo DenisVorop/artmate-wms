@@ -31,7 +31,7 @@ export const planningDefaults: PlanningValues = {
 };
 export const transitSchema = z.object({
   inTransitUnits: z
-    .number({ invalid_type_error: "Укажите количество раскрасок" })
+    .number({ invalid_type_error: "Укажите количество товара" })
     .int("Только целое количество")
     .min(0, "Не меньше нуля")
     .max(100000000, "Слишком большое количество"),

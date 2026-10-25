@@ -4,7 +4,6 @@
   min-width: 0;
 }
 .header,
-.heading,
 .actions {
   display: flex;
   align-items: center;
@@ -23,26 +22,43 @@
   line-height: 1.6;
 }
 .settings {
-  padding: 22px 24px;
+  padding: 18px 24px;
 }
-.heading h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+.settingsSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  font-size: 14px;
+  list-style: none;
 }
-.heading p,
-.help {
-  margin: 6px 0 0;
-  color: var(--muted);
+.settingsSummary::-webkit-details-marker {
+  display: none;
+}
+.settingsSummary strong {
+  font-weight: 500;
+  color: var(--text);
+}
+.settingsAction {
   font-size: 12px;
-  line-height: 1.7;
+  color: var(--muted);
+}
+.settings[open] .settingsAction {
+  color: var(--accent);
 }
 .fields {
   display: grid;
   grid-template-columns: repeat(4, minmax(100px, 1fr)) auto;
   gap: 14px;
   align-items: end;
-  margin-top: 20px;
+  margin-top: 24px;
+}
+.help {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
 }
 .notice {
   margin: 0;
@@ -53,114 +69,197 @@
   font-size: 13px;
   line-height: 1.6;
 }
-.error {
-  color: var(--danger);
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
+.error,
 .warning {
-  color: var(--warning);
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
+.error {
+  color: var(--danger);
+}
+.warning {
+  color: var(--warning);
+}
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 48px;
+  padding: 28px;
+}
+.total {
+  display: grid;
+  gap: 8px;
+}
+.total > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.total > strong {
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -1px;
+  line-height: 1.2;
+}
+.total > small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.overviewStat {
+  display: grid;
+  gap: 7px;
+  min-width: 100px;
+}
+.overviewStat > strong {
+  font-size: 26px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.overviewStat > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.filter,
+.filterActive {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.filterActive {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.filter:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.filter > span,
+.filterActive > span {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
 .rows {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 .row {
   padding: 24px;
   display: grid;
-  gap: 20px;
+  gap: 14px;
+  min-width: 0;
+}
+.rowMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 0.7fr) auto;
+  align-items: center;
+  gap: 24px;
 }
 .title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
 }
 .title h2 {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 500;
   margin: 0;
   overflow-wrap: anywhere;
 }
-.recommendation {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
-  flex-wrap: wrap;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border);
+.quantity {
+  display: grid;
+  gap: 6px;
 }
-.recommendation strong {
-  display: block;
-  color: var(--accent);
-  font-size: 30px;
-  font-weight: 500;
-  letter-spacing: -1px;
+.quantity strong {
+  font-size: 18px;
   line-height: 1.4;
-  font-variant-numeric: tabular-nums;
-}
-.recommendation span {
-  color: var(--muted);
-  font-size: 12px;
-}
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 16px;
-}
-.metric {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-.metric > span {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-.metric strong {
-  font-size: 22px;
   font-weight: 500;
-  letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
 }
-.metric small {
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.6;
+.quantity .quantityAccent {
+  font-size: 28px;
+  letter-spacing: -0.7px;
+  color: var(--accent);
 }
-.detail {
+.quantity span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rowAction {
+  justify-self: end;
+}
+.reason {
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
 }
-.detail summary {
-  color: var(--text);
+.detail,
+.manual {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.detail > summary,
+.manual > summary {
   cursor: pointer;
   width: fit-content;
+  color: var(--muted);
 }
-.detail dl {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
-  gap: 8px 20px;
-  max-width: 700px;
-  padding-top: 10px;
-}
-.detail dt,
-.detail dd {
-  margin: 0;
-}
-.detail dd {
+.detail[open] > summary,
+.manual[open] > summary {
   color: var(--text);
-  text-align: right;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  margin: 20px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.metric {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  min-width: 0;
+}
+.metric dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.metric dd {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+.textLink {
+  display: inline-block;
+  color: var(--text);
+  margin-top: 12px;
+  font-size: 12px;
+}
+.manual {
+  margin-top: 18px;
 }
 .transit {
   display: flex;
@@ -170,31 +269,10 @@
   margin-top: 18px;
 }
 .transit label {
-  max-width: 240px;
+  max-width: 300px;
 }
 .transit .error {
   flex-basis: 100%;
-}
-.blockers {
-  display: grid;
-  gap: 6px;
-}
-.blockers p {
-  margin: 0;
-}
-.formula {
-  padding: 18px 22px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.8;
-}
-.formula strong {
-  color: var(--text);
-  font-weight: 500;
-}
-.stats {
-  color: var(--muted);
-  font-size: 12px;
 }
 @media (max-width: 1100px) {
   .fields {
@@ -203,60 +281,56 @@
   .fields > button {
     justify-self: start;
   }
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .rowMain {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .rowAction {
+    grid-column: 1/-1;
+    justify-self: start;
+  }
+  .overview {
+    gap: 24px;
+  }
+  .overviewStat {
+    min-width: 80px;
   }
 }
-@media (max-width: 540px) {
-  .fields input,
-  .transit input {
-    font-size: 16px;
+@media (max-width: 640px) {
+  .overview {
+    grid-template-columns: 1fr 1fr;
+    padding: 22px;
+    gap: 22px;
+  }
+  .total {
+    grid-column: 1/-1;
+  }
+  .total > strong {
+    font-size: 28px;
   }
   .settings,
   .row {
     padding: 18px;
   }
+  .rowMain {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .rowAction {
+    grid-column: auto;
+    justify-self: start;
+  }
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .detail dl {
-    grid-template-columns: minmax(0, 1fr) auto;
-    font-size: 12px;
+  .fields input,
+  .transit input {
+    font-size: 16px;
   }
-  .recommendation strong {
-    font-size: 26px;
+  .filter,
+  .filterActive {
+    padding: 10px 11px;
   }
-}
-
-.sources {
-  display: grid;
-  gap: 3px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-.sourceDetails {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 18px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-.sourceDetails strong {
-  color: var(--text);
-  font-weight: 500;
-}
-.manual {
-  margin-top: 18px;
-}
-.detail summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-  border-radius: 2px;
-}
-@media (max-width: 540px) {
-  .sourceDetails {
-    grid-template-columns: 1fr;
+  .title h2 {
+    font-size: 18px;
   }
 }

@@ -280,3 +280,166 @@ test("known API zero supplies need no manual confirmation", () => {
   assert.equal(row.inboundSource, "api");
   assert.equal(row.dataComplete, true);
 });
+
+test("business advice keeps unknown transit unknown and manual confirmation actionable", () => {
+  const { w, m } = fixture();
+  w.sections = [];
+  w.movements = [];
+  w.pallets.forEach((p) => {
+    p.status = "stored";
+  });
+  delete m.transit["sku-cats"];
+  let row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, null);
+  assert.equal(row.dataComplete, false);
+  assert.equal(row.canCreate, false);
+  assert.deepEqual(row.advice, {
+    state: "review",
+    message: "Проверьте количество товара в пути.",
+    action: "transit",
+  });
+  m.transit["sku-cats"] = 0;
+  row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, 0);
+  assert.equal(row.inboundSource, "manual");
+  assert.equal(row.canCreate, true);
+  assert.equal(row.advice.state, "ready");
+  assert.equal(row.advice.action, "create");
+});
+
+test("business advice prioritizes incomplete marketplace data over transit and raw shortage", () => {
+  const cases: Array<{
+    setup: (m: MarketplaceState) => void;
+    message: string;
+  }> = [
+    {
+      setup: (m) => {
+        m.snapshots[0].asOf = "2026-10-23T10:00:00Z";
+      },
+      message: "Обновите данные маркетплейсов.",
+    },
+    {
+      setup: (m) => {
+        m.connections[0].syncStatus = "failed";
+      },
+      message: "Обновите данные маркетплейсов.",
+    },
+    {
+      setup: (m) => {
+        m.snapshots[0].stocks[0].availableUnits = null;
+      },
+      message: "Обновите остатки товара на маркетплейсах.",
+    },
+    {
+      setup: (m) => {
+        m.snapshots[0].stocks = [];
+      },
+      message: "Обновите остатки товара на маркетплейсах.",
+    },
+    {
+      setup: (m) => {
+        m.mappings.pop();
+      },
+      message: "Свяжите товары маркетплейсов с тематиками склада.",
+    },
+    {
+      setup: (m) => {
+        m.snapshots[0].to = "2026-10-23";
+      },
+      message: "Загрузите продажи за весь расчётный период.",
+    },
+    {
+      setup: (m) => {
+        m.snapshots = [];
+      },
+      message: "Загрузите данные маркетплейсов.",
+    },
+    {
+      setup: (m) => {
+        m.snapshots[0].coverage.demand = false;
+      },
+      message: "Обновите данные маркетплейсов.",
+    },
+  ];
+  for (const entry of cases) {
+    const { w, m } = fixture();
+    delete m.transit["sku-cats"];
+    w.pallets = [];
+    entry.setup(m);
+    const row = marketplacePlan(w, m, now).rows[0];
+    assert.equal(row.dataComplete, false);
+    assert.equal(row.canCreate, false);
+    assert.deepEqual(row.advice, {
+      state: "review",
+      message: entry.message,
+      action: "integrations",
+    });
+    assert.doesNotMatch(
+      row.advice.message,
+      /API|coverage|snapshot|DTO|wildberries|ozon|\bone\b/,
+    );
+  }
+});
+
+test("business advice asks for receiving only placed and free raw stock can satisfy assembly", () => {
+  const { w, m } = fixture();
+  // Incoming raw physically outside an active address remains unavailable.
+  w.pallets = w.pallets.map((p) => ({
+    ...p,
+    status: "awaiting_placement",
+    locationId: null,
+  }));
+  const row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.dataComplete, true);
+  assert.equal(row.recommendedBoxes, 3);
+  assert.equal(row.rawAvailableUnits, 0);
+  assert.equal(row.canCreate, false);
+  assert.deepEqual(row.advice, {
+    state: "raw_shortage",
+    message: "Примите и разместите товар: не хватает 60 шт.",
+    action: "receiving",
+  });
+});
+
+test("business advice distinguishes covered demand from unknown quantities without raw stock", () => {
+  const { w, m } = fixture();
+  w.pallets = [];
+  m.snapshots.forEach((s) => {
+    s.demand = [];
+  });
+  let row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.dataComplete, true);
+  assert.equal(row.recommendedBoxes, 0);
+  assert.equal(row.canCreate, false);
+  assert.deepEqual(row.advice, {
+    state: "covered",
+    message: "Запаса и текущей сборки достаточно.",
+    action: "none",
+  });
+  delete m.transit["sku-cats"];
+  row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.inTransitUnits, null);
+  assert.equal(row.dataComplete, false);
+  assert.equal(row.advice.state, "review");
+  assert.equal(row.advice.action, "transit");
+});
+
+test("business advice never permits task creation beyond one-task quantity limit", () => {
+  const { w, m } = fixture();
+  w.sections = [];
+  w.movements = [];
+  w.pallets.forEach((p) => {
+    p.status = "stored";
+  });
+  m.snapshots[0].demand[0].orderedUnits = 100000;
+  w.pallets.forEach((p) => {
+    p.quantity = 1000000;
+  });
+  const row = marketplacePlan(w, m, now).rows[0];
+  assert.equal(row.dataComplete, true);
+  assert.ok(row.recommendedBoxes > 1000);
+  assert.ok(row.rawAvailableUnits > row.recommendedUnits);
+  assert.equal(row.canCreate, false);
+  assert.equal(row.advice.state, "review");
+  assert.equal(row.advice.action, "none");
+});

@@ -103,9 +103,22 @@ function settings(value: unknown) {
     integer(value.leadDays)
   );
 }
+function advice(value: unknown) {
+  return (
+    record(value) &&
+    ["ready", "covered", "raw_shortage", "review"].includes(
+      String(value.state),
+    ) &&
+    text(value.message) &&
+    ["create", "receiving", "integrations", "transit", "none"].includes(
+      String(value.action),
+    )
+  );
+}
 function planRow(value: unknown) {
   if (!record(value)) return false;
   return (
+    advice(value.advice) &&
     typeof value.dataComplete === "boolean" &&
     text(value.skuId) &&
     text(value.skuName) &&

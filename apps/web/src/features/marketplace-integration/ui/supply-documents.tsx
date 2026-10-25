@@ -7,13 +7,14 @@ import {
 import { Badge } from "@/shared/ui";
 import styles from "./marketplace-integration.module.css";
 
-const calculationLabel = (value: MarketplaceSupplyDto["calculation"]) =>
-  ({
-    document: "Учтено по документу",
-    analytics: "Учтено по аналитике",
-    excluded: "Не входит в товар в пути",
-    review: "Нужна проверка",
-  })[value];
+const reviewLabel = (count: number) => {
+  const ending = count % 100;
+  if (ending >= 11 && ending <= 14) return `${count} поставок требуют проверки`;
+  if (count % 10 === 1) return `${count} поставка требует проверки`;
+  if (count % 10 >= 2 && count % 10 <= 4)
+    return `${count} поставки требуют проверки`;
+  return `${count} поставок требуют проверки`;
+};
 
 export function SupplyDocuments({
   supplies,
@@ -24,139 +25,97 @@ export function SupplyDocuments({
     (supply) => supply.calculation === "review",
   ).length;
   return (
-    <section
-      className={`glass-panel ${styles.supplies}`}
-      aria-labelledby="marketplace-supplies-title"
+    <details
+      id="marketplace-supplies-title"
+      className={`glass-panel ${styles.supplies} ${styles.disclosure}`}
     >
-      <div className={styles.sectionHeading}>
-        <div>
-          <h2 id="marketplace-supplies-title">Поставки на маркетплейсы</h2>
-          <p>
-            Обновляются вместе с продажами. Товар в пути автоматически уменьшает
-            потребность в сборке.
-          </p>
-        </div>
-        <span className={styles.count}>{supplies.length} документов</span>
-      </div>
-      {reviewCount > 0 && (
-        <p className={`${styles.warning} ${styles.supplyNotice}`} role="status">
-          Требуют проверки: {reviewCount}. Неизвестные количества не считаются
-          нулевыми.
-        </p>
-      )}
-      <details className={styles.supplyList}>
-        <summary>Документы и источник расчёта</summary>
-        <p className={styles.footnote}>
-          WB учитывается по документам поставок. Ozon — по аналитике товара в
-          пути и на приёмке; количества документов Ozon повторно не
-          прибавляются. В документах ниже указаны единицы площадки, до пересчёта
-          в книги или наборы WMS.
-        </p>
+      <summary>
+        <span>Поставки · {supplies.length}</span>
+        {reviewCount > 0 && (
+          <span className={styles.warning}>{reviewLabel(reviewCount)}</span>
+        )}
+      </summary>
+      <div className={styles.supplyList}>
         {!supplies.length && (
           <p className={styles.footnote}>
-            Документов в последней загрузке нет. Подтверждение товара в пути
-            смотрите в плане сборки отдельно по каждой площадке.
+            Поставок пока нет. Обновите данные маркетплейсов.
           </p>
         )}
-        {supplies.map((supply) => (
-          <details
-            className={styles.supply}
-            key={`${supply.provider}:${supply.id}`}
-          >
-            <summary>
-              <span className={styles.supplyTitle}>
-                {providerName(supply.provider)} · № {supply.id}
-                <small>{supply.statusLabel}</small>
-              </span>
-              <Badge
-                tone={
-                  supply.calculation === "review"
-                    ? "warning"
-                    : supply.calculation === "excluded"
-                      ? "neutral"
-                      : "success"
-                }
-              >
-                {calculationLabel(supply.calculation)}
-              </Badge>
-            </summary>
-            <dl className={styles.supplyFacts}>
-              <dt>Ожидаемая дата</dt>
-              <dd>
-                {supply.expectedAt
-                  ? marketplaceDate(supply.expectedAt)
-                  : "Не указана"}
-              </dd>
-              <dt>Дата приёмки</dt>
-              <dd>
-                {supply.receivedAt
-                  ? marketplaceDate(supply.receivedAt)
-                  : "Не указана"}
-              </dd>
-              <dt>Обновлено</dt>
-              <dd>
-                {supply.updatedAt
-                  ? marketplaceDate(supply.updatedAt)
-                  : "Не указано"}
-              </dd>
-            </dl>
-            {supply.calculation === "analytics" && (
-              <p className={styles.footnote}>
-                План использует аналитику Ozon. Остаток этого документа отдельно
-                к ней не прибавляется.
-              </p>
-            )}
-            {supply.calculation === "excluded" && (
-              <p className={styles.footnote}>
-                Этот статус не пополняет товар в пути в расчёте сборки.
-              </p>
-            )}
-            {supply.warnings.map((warning) => (
-              <p key={warning} className={styles.warning}>
-                {warning}
-              </p>
-            ))}
-            <div
-              className={styles.supplyTableScroll}
-              role="region"
-              aria-label={`Товары поставки ${supply.id}`}
-              tabIndex={0}
+        {supplies.map((supply) => {
+          const number = supply.id.replace(/^(?:supply|preorder):/, "");
+          return (
+            <details
+              className={styles.supply}
+              key={`${supply.provider}:${supply.id}`}
             >
-              <table className={styles.supplyTable}>
-                <caption>
-                  Единицы площадки · {supply.items.length} позиций
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Товар</th>
-                    <th scope="col">Заявлено</th>
-                    <th scope="col">Принято</th>
-                    <th scope="col">Готово к продаже</th>
-                    <th scope="col">Ожидается</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {supply.items.map((item) => (
-                    <tr key={item.externalId}>
-                      <th scope="row">
-                        {item.name}
-                        <small>
-                          {item.externalId}
-                          {!item.skuId && " · Нет связи с тематикой"}
-                        </small>
-                      </th>
-                      <td>{marketplaceNumber(item.plannedUnits)}</td>
-                      <td>{marketplaceNumber(item.acceptedUnits)}</td>
-                      <td>{marketplaceNumber(item.readyUnits)}</td>
-                      <td>{marketplaceNumber(item.pendingUnits)}</td>
+              <summary>
+                <span className={styles.supplyTitle}>
+                  {providerName(supply.provider)} · № {number}
+                  <small>{supply.statusLabel}</small>
+                </span>
+                {supply.calculation === "review" && (
+                  <Badge tone="warning">Нужна проверка</Badge>
+                )}
+              </summary>
+              <dl className={styles.supplyFacts}>
+                <dt>Ожидаемая дата</dt>
+                <dd>
+                  {supply.expectedAt
+                    ? marketplaceDate(supply.expectedAt)
+                    : "Не указана"}
+                </dd>
+                <dt>Передана маркетплейсу</dt>
+                <dd>
+                  {supply.receivedAt
+                    ? marketplaceDate(supply.receivedAt)
+                    : "Дата не указана"}
+                </dd>
+              </dl>
+              {supply.calculation === "review" && (
+                <p className={styles.warning}>
+                  Данные поставки требуют уточнения. Проверьте её в личном
+                  кабинете маркетплейса.
+                </p>
+              )}
+              <div
+                className={styles.supplyTableScroll}
+                role="region"
+                aria-label={`Товары поставки ${number}`}
+                tabIndex={0}
+              >
+                <table className={styles.supplyTable}>
+                  <caption>Товары · {supply.items.length} позиций, шт.</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Товар</th>
+                      <th scope="col">В поставке</th>
+                      <th scope="col">Принято</th>
+                      <th scope="col">В продаже</th>
+                      <th scope="col">Ещё ожидается</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        ))}
-      </details>
-    </section>
+                  </thead>
+                  <tbody>
+                    {supply.items.map((item) => (
+                      <tr key={item.externalId}>
+                        <th scope="row">
+                          {item.name}
+                          {!item.skuId && (
+                            <small>Нужно связать с тематикой</small>
+                          )}
+                        </th>
+                        <td>{marketplaceNumber(item.plannedUnits)}</td>
+                        <td>{marketplaceNumber(item.acceptedUnits)}</td>
+                        <td>{marketplaceNumber(item.readyUnits)}</td>
+                        <td>{marketplaceNumber(item.pendingUnits)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          );
+        })}
+      </div>
+    </details>
   );
 }

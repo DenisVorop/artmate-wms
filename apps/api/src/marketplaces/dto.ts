@@ -194,7 +194,22 @@ export class MarketplaceInboundSourceDto {
   @ApiProperty({ type: Number }) supplyCount!: number;
   @ApiProperty({ type: [String] }) warnings!: string[];
 }
+export class MarketplacePlanAdviceDto {
+  @ApiProperty({
+    enum: ["ready", "covered", "raw_shortage", "review"],
+    type: String,
+  })
+  state!: "ready" | "covered" | "raw_shortage" | "review";
+  @ApiProperty({ type: String }) message!: string;
+  @ApiProperty({
+    enum: ["create", "receiving", "integrations", "transit", "none"],
+    type: String,
+  })
+  action!: "create" | "receiving" | "integrations" | "transit" | "none";
+}
 export class MarketplacePlanRowDto {
+  @ApiProperty({ type: MarketplacePlanAdviceDto })
+  advice!: MarketplacePlanAdviceDto;
   @ApiProperty({ type: Boolean }) dataComplete!: boolean;
   @ApiProperty({ type: String }) skuId!: string;
   @ApiProperty({ type: String }) skuName!: string;

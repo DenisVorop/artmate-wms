@@ -61,6 +61,11 @@ const overview = () => ({
     warnings: [],
     rows: [
       {
+        advice: {
+          state: "review",
+          message: "Уточните поставки",
+          action: "transit",
+        },
         dataComplete: false,
         skuId: "sku",
         skuName: "Котики",
@@ -125,6 +130,9 @@ test("rejects malformed top-level and incomplete nested values before UI renderi
 test("rejects missing completeness, non-finite quantities and bad row structures", () => {
   for (const patch of [
     { dataComplete: undefined },
+    { advice: undefined },
+    { advice: { state: "ready", message: "Можно собирать", action: "unsafe" } },
+    { advice: { state: "unknown", message: "Проверьте", action: "none" } },
     { averageDailyUnits: Number.NaN },
     { marketplaceUnits: Infinity },
     { openTaskUnits: -1 },
