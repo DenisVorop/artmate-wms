@@ -316,22 +316,30 @@ test("only factual completions count: no scans claims releases corrections retir
       .reduce((sum, e) => sum + e.units, 0),
     2,
   );
+  // The assembled raw pallet has already released its address. Use a distinct
+  // physical pallet to verify that counts and manual retirement add no output.
+  const physical = (await w.snapshot()).pallets.find(
+    (p) => p.id === "pallet-raw-3",
+  )!;
+  const physicalLocation = (await w.snapshot()).locations.find(
+    (l) => l.id === physical.locationId,
+  )!;
   await w.adjustStock({
     ...req(),
     kind: "raw_count",
-    targetId: raw.id,
+    targetId: physical.id,
     employeeId: employee.id,
-    expectedLocationId: rawLocation.id,
-    expectedQuantity: 0,
+    expectedLocationId: physicalLocation.id,
+    expectedQuantity: physical.quantity,
     countedQuantity: 1,
     reason: "Фактический пересчёт",
   });
   await w.adjustStock({
     ...req(),
     kind: "raw_count",
-    targetId: raw.id,
+    targetId: physical.id,
     employeeId: employee.id,
-    expectedLocationId: rawLocation.id,
+    expectedLocationId: physicalLocation.id,
     expectedQuantity: 1,
     countedQuantity: 0,
     reason: "Повторный пересчёт",
@@ -345,10 +353,10 @@ test("only factual completions count: no scans claims releases corrections retir
     state.shipments.find((s) => s.skuId === sku.id)!.id,
     req(),
   );
-  await w.retireEmptyPallet(raw.id, {
+  await w.retireEmptyPallet(physical.id, {
     ...req(),
-    palletCode: raw.code,
-    locationCode: rawLocation.code,
+    palletCode: physical.code,
+    locationCode: physicalLocation.code,
   });
   assert.deepEqual(
     (await w.getPerformance({ employeeId: employee.id })).employees[0].metrics

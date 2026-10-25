@@ -848,6 +848,11 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
     assert.equal(result.status, 200, JSON.stringify(result.body));
   }
   let full = await w.snapshot();
+  const depleted = full.pallets.find((p) => p.id === raw.id)!;
+  assert.equal(depleted.quantity, 0);
+  assert.equal(depleted.status, "retired");
+  assert.equal(depleted.locationId, null);
+  assert.equal(depleted.returnLocationId, null);
   const box = full.boxes.find((b) => b.code === task.openBoxCode)!,
     put = full.putawayTasks.find((t) => t.boxId === box.id)!;
   result = await call(
@@ -1055,6 +1060,7 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
       .status,
     200,
   );
+  const beforeRetire = await w.snapshot();
   assert.equal(
     (
       await call(
@@ -1064,8 +1070,46 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
         worker,
       )
     ).status,
-    200,
+    400,
   );
+  assert.deepEqual(await w.snapshot(), beforeRetire);
+  // Manual retirement remains a worker operation for an actual physical empty,
+  // such as a pallet observed at its address by an explicit stock count.
+  const physical = beforeRetire.pallets.find((p) => p.id === "pallet-raw-3")!;
+  const physicalLocation = beforeRetire.locations.find(
+    (l) => l.id === physical.locationId,
+  )!;
+  result = await call(
+    "POST",
+    "stock-adjustments",
+    {
+      ...req(),
+      kind: "raw_count",
+      targetId: physical.id,
+      employeeId: manager.user.employeeId,
+      expectedLocationId: physicalLocation.id,
+      expectedQuantity: physical.quantity,
+      countedQuantity: 0,
+      reason: "Пересчитана пустая физическая паллета",
+    },
+    manager,
+  );
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(
+    result.body.pallets.find((p: D.PalletDto) => p.id === physical.id).status,
+    "stored",
+  );
+  result = await call(
+    "POST",
+    `pallets/${physical.id}/retire`,
+    {
+      ...req(),
+      palletCode: physical.code,
+      locationCode: physicalLocation.code,
+    },
+    worker,
+  );
+  assert.equal(result.status, 200, JSON.stringify(result.body));
   const events = await w.getStockLedger({ pageSize: 100 });
   assert.equal(events.summary.reconciled, true);
   assert.equal(

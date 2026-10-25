@@ -427,9 +427,30 @@ const receiptBody = (locationId: string, extra = {}) => ({
   locationId,
   ...extra,
 });
-test("zero stock preserves physical occupation until scanned empty pallet retirement", async () => {
-  let s = await warehouse.snapshot();
-  const empty = s.pallets.find((p) => p.id === "pallet-raw-0")!;
+test("counted-zero stock preserves physical occupation until scanned empty pallet retirement", async () => {
+  // Depletion during assembly releases the former pallet. A physical zero here
+  // must come from an explicit count, which does not imply a pallet was removed.
+  let s = await warehouse.createLocation({
+    ...locationBody("COUNTED-ZERO"),
+    x: 90,
+    y: 40,
+  });
+  const address = s.locations.find((l) => l.code === "COUNTED-ZERO")!;
+  s = await receiveAndPlace(receiptBody(address.id));
+  const physical = s.pallets.find(
+    (p) => p.status === "stored" && p.locationId === address.id,
+  )!;
+  s = await warehouse.adjustStock({
+    ...req(),
+    kind: "raw_count",
+    targetId: physical.id,
+    employeeId: "employee-1",
+    expectedLocationId: address.id,
+    expectedQuantity: physical.quantity,
+    countedQuantity: 0,
+    reason: "Пересчитана пустая физическая паллета",
+  });
+  const empty = s.pallets.find((p) => p.id === physical.id)!;
   assert.equal(empty.quantity, 0);
   assert.equal(empty.status, "stored");
   await assert.rejects(

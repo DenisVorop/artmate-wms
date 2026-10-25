@@ -185,7 +185,7 @@ export function InventoryFeature({
                               {p.status === "in_transit"
                                 ? "В перемещении"
                                 : p.status === "retired"
-                                  ? "Поддон вывезен"
+                                  ? "Снят с хранения"
                                   : p.quantity === 0
                                     ? "Пустой поддон на месте"
                                     : p.kind === "assembly"

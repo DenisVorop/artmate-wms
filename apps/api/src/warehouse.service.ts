@@ -1855,6 +1855,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         fail(`Отсканируйте исходную паллету ${source.code}`);
       if (source.quantity < 1) fail("На исходной паллете нет товара");
       source.quantity--;
+      if (source.quantity === 0) {
+        const address = s.locations.find((l) => l.id === source.locationId);
+        source.status = "retired";
+        source.locationId = null;
+        source.returnLocationId = null;
+        activity(
+          s,
+          "Адрес освобождён после сборки",
+          `${source.code} · ${address?.code ?? "адрес хранения"}`,
+          "task",
+        );
+      }
       reservation.quantity--;
       task.scannedUnits++;
       const content = task.openBoxContents.find(
