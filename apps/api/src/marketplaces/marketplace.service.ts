@@ -375,6 +375,19 @@ export class MarketplaceService {
           aborted: "Загрузка превысила время ожидания. Повторите позже.",
         };
         failureMessage = messages[error.code];
+        // Only transport-owned scalar diagnostics; never log the exception, body or headers.
+        if (error.diagnostic) {
+          const { operation, status, attempt, retryAfterSeconds } =
+            error.diagnostic;
+          console.warn("Marketplace import failed", {
+            provider: b.provider,
+            code: error.code,
+            operation,
+            status,
+            attempt,
+            retryAfterSeconds,
+          });
+        }
       }
     }
     return this.warehouse.authTransaction(async (tx) => {
