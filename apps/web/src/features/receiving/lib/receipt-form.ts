@@ -109,7 +109,7 @@ export function palletDefaults(hasSkus: boolean): ReceiptPalletValues {
     quantity: 1000,
     widthCm: 120,
     depthCm: 80,
-    heightCm: 140,
+    heightCm: 75,
     weightKg: null,
   };
 }

@@ -328,7 +328,7 @@ function PalletFields({
                 {
                   widthCm: "Ширина, см",
                   depthCm: "Глубина, см",
-                  heightCm: "Высота, см",
+                  heightCm: "Высота с поддоном, см",
                 }[name]
               }
               <Input

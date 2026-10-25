@@ -54,11 +54,11 @@ test("Невозможные и будущие даты не нормализу�
   assert.equal(receiptSchema.safeParse(receipt()).success, true);
 });
 
-test("Новая паллета: 1000 штук, 120×80×140 см, масса неизвестна, нет автоприхода на адрес", () => {
+test("Новая паллета: 1000 штук, 120×80×75 см, масса неизвестна, нет автоприхода на адрес", () => {
   const row = existingRow();
   assert.deepEqual(
     [row.quantity, row.widthCm, row.depthCm, row.heightCm, row.weightKg],
-    [1000, 120, 80, 140, null],
+    [1000, 120, 80, 75, null],
   );
   const dto = buildReceipt(receipt());
   assert.deepEqual(dto.pallets, [
@@ -67,7 +67,7 @@ test("Новая паллета: 1000 штук, 120×80×140 см, масса н
       quantity: 1000,
       widthMm: 1200,
       depthMm: 800,
-      heightMm: 1400,
+      heightMm: 750,
       weightKg: null,
     },
   ]);
