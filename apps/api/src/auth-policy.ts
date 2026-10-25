@@ -65,6 +65,7 @@ export const warehouseOperations = new Set([
   "restoreEntrance",
   "createLocation",
   "updateLocation",
+  "createSku",
   "createReceipt",
   "placeReceiptPallet",
   "createEmployee",

@@ -736,6 +736,33 @@ export class ReceiptNewSkuDto {
   @Max(1000)
   unitsPerBox?: number;
 }
+export class CreateSkuDto extends CommandDto {
+  @ApiProperty({ type: String, maxLength: 100 })
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+  @ApiProperty({ type: String, maxLength: 150 })
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  barcode!: string;
+  @ApiPropertyOptional({ type: String, maxLength: 40 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Transform(trimText)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  code?: string;
+  @ApiPropertyOptional({ type: Number, default: 20 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  unitsPerBox?: number;
+}
 @ValidatorConstraint({ name: "receiptSkuChoice", async: false })
 class ReceiptSkuChoice implements ValidatorConstraintInterface {
   validate(_value: unknown, args: ValidationArguments) {

@@ -67,7 +67,7 @@ export function ProductMapping({
           </Select>
         </label>
         <label className="field">
-          Раскрасок в товаре
+          Единиц в товаре
           <Input
             type="number"
             min={1}

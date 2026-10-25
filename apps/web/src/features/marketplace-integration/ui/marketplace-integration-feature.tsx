@@ -10,6 +10,7 @@ import { useIntegrationActions } from "../model/use-integration-actions";
 import { connectionPayload, mappingPayload } from "../lib/integration-form";
 import { ConnectionCard } from "./connection-card";
 import { ProductMapping } from "./product-mapping";
+import { SkuCreate } from "./sku-create";
 import styles from "./marketplace-integration.module.css";
 
 export function MarketplaceIntegrationFeature() {
@@ -100,8 +101,9 @@ export function MarketplaceIntegrationFeature() {
           <div>
             <h2 id="marketplace-catalog-title">Каталог и тематики</h2>
             <p>
-              Укажите, сколько отдельных раскрасок продаётся в одной единице
-              товара. Несколько карточек могут относиться к одной тематике.
+              Укажите, сколько книг или наборов маркеров содержит одна
+              продаваемая упаковка. Несколько карточек могут относиться к одной
+              тематике.
             </p>
           </div>
           <span className={styles.count}>
@@ -117,6 +119,14 @@ export function MarketplaceIntegrationFeature() {
             Обновить список
           </Button>
         </div>
+        <SkuCreate
+          disabled={!workspace.data}
+          onCreated={(name) =>
+            setNotice(
+              `Тематика «${name}» создана. Выберите её в карточках маркетплейсов.`,
+            )
+          }
+        />
         {!data.products.length ? (
           <EmptyState
             title="Каталог ещё не загружен"

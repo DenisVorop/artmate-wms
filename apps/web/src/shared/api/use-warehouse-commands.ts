@@ -20,6 +20,7 @@ import type {
   CreateLocationDto,
   UpdateLocationDto,
   CreateReceiptDto,
+  CreateSkuDto,
   CreateEmployeeDto,
   PlaceReceiptPalletDto,
   CreateTaskDto,
@@ -174,6 +175,7 @@ export function useWarehouseCommands() {
     updateLocation: (id: string, dto: UpdateLocationDto) =>
       run(() => api.updateLocation(id, dto)),
     createReceipt: (dto: CreateReceiptDto) => run(() => api.createReceipt(dto)),
+    createSku: (dto: CreateSkuDto) => run(() => api.createSku(dto)),
     placeReceiptPallet: (
       receiptId: string,
       palletId: string,

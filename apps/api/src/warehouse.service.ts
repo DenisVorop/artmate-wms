@@ -1382,16 +1382,32 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       awaitingPlacementPallets: awaiting.length,
     };
   }
-  private _receiptSku(s: D.WorkspaceDto, row: D.CreateReceiptPalletDto) {
+  private _receiptSku(
+    s: D.WorkspaceDto,
+    row: Pick<D.CreateReceiptPalletDto, "skuId" | "newSku">,
+  ) {
     if ((row.skuId !== undefined) === (row.newSku !== undefined))
       fail("Укажите ровно одно: skuId или newSku");
     if (row.skuId !== undefined) return find(s.skus, row.skuId, "Тематика");
     const input = row.newSku!;
+    if (
+      !input ||
+      typeof input.name !== "string" ||
+      typeof input.barcode !== "string" ||
+      (input.code !== undefined && typeof input.code !== "string") ||
+      (input.unitsPerBox !== undefined &&
+        (!Number.isInteger(input.unitsPerBox) ||
+          input.unitsPerBox < 1 ||
+          input.unitsPerBox > 1000))
+    )
+      fail("Некорректные параметры тематики");
     const name = input.name.trim(),
       barcode = input.barcode.trim(),
       code = input.code?.trim();
     if (!name || !barcode || code === "")
       fail("Название, штрихкод и код тематики не могут быть пустыми");
+    if (name.length > 100 || barcode.length > 150 || (code?.length ?? 0) > 40)
+      fail("Название, штрихкод или код тематики слишком длинные");
     const unitsPerBox = input.unitsPerBox ?? 20;
     const existing = s.skus.find((x) => x.barcode === barcode);
     if (existing) {
@@ -1424,6 +1440,14 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     };
     s.skus.push(sku);
     return sku;
+  }
+  createSku(b: D.CreateSkuDto) {
+    return this._command("createSku", b, (s) => {
+      const count = s.skus.length;
+      const sku = this._receiptSku(s, { newSku: b });
+      if (s.skus.length > count)
+        activity(s, "Тематика создана", sku.name, "warehouse");
+    });
   }
   createReceipt(b: D.CreateReceiptDto) {
     return this._command("createReceipt", b, (s) => {

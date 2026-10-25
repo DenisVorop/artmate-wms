@@ -226,6 +226,24 @@ export class WarehouseController {
   ) {
     return this.warehouse.updateLocation(id, body);
   }
+  @Post("skus")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "createSku" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.CreateSkuDto })
+  createSku(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.CreateSkuDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.CreateSkuDto,
+  ) {
+    return this.warehouse.createSku(body);
+  }
   @Post("receipts")
   @HttpCode(200)
   @ApiOperation({ operationId: "createReceipt" })

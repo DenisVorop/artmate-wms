@@ -42,10 +42,10 @@ export const connectionDefaults: ConnectionValues = {
 export const mappingSchema = z.object({
   skuId: z.string().trim().min(1, "Выберите тематику"),
   unitsPerItem: z
-    .number({ invalid_type_error: "Укажите количество раскрасок" })
+    .number({ invalid_type_error: "Укажите количество товара" })
     .int("Только целое количество")
-    .min(1, "Минимум 1 раскраска")
-    .max(10000, "Максимум 10 000 раскрасок"),
+    .min(1, "Минимум 1 единица")
+    .max(10000, "Максимум 10 000 единиц"),
 });
 export type MappingValues = z.infer<typeof mappingSchema>;
 export function mappingPayload(
