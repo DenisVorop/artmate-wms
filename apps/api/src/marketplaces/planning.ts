@@ -27,7 +27,11 @@ export function marketplacePlan(
       globalAdviceMessage ??= "Загрузите данные маркетплейсов.";
       return [];
     }
-    if (c.syncStatus !== "success") {
+    const refreshingPrevious =
+      c.syncStatus === "running" &&
+      c.syncMode === "automatic" &&
+      c.lastSuccessVersion === c.version;
+    if (c.syncStatus !== "success" && !refreshingPrevious) {
       global.push(`${c.provider}: последняя загрузка не завершена успешно`);
       globalAdviceMessage ??= "Обновите данные маркетплейсов.";
     }

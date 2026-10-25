@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useAssemblyPlan } from "@/entities/assembly-plan";
 import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
@@ -45,18 +44,9 @@ export function AssemblyPlanningFeature() {
         <div>
           <p className="eyebrow">ЗАПАСЫ И ПРОДАЖИ</p>
           <h1 className="page-heading">План сборки</h1>
-          <p>Что собрать с учётом продаж, поставок и готовых коробов.</p>
+          <p>Обновляется автоматически каждые 30 минут.</p>
         </div>
         <div className={styles.actions}>
-          <Button
-            variant="secondary"
-            disabled={query.isFetching || actions.pending}
-            onClick={() => void query.refetch()}
-            aria-busy={query.isFetching}
-          >
-            <RefreshCw size={15} />
-            Обновить расчёт
-          </Button>
           <Link className="button button--ghost" href="/integrations">
             Маркетплейсы
           </Link>

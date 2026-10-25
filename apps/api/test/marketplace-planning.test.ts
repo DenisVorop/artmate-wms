@@ -443,3 +443,20 @@ test("business advice never permits task creation beyond one-task quantity limit
   assert.equal(row.advice.state, "review");
   assert.equal(row.advice.action, "none");
 });
+
+test("automatic refresh keeps a fresh verified version usable, while stale or replaced credentials and manual pending remain blocked", () => {
+  const { w, m } = fixture();
+  const c = m.connections[0];
+  c.syncStatus = "running";
+  c.syncMode = "automatic";
+  c.lastSuccessVersion = c.version;
+  assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, true);
+  c.version++;
+  assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, false);
+  c.version--;
+  c.syncMode = "manual";
+  assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, false);
+  c.syncMode = "automatic";
+  m.snapshots[0].asOf = "2026-10-23T10:00:00Z";
+  assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, false);
+});

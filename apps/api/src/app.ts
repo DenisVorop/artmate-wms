@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { MarketplaceController } from "./marketplaces/marketplace.controller";
 import { MarketplaceService } from "./marketplaces/marketplace.service";
+import { MarketplaceScheduler } from "./marketplaces/marketplace-scheduler";
 import {
   Body,
   applyDecorators,
@@ -1249,6 +1250,7 @@ class JsonExceptionFilter implements ExceptionFilter {
     AuthService,
     StocktakeService,
     MarketplaceService,
+    MarketplaceScheduler,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })

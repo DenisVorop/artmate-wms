@@ -30,7 +30,7 @@ export function MarketplaceIntegrationFeature() {
       <header className={styles.header}>
         <div>
           <h1 className="page-heading">Маркетплейсы</h1>
-          <p>Продажи, остатки и поставки для плана сборки.</p>
+          <p>Продажи, остатки и поставки обновляются каждые 30 минут.</p>
         </div>
         <Link className="button button--secondary" href="/planning">
           План сборки <ArrowUpRight size={16} />
@@ -64,7 +64,7 @@ export function MarketplaceIntegrationFeature() {
               );
               if (success)
                 setNotice(
-                  `${providerName(connection.provider)}: подключение сохранено. Обновите данные.`,
+                  `${providerName(connection.provider)}: подключение сохранено. Проверим его при ближайшем обновлении.`,
                 );
               return success;
             }}
@@ -125,7 +125,7 @@ export function MarketplaceIntegrationFeature() {
         {!data.products.length ? (
           <EmptyState
             title="Каталог ещё не загружен"
-            description="Подключите маркетплейс и обновите данные."
+            description="Подключите маркетплейс — товары загрузятся автоматически."
           />
         ) : !workspace.data ? (
           <ErrorState

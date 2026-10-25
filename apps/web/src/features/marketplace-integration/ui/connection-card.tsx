@@ -73,27 +73,18 @@ export function ConnectionCard({
         !freshRunning &&
         (expiredRunning ? (
           <p className={styles.warning} role="status">
-            Обновление прервалось. Повторите загрузку.
+            Обновление задерживается. Повторим автоматически.
           </p>
         ) : connection.syncStatus === "failed" ||
           connection.syncStatus === "partial" ? (
           <p className={styles.warning} role="status">
-            Данные нужно обновить. Повторите загрузку.
+            Не удалось обновить данные. Повторим автоматически.
           </p>
         ) : connection.configured && !connection.lastSuccessAt ? (
-          <p>Подключение ещё не проверено. Обновите данные.</p>
+          <p>Подключение ещё не проверено. Ожидаем обновление.</p>
         ) : null)}
       <div className={styles.actions}>
-        {connection.configured ? (
-          <Button
-            disabled={busy || !connection.enabled}
-            onClick={() => void onSync()}
-            aria-busy={freshRunning}
-          >
-            <RefreshCw size={15} />
-            Обновить данные
-          </Button>
-        ) : (
+        {!connection.configured && (
           <Button
             disabled={busy}
             onClick={() => {
@@ -111,6 +102,19 @@ export function ConnectionCard({
         onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
       >
         <summary>Настройки подключения</summary>
+        {connection.configured && (
+          <div className={styles.actions}>
+            <Button
+              variant="secondary"
+              disabled={busy || !connection.enabled}
+              onClick={() => void onSync()}
+              aria-busy={freshRunning}
+            >
+              <RefreshCw size={15} />
+              Обновить сейчас
+            </Button>
+          </div>
+        )}
         {connection.configured && (
           <div className={styles.actions}>
             <Button

@@ -62,7 +62,7 @@ export function PlanningSettings({
         </Button>
       </form>
       <p className={styles.help}>
-        Если увеличите период продаж, обновите данные маркетплейсов.
+        После изменения периода план уточнится при ближайшем обновлении данных.
       </p>
     </details>
   );

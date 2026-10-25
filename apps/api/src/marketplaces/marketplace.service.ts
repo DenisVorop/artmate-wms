@@ -10,6 +10,7 @@ import { validateSync } from "class-validator";
 import { WarehouseService } from "../warehouse.service";
 import { Queryable } from "../database";
 import { requireAuth } from "../auth-policy";
+import { requestAuth } from "../auth-context";
 import * as D from "./dto";
 import { Connection, loadMarketplaces, put, MarketplaceState } from "./storage";
 import { MarketplaceSecrets } from "./secrets";
@@ -340,6 +341,7 @@ export class MarketplaceService {
         ),
         runId = randomUUID();
       c.syncStatus = "running";
+      c.syncMode = "manual";
       c.runId = runId;
       c.lastAttemptAt = new Date().toISOString();
       c.message = null;
@@ -357,22 +359,180 @@ export class MarketplaceService {
       };
     });
     if (start.cached) return start.cached;
+    const result = await this._fetchSync(
+      b.provider,
+      start.credentials!,
+      start.historyDays!,
+    );
+    return this.warehouse.authTransaction(async (tx) => {
+      await this._manager(tx, true);
+      const c = this._connection(await loadMarketplaces(tx), b.provider);
+      if (c.version !== start.version || c.runId !== start.runId || !c.enabled)
+        throw new ConflictException(
+          "Настройки подключения изменились. Повторите загрузку.",
+        );
+      await this._publishSync(tx, c, result);
+      const response = await this._overview(tx);
+      await tx.query(
+        "UPDATE commands SET response=$1 WHERE request_id=$2 AND fingerprint=$3",
+        [JSON.stringify(response), b.requestId, start.fp],
+      );
+      return response;
+    });
+  }
+  // The background entry point has no HTTP route and cannot inherit a browser session.
+  // Its authority is limited to previously approved, enabled encrypted connections.
+  async syncMarketplaceAutomatically(
+    provider: MarketplaceProvider,
+    slotStartedAt: number,
+    signal?: AbortSignal,
+  ): Promise<"updated" | "failed" | "skipped" | "superseded"> {
+    if (requestAuth.getStore()?.http)
+      throw new ForbiddenException("Автообновление недоступно из HTTP-запроса");
+    const interval = 30 * 60000;
+    if (
+      !D.MARKETPLACE_PROVIDERS.includes(provider) ||
+      !Number.isSafeInteger(slotStartedAt) ||
+      slotStartedAt < 0 ||
+      slotStartedAt % interval !== 0 ||
+      slotStartedAt > Date.now() ||
+      signal?.aborted
+    )
+      return "skipped";
+    const start = await this.warehouse.authTransaction(async (tx) => {
+      if (signal?.aborted) return undefined;
+      const m = await loadMarketplaces(tx),
+        c = m.connections.find((entry) => entry.provider === provider);
+      if (!c?.enabled || !c.encrypted) return undefined;
+      const attemptedAt = c.lastAttemptAt ? Date.parse(c.lastAttemptAt) : NaN;
+      if (
+        attemptedAt >= slotStartedAt ||
+        (c.syncStatus === "running" &&
+          Number.isFinite(attemptedAt) &&
+          Date.now() - attemptedAt < 5 * 60000)
+      )
+        return undefined;
+      c.runId = randomUUID();
+      c.syncMode = "automatic";
+      c.lastAttemptAt = new Date().toISOString();
+      c.syncStatus = "running";
+      c.message = null;
+      await put(tx, "marketplace_connections", provider, c);
+      return {
+        runId: c.runId,
+        version: c.version,
+        encrypted: c.encrypted,
+        historyDays: m.settings.historyDays,
+      };
+    });
+    if (!start) return "skipped";
+    let result: { snapshot?: MarketplaceSnapshot; failureMessage: string };
+    try {
+      signal?.throwIfAborted();
+      const credentials = await this.secrets.decrypt<MarketplaceCredentials>(
+        start.encrypted,
+        provider,
+      );
+      result = await this._fetchSync(
+        provider,
+        credentials,
+        start.historyDays,
+        signal,
+      );
+    } catch {
+      // Decryption and arbitrary exception messages are never exposed or logged.
+      result = {
+        failureMessage:
+          "Не удалось обновить данные. Проверьте подключение маркетплейса.",
+      };
+    }
+    const finish = (discard = false) =>
+      this.warehouse.authTransaction(async (tx) => {
+        const c = (await loadMarketplaces(tx)).connections.find(
+          (entry) => entry.provider === provider,
+        );
+        if (
+          !c?.enabled ||
+          c.version !== start.version ||
+          c.runId !== start.runId
+        )
+          return "superseded" as const;
+        // Shutdown wins even when a provider completes while the transaction is queued.
+        if (signal?.aborted || discard)
+          result = {
+            failureMessage: "Обновление прервано. Предыдущие данные сохранены.",
+          };
+        return (await this._publishSync(
+          tx,
+          c,
+          result,
+          discard ? undefined : signal,
+        ))
+          ? ("updated" as const)
+          : ("failed" as const);
+      });
+    try {
+      return await finish();
+    } catch (error) {
+      // Roll back a snapshot write if shutdown arrived during publication, then
+      // release only this run's claim in a separate transaction.
+      if (signal?.aborted && error === signal.reason) return finish(true);
+      throw error;
+    }
+  }
+
+  private async _abortable<T>(
+    pending: Promise<T>,
+    signal: AbortSignal,
+  ): Promise<T> {
+    let onAbort: (() => void) | undefined;
+    try {
+      return await Promise.race([
+        pending,
+        new Promise<never>((_, reject) => {
+          onAbort = () =>
+            reject(
+              new MarketplaceProviderError("aborted", "Загрузка прервана"),
+            );
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) onAbort();
+        }),
+      ]);
+    } finally {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    }
+  }
+  private async _fetchSync(
+    provider: MarketplaceProvider,
+    credentials: MarketplaceCredentials,
+    historyDays: number,
+    signal?: AbortSignal,
+  ): Promise<{ snapshot?: MarketplaceSnapshot; failureMessage: string }> {
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(240000)])
+      : AbortSignal.timeout(240000);
     const today = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10),
       to = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10),
-      from = new Date(Date.parse(to) - (start.historyDays! - 1) * 86400000)
+      from = new Date(Date.parse(to) - (historyDays - 1) * 86400000)
         .toISOString()
         .slice(0, 10);
     let snapshot: MarketplaceSnapshot | undefined;
     let failureMessage =
       "Загрузка не удалась. Повторите позже. Предыдущая полная загрузка сохранена.";
     try {
-      snapshot = await this.fetchSnapshot(
-        b.provider,
-        start.credentials!,
-        { from, to },
-        { signal: AbortSignal.timeout(240000) },
+      combinedSignal.throwIfAborted();
+      snapshot = await this._abortable(
+        this.fetchSnapshot(
+          provider,
+          credentials,
+          { from, to },
+          { signal: combinedSignal },
+        ),
+        combinedSignal,
       );
+      combinedSignal.throwIfAborted();
     } catch (error) {
+      snapshot = undefined;
       // Only our fixed messages are safe; provider bodies and arbitrary error messages may contain secrets.
       if (error instanceof MarketplaceProviderError) {
         const messages: Record<MarketplaceProviderError["code"], string> = {
@@ -394,7 +554,7 @@ export class MarketplaceService {
           const { operation, status, attempt, retryAfterSeconds } =
             error.diagnostic;
           console.warn("Marketplace import failed", {
-            provider: b.provider,
+            provider,
             code: error.code,
             operation,
             status,
@@ -404,40 +564,44 @@ export class MarketplaceService {
         }
       }
     }
-    return this.warehouse.authTransaction(async (tx) => {
-      await this._manager(tx, true);
-      const c = this._connection(await loadMarketplaces(tx), b.provider);
-      if (c.version !== start.version || c.runId !== start.runId || !c.enabled)
-        throw new ConflictException(
-          "Настройки подключения изменились. Повторите загрузку.",
-        );
-      const complete =
-        !!snapshot &&
-        snapshot.provider === b.provider &&
-        snapshot.coverage.catalog &&
-        snapshot.coverage.stocks &&
-        snapshot.coverage.demand;
-      c.runId = null;
-      c.syncStatus = complete ? "success" : snapshot ? "partial" : "failed";
-      c.message = complete
-        ? "Данные загружены"
-        : snapshot
-          ? "Получены неполные данные. Сохранена последняя полная загрузка."
-          : failureMessage;
-      c.warnings = complete ? snapshot!.warnings : [];
-      if (complete) {
-        c.lastSuccessAt = new Date().toISOString();
-        await put(tx, "marketplace_snapshots", c.provider, snapshot);
-        await tx.query("DELETE FROM marketplace_transit");
-      }
-      await put(tx, "marketplace_connections", c.provider, c);
-      const response = await this._overview(tx);
-      await tx.query(
-        "UPDATE commands SET response=$1 WHERE request_id=$2 AND fingerprint=$3",
-        [JSON.stringify(response), b.requestId, start.fp],
-      );
-      return response;
-    });
+    return { snapshot, failureMessage };
+  }
+  private async _publishSync(
+    tx: Queryable,
+    c: Connection,
+    result: { snapshot?: MarketplaceSnapshot; failureMessage: string },
+    signal?: AbortSignal,
+  ) {
+    const complete =
+      !!result.snapshot &&
+      result.snapshot.provider === c.provider &&
+      result.snapshot.coverage.catalog &&
+      result.snapshot.coverage.stocks &&
+      result.snapshot.coverage.demand;
+    c.runId = null;
+    c.syncStatus = complete
+      ? "success"
+      : result.snapshot
+        ? "partial"
+        : "failed";
+    c.message = complete
+      ? "Данные загружены"
+      : result.snapshot
+        ? "Получены неполные данные. Сохранена последняя полная загрузка."
+        : result.failureMessage;
+    c.warnings = complete ? result.snapshot!.warnings : [];
+    if (complete) {
+      c.lastSuccessAt = new Date().toISOString();
+      c.lastSuccessVersion = c.version;
+      signal?.throwIfAborted();
+      await put(tx, "marketplace_snapshots", c.provider, result.snapshot);
+      signal?.throwIfAborted();
+      await tx.query("DELETE FROM marketplace_transit");
+      signal?.throwIfAborted();
+    }
+    await put(tx, "marketplace_connections", c.provider, c);
+    signal?.throwIfAborted();
+    return complete;
   }
   async createMarketplaceTask(
     b: D.CreateMarketplaceTaskDto,

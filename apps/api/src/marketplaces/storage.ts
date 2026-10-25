@@ -13,6 +13,8 @@ export interface Connection {
   message: string | null;
   warnings: string[];
   runId: string | null;
+  syncMode?: "manual" | "automatic";
+  lastSuccessVersion?: number;
 }
 export interface Mapping {
   provider: MarketplaceProvider;
