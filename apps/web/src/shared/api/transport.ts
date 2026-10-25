@@ -1,3 +1,7 @@
+import {
+  isMarketplaceOverviewResponse,
+  isMarketplaceTaskResponse,
+} from "./marketplace-response";
 import { isBoxLabelBatchResponse } from "./box-label-response";
 import { isStocktakeCommandResponse } from "./stocktake-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
@@ -13,6 +17,8 @@ type Ports = { fetch: typeof fetch; storage: () => Storage };
 const sessionEndpoint = (url: string) =>
   /\/api\/auth\/(session|setup|login|logout|change-password)(?:\?|$)/.test(url);
 const authEndpoint = (url: string) => /\/api\/auth(?:\/|\?|$)/.test(url);
+const marketplaceEndpoint = (url: string) =>
+  /\/api\/marketplaces(?:\/|\?|$)/.test(url);
 const credentialEndpoint = (url: string) =>
   /\/api\/auth\/(setup|login|change-password)(?:\?|$)/.test(url);
 function errorMessage(data: unknown) {
@@ -24,7 +30,7 @@ function errorMessage(data: unknown) {
   }
   return "Не удалось выполнить действие. Попробуйте ещё раз.";
 }
-/** Auth requests never enter the warehouse replay registry (and never persist passwords). */
+/** Credentials and marketplace DTOs bypass the warehouse replay registry. */
 export function createApiFetch(ports: Ports) {
   return async function request<T>(
     url: string,
@@ -56,7 +62,7 @@ export function createApiFetch(ports: Ports) {
     };
     try {
       let result: T;
-      if (write && !authEndpoint(url))
+      if (write && !authEndpoint(url) && !marketplaceEndpoint(url))
         result = await fetchReplaySafeCommand<T>(url, init, {
           storage: ports.storage,
           fetch: send,
@@ -88,6 +94,16 @@ export function createApiFetch(ports: Ports) {
           throw new ApiError(errorMessage(data), response.status);
         result = data as T;
       }
+      if (
+        marketplaceEndpoint(url) &&
+        !(/\/api\/marketplaces\/tasks(?:\?|$)/.test(url)
+          ? isMarketplaceTaskResponse(result)
+          : isMarketplaceOverviewResponse(result))
+      )
+        throw new ApiError(
+          "Сервер вернул некорректные данные маркетплейсов. Повторите загрузку.",
+          status,
+        );
       if (sessionEndpoint(url) && !isAuthSessionResponse(result))
         throw new ApiError(
           "Сервер вернул некорректное состояние входа. Повторите проверку доступа.",

@@ -152,3 +152,63 @@ test("JSON null or malformed session user cannot replace the authentication boun
     );
   }
 });
+
+test("Marketplace credentials and commands bypass all browser replay storage while retaining CSRF and auth epoch", async () => {
+  setCsrfToken("test-marketplace-csrf");
+  const seen: Array<{ url: string; options: RequestInit }> = [];
+  const request = createApiFetch({
+    storage: () => {
+      throw new Error("Marketplace secrets must never reach storage");
+    },
+    fetch: async (url, options) => {
+      seen.push({ url: String(url), options: options! });
+      return json({
+        connections: [],
+        products: [],
+        settings: {
+          historyDays: 28,
+          horizonDays: 14,
+          safetyDays: 3,
+          leadDays: 7,
+        },
+        plan: { generatedAt: new Date().toISOString(), rows: [], warnings: [] },
+      });
+    },
+  });
+  for (const url of [
+    "/api/marketplaces/connections",
+    "/api/marketplaces/sync",
+    "/api/marketplaces/settings",
+  ]) {
+    await request(url, {
+      method: "POST",
+      body: JSON.stringify({
+        requestId: "market-test-id",
+        apiKey: "SYNTHETIC-ONLY-SECRET",
+      }),
+    });
+  }
+  assert.equal(seen.length, 3);
+  for (const { options } of seen) {
+    assert.equal(
+      new Headers(options.headers).get("X-WMS-CSRF"),
+      "test-marketplace-csrf",
+    );
+    assert.equal(options.credentials, "same-origin");
+  }
+  let resolve!: (response: Response) => void;
+  const pending = createApiFetch({
+    storage: noStorage,
+    fetch: () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  })("/api/marketplaces");
+  advanceAuthEpoch();
+  resolve(json({ connections: [] }));
+  await assert.rejects(
+    pending,
+    (error) => error instanceof ApiError && error.status === 409,
+  );
+  setCsrfToken(null);
+});

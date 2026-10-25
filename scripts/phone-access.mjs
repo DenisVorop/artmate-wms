@@ -324,7 +324,11 @@ export function gatewayHandler(config, ports = { api: 4080, web: 3080 }) {
         path: request.url,
         method: request.method,
         headers: proxyHeaders(request.headers, `127.0.0.1:${port}`),
-        timeout: 30000,
+        timeout:
+          request.method === "POST" &&
+          /^\/api\/marketplaces\/sync(?:\?|$)/.test(request.url)
+            ? 270000
+            : 30000,
       },
       (reply) => {
         const headers = { ...reply.headers };

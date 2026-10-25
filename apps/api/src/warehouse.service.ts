@@ -30,6 +30,7 @@ import {
   closeBoxLabels,
 } from "./box-label-storage";
 import { initializeAuth } from "./auth-storage";
+import { initializeMarketplaceStorage } from "./marketplaces/storage";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import * as D from "./dto";
@@ -275,6 +276,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         await tx.query(
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "13"],
+        );
+      await initializeMarketplaceStorage(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 14)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "14"],
         );
     });
   }
@@ -1664,56 +1671,79 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   createTask(b: D.CreateTaskDto) {
     return this._command("createTask", b, (s) => {
-      const sku = find(s.skus, b.skuId, "Тематика");
-      const employee = b.employeeId
-        ? find(s.employees, b.employeeId, "Сотрудник")
-        : null;
-      const needed = b.boxesTarget * sku.unitsPerBox;
-      let remaining = needed;
-      const reservations: D.ReservationDto[] = [];
-      for (const pallet of this._rawFifo(s, sku.id)) {
-        const quantity = Math.min(
-          remaining,
-          pallet.quantity - this._reserved(s, pallet.id),
-        );
-        if (quantity > 0) {
-          reservations.push({
-            palletId: pallet.id,
-            lotId: pallet.lotId!,
-            quantity,
-          });
-          remaining -= quantity;
-        }
-        if (!remaining) break;
-      }
-      if (remaining)
-        fail(
-          `Недостаточно свободных раскрасок: нужно ${needed}, доступно ${needed - remaining}`,
-        );
-      s.tasks.push({
-        id: randomUUID(),
-        code: nextCode("TASK"),
-        createdAt: now(),
-        boxCodeConfirmed: false,
-        skuId: sku.id,
-        boxesTarget: b.boxesTarget,
-        boxesCompleted: 0,
-        unitsPerBox: sku.unitsPerBox,
-        status: "queued",
-        employeeId: employee?.id ?? null,
-        scannedUnits: 0,
-        sourcePalletId: null,
-        openBoxCode: nextCode("BOX"),
-        reservations,
-        openBoxContents: [],
-      });
-      activity(
-        s,
-        "Создано задание",
-        `${sku.name} · ${b.boxesTarget} коробов · FIFO зарезервирован`,
-        "task",
-      );
+      this._createAssemblyTask(s, b);
     });
+  }
+  async commitPlanningTask(
+    tx: Queryable,
+    before: D.WorkspaceDto,
+    state: D.WorkspaceDto,
+    body: D.CreateTaskDto,
+  ): Promise<string> {
+    if (requestAuth.getStore())
+      await authorizeWarehouse(tx, "createTask", body, state);
+    const taskId = this._createAssemblyTask(state, body);
+    await this._commitState(tx, before, state, "createTask", body);
+    return taskId;
+  }
+  private _createAssemblyTask(s: D.WorkspaceDto, b: D.CreateTaskDto): string {
+    if (
+      !Number.isInteger(b.boxesTarget) ||
+      b.boxesTarget < 1 ||
+      b.boxesTarget > 1000
+    )
+      fail("Количество коробов должно быть целым от 1 до 1000");
+    const sku = find(s.skus, b.skuId, "Тематика");
+    const employee = b.employeeId
+      ? find(s.employees, b.employeeId, "Сотрудник")
+      : null;
+    const needed = b.boxesTarget * sku.unitsPerBox;
+    let remaining = needed;
+    const reservations: D.ReservationDto[] = [];
+    for (const pallet of this._rawFifo(s, sku.id)) {
+      const quantity = Math.min(
+        remaining,
+        pallet.quantity - this._reserved(s, pallet.id),
+      );
+      if (quantity > 0) {
+        reservations.push({
+          palletId: pallet.id,
+          lotId: pallet.lotId!,
+          quantity,
+        });
+        remaining -= quantity;
+      }
+      if (!remaining) break;
+    }
+    if (remaining)
+      fail(
+        `Недостаточно свободных раскрасок: нужно ${needed}, доступно ${needed - remaining}`,
+      );
+    const taskId = randomUUID();
+    s.tasks.push({
+      id: taskId,
+      code: nextCode("TASK"),
+      createdAt: now(),
+      boxCodeConfirmed: false,
+      skuId: sku.id,
+      boxesTarget: b.boxesTarget,
+      boxesCompleted: 0,
+      unitsPerBox: sku.unitsPerBox,
+      status: "queued",
+      employeeId: employee?.id ?? null,
+      scannedUnits: 0,
+      sourcePalletId: null,
+      openBoxCode: nextCode("BOX"),
+      reservations,
+      openBoxContents: [],
+    });
+    activity(
+      s,
+      "Создано задание",
+      `${sku.name} · ${b.boxesTarget} коробов · FIFO зарезервирован`,
+      "task",
+    );
+    return taskId;
   }
   private _taskSourcesError(s: D.WorkspaceDto, task: D.TaskDto): string | null {
     for (const r of task.reservations.filter((r) => r.quantity > 0)) {

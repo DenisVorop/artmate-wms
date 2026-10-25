@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
+  // WB read-only statistics can require paced requests lasting several minutes.
+  experimental: { proxyTimeout: 270000 },
   async headers() {
     return [
       {

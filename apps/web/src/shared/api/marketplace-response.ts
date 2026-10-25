@@ -1,0 +1,116 @@
+import type {
+  MarketplaceOverviewDto,
+  MarketplaceTaskResultDto,
+} from "./generated/model";
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+const text = (value: unknown): value is string => typeof value === "string";
+const nullableText = (value: unknown) => value === null || text(value);
+const strings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every(text);
+const provider = (value: unknown) =>
+  value === "wildberries" || value === "ozon";
+const quantity = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
+const integer = (value: unknown): value is number =>
+  quantity(value) && Number.isSafeInteger(value);
+const timestamp = (value: unknown) =>
+  text(value) && Number.isFinite(Date.parse(value));
+const nullableTimestamp = (value: unknown) =>
+  value === null || timestamp(value);
+function connection(value: unknown) {
+  return (
+    record(value) &&
+    provider(value.provider) &&
+    typeof value.configured === "boolean" &&
+    typeof value.enabled === "boolean" &&
+    nullableText(value.clientId) &&
+    ["never", "running", "success", "failed", "partial"].includes(
+      String(value.syncStatus),
+    ) &&
+    nullableTimestamp(value.lastSuccessAt) &&
+    nullableTimestamp(value.lastAttemptAt) &&
+    nullableText(value.message) &&
+    strings(value.warnings)
+  );
+}
+function product(value: unknown) {
+  return (
+    record(value) &&
+    provider(value.provider) &&
+    text(value.externalId) &&
+    nullableText(value.offerId) &&
+    text(value.name) &&
+    strings(value.barcodes) &&
+    nullableText(value.skuId) &&
+    integer(value.unitsPerItem) &&
+    value.unitsPerItem > 0 &&
+    nullableText(value.suggestedSkuId)
+  );
+}
+function settings(value: unknown) {
+  return (
+    record(value) &&
+    integer(value.historyDays) &&
+    value.historyDays > 0 &&
+    integer(value.horizonDays) &&
+    value.horizonDays > 0 &&
+    integer(value.safetyDays) &&
+    integer(value.leadDays)
+  );
+}
+function planRow(value: unknown) {
+  if (!record(value)) return false;
+  return (
+    typeof value.dataComplete === "boolean" &&
+    text(value.skuId) &&
+    text(value.skuName) &&
+    integer(value.unitsPerBox) &&
+    value.unitsPerBox > 0 &&
+    quantity(value.averageDailyUnits) &&
+    [
+      value.targetUnits,
+      value.marketplaceUnits,
+      value.readyUnits,
+      value.shippingReadyUnits,
+      value.shipmentReservedUnits,
+      value.openTaskUnits,
+      value.rawAvailableUnits,
+      value.recommendedUnits,
+      value.recommendedBoxes,
+    ].every(integer) &&
+    (value.inTransitUnits === null || integer(value.inTransitUnits)) &&
+    typeof value.canCreate === "boolean" &&
+    strings(value.blockers) &&
+    strings(value.warnings) &&
+    text(value.proposalHash)
+  );
+}
+export function isMarketplaceOverviewResponse(
+  value: unknown,
+): value is MarketplaceOverviewDto {
+  return (
+    record(value) &&
+    Array.isArray(value.connections) &&
+    value.connections.every(connection) &&
+    Array.isArray(value.products) &&
+    value.products.every(product) &&
+    settings(value.settings) &&
+    record(value.plan) &&
+    timestamp(value.plan.generatedAt) &&
+    Array.isArray(value.plan.rows) &&
+    value.plan.rows.every(planRow) &&
+    strings(value.plan.warnings)
+  );
+}
+export function isMarketplaceTaskResponse(
+  value: unknown,
+): value is MarketplaceTaskResultDto {
+  return (
+    record(value) &&
+    text(value.taskId) &&
+    !!value.taskId &&
+    isMarketplaceOverviewResponse(value.overview)
+  );
+}

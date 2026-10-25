@@ -4,6 +4,14 @@ import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
+  "getMarketplaces",
+  "connectMarketplace",
+  "toggleMarketplace",
+  "syncMarketplace",
+  "mapMarketplaceProduct",
+  "updateMarketplaceSettings",
+  "setMarketplaceTransit",
+  "createMarketplaceTask",
   "createBoxLabelBatch",
   "getBoxLabelBatches",
   "getBoxLabelBatch",

@@ -110,3 +110,11 @@ GET work-route получает ссылку текущего задания и 
 ## Освобождение сырьевого адреса при сборке
 
 Последний товарный scanTask, обнуливший исходную raw-паллету, атомарно снимает её с хранения: status=retired, locationId/returnLocationId=null. Адрес и удержание возврата свободны сразу, включая середину смешанного короба; ждать отгрузку или отдельный вывоз не требуется. ID, партия, исторический адрес строки приёмки и состав коробов сохраняются. Ошибка закрытия короба откатывает освобождение вместе со сканом; replay не дублирует событие/выработку. Это исключение только для расхода сырья при сборке: нулевой пересчёт, паллеты finished и общий накопитель сохраняют отдельный физический учёт пустого поддона. См. ADR062.
+
+## Маркетплейсы и план сборки
+
+Schema14 — шесть отдельных marketplace_* таблиц, без начальных данных/ключей/задач. Только WB FBW/Ozon FBO; актуальные endpoints и ограничения сверять с официальной документацией (ADR063). Импорт не меняет склад, QR, balance или ledger. Snapshot публикуется только целиком; ошибка/partial/stale блокируют создание. Неизвестные остатки не превращать в ноль. Сопоставление externalId→SKU и unitsPerItem сохраняет руководитель явно; предложение по barcode не является mapping.
+
+Forecast считает ordered−cancelled за полные дни Москвы, затем свои закрытые короба, очередь/НЗП и черновые отгрузочные резервы ровно один раз. Приёмка до размещения не входит в доступное сырьё. Ручной суммарный transit перекрывает API, относится к уже отправленному товару и сбрасывается после successsync/connect/toggle. Missing mapping/inbound/freshness не допускают create. Explicit create через общий FIFO helper в той же SQL-транзакции проверяет proposalHash и сохраняет forecast origin, revision, reserves и safe commands response; никаких автоматических задач.
+
+Credentials AES-GCM, lazy0600 keyfile либо WMS_MARKETPLACE_KEY; не создавать ключ на startup/OpenAPI/пустомGET. Ключи не попадают в Workspace/cache/storage/errors/events. Connect fingerprint HMAC; marketplace writes обходят browser replay registry, сохраняя CSRF/auth epoch/runtime response guard. Внешняя сеть вне SQL lock, после ожидания fresh auth+connectionversion. Никаких произвольных URL из HTTP. До реальных ключей проверка только fixtures, не liveintegration. См. docs/MARKETPLACES.md.
