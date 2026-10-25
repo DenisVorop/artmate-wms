@@ -156,6 +156,8 @@ export function EmployeeReceiving({
               id={pallet.id}
               code={pallet.code}
               addressCode={suggested?.code ?? "Ожидаем свободный адрес"}
+              addressId={suggested?.id}
+              data={data}
               phase="place"
               pending={commands.pending}
               error={commands.error}

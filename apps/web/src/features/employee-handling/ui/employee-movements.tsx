@@ -84,6 +84,8 @@ export function EmployeeMovements({
                 id={pallet.id}
                 code={pallet.code}
                 addressCode={address.code}
+                addressId={address.id}
+                data={data}
                 phase={carrying ? "place" : "take"}
                 pending={commands.pending}
                 error={commands.error}

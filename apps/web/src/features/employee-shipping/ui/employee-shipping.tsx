@@ -1,6 +1,7 @@
 "use client";
 import { MapPin, PackageCheck, Truck } from "lucide-react";
 import { useSession } from "@/entities/session";
+import { LocationMapButton } from "@/entities/warehouse-map";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import {
   Button,
@@ -119,6 +120,12 @@ export function EmployeeShipping({
                         </strong>
                       </div>
                     </div>
+                    <LocationMapButton
+                      data={data}
+                      locationId={nextAddress?.id}
+                      intent="take"
+                      contextKey={`shipping:${user?.employeeId ?? ""}:${shipment.id}:${nextBox.id}:${nextAddress?.id ?? "missing"}`}
+                    />
                     <div className={styles.box}>
                       <span>Следующий короб</span>
                       <strong>{nextBox.code}</strong>

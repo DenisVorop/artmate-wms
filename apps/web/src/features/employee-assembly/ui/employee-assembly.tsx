@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { MapPin, PackageCheck, Pause, Play, Printer } from "lucide-react";
 import { useSession } from "@/entities/session";
+import { LocationMapButton } from "@/entities/warehouse-map";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import {
@@ -199,6 +200,12 @@ export function EmployeeAssembly({
                       {location?.name && <small>{location.name}</small>}
                     </div>
                   </div>
+                  <LocationMapButton
+                    data={data}
+                    locationId={location?.id}
+                    intent="take"
+                    contextKey={`assembly:${user?.employeeId ?? ""}:${context}:${location?.id ?? "missing"}`}
+                  />
                   <div className={styles.codeCard}>
                     <span>QR / код паллеты</span>
                     <strong>{pallet?.code ?? "Источник недоступен"}</strong>

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { LocationMapButton } from "@/entities/warehouse-map";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { putawayWork, workBlock } from "../lib/handling";
@@ -31,6 +32,17 @@ export function EmployeePutaway({
     (item) => item.id === carrying?.toLocationId,
   );
   const zone = work.kind === "take" ? work.zone : undefined;
+  // A work zone may cover several sources. Never direct the employee to an
+  // arbitrary first box or address before they have chosen a box by scanning it.
+  const commonSource =
+    zone?.locationIds.length === 1
+      ? data.locations.find(
+          (item) =>
+            item.id === zone.locationIds[0] &&
+            !item.archived &&
+            item.kind === "assembly",
+        )
+      : undefined;
   const block = workBlock(
     data,
     employeeId,
@@ -77,6 +89,12 @@ export function EmployeePutaway({
                 Сканируйте QR этого адреса
               </p>
             </div>
+            <LocationMapButton
+              data={data}
+              locationId={target.id}
+              intent="place"
+              contextKey={`putaway:${employeeId}:${carrying.id}:place:${target.id}`}
+            />
             <EmployeeScan
               key={`${employeeId}:${carrying.id}:place`}
               contextKey={`${carrying.id}:place:${box.code}`}
@@ -117,6 +135,14 @@ export function EmployeePutaway({
             </p>
             <p className={styles.scanInstruction}>Сканируйте QR короба</p>
           </div>
+          {commonSource && (
+            <LocationMapButton
+              data={data}
+              locationId={commonSource.id}
+              intent="take"
+              contextKey={`putaway-any:${employeeId}:${zone.id}:${commonSource.id}`}
+            />
+          )}
           {ready === 0 && (
             <p className={styles.secondary}>
               По данным склада готовых коробов для размещения пока нет. Новые

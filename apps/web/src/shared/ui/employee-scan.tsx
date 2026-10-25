@@ -263,6 +263,7 @@ export function EmployeeScan({
       </label>
       <input
         {...field}
+        data-employee-scan-input="true"
         ref={(node) => {
           field.ref(node);
           input.current = node;
