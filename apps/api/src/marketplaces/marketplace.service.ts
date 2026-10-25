@@ -24,6 +24,10 @@ import {
   MarketplaceProvider,
   MarketplaceSnapshot,
 } from "./providers/types";
+import {
+  MARKETPLACE_RUN_LEASE_MS,
+  MARKETPLACE_RUN_TIMEOUT_MS,
+} from "./providers/request-policy";
 type FetchSnapshot = typeof fetchMarketplaceSnapshot;
 @Injectable()
 export class MarketplaceService {
@@ -332,7 +336,7 @@ export class MarketplaceService {
       if (
         c.syncStatus === "running" &&
         c.lastAttemptAt &&
-        Date.now() - Date.parse(c.lastAttemptAt) < 5 * 60000
+        Date.now() - Date.parse(c.lastAttemptAt) < MARKETPLACE_RUN_LEASE_MS
       )
         throw new ConflictException("Загрузка уже выполняется");
       const credentials = await this.secrets.decrypt<MarketplaceCredentials>(
@@ -409,7 +413,7 @@ export class MarketplaceService {
         attemptedAt >= slotStartedAt ||
         (c.syncStatus === "running" &&
           Number.isFinite(attemptedAt) &&
-          Date.now() - attemptedAt < 5 * 60000)
+          Date.now() - attemptedAt < MARKETPLACE_RUN_LEASE_MS)
       )
         return undefined;
       c.runId = randomUUID();
@@ -509,8 +513,11 @@ export class MarketplaceService {
     signal?: AbortSignal,
   ): Promise<{ snapshot?: MarketplaceSnapshot; failureMessage: string }> {
     const combinedSignal = signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(240000)])
-      : AbortSignal.timeout(240000);
+      ? AbortSignal.any([
+          signal,
+          AbortSignal.timeout(MARKETPLACE_RUN_TIMEOUT_MS),
+        ])
+      : AbortSignal.timeout(MARKETPLACE_RUN_TIMEOUT_MS);
     const today = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10),
       to = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10),
       from = new Date(Date.parse(to) - (historyDays - 1) * 86400000)

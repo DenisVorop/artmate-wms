@@ -347,12 +347,35 @@ test("automatic imports use durable claims without human authority or warehouse 
       },
     );
     await t.test(
+      "a six-minute import keeps its lease across the next schedule boundary",
+      async (t) => {
+        const currentSlot = slot();
+        t.mock.method(Date, "now", () => currentSlot + 1000);
+        let calls = 0;
+        await reset({
+          syncStatus: "running",
+          runId: "still-working",
+          lastAttemptAt: new Date(currentSlot - 6 * 60000).toISOString(),
+        });
+        const s = service(async () => {
+          calls++;
+          return snapshot();
+        });
+        assert.equal(
+          await s.syncMarketplaceAutomatically("wildberries", currentSlot),
+          "skipped",
+        );
+        assert.equal(calls, 0);
+        assert.equal((await read()).connections[0].runId, "still-working");
+      },
+    );
+    await t.test(
       "an expired prior-slot claim recovers with a fresh run token",
       async () => {
         await reset({
           syncStatus: "running",
           runId: "expired",
-          lastAttemptAt: new Date(slot() - 6 * 60000).toISOString(),
+          lastAttemptAt: new Date(slot() - 14 * 60000).toISOString(),
         });
         assert.equal(
           await service().syncMarketplaceAutomatically("wildberries", slot()),
