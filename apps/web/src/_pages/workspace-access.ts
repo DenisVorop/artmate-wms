@@ -1,5 +1,6 @@
 import type { AuthUserDto } from "@/shared/api/generated/model";
 const employeeViews = new Set([
+  "tasks",
   "warehouse",
   "receiving",
   "assembly",

@@ -77,7 +77,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 18px 0;
+  padding: 8px 0 14px;
   border-bottom: 1px solid var(--border);
 }
 .destination > svg {
@@ -95,8 +95,8 @@
   color: var(--muted);
 }
 .destination strong {
-  font-size: 35px;
-  letter-spacing: -1px;
+  font-size: 20px;
+  letter-spacing: -0.3px;
   line-height: 1.2;
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -118,7 +118,7 @@
 }
 .codeCard strong {
   font-family: var(--font-mono), monospace;
-  font-size: 19px;
+  font-size: 25px;
   line-height: 1.5;
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -238,7 +238,7 @@
     font-size: 21px;
   }
   .destination strong {
-    font-size: 30px;
+    font-size: 19px;
   }
   .taskHeader > div {
     gap: 6px;
@@ -250,7 +250,7 @@
     font-size: 82px;
   }
   .codeCard strong {
-    font-size: 17px;
+    font-size: 23px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

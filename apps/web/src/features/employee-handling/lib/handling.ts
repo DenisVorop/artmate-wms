@@ -22,6 +22,29 @@ export function selectPutaway(tasks: PutawayTaskDto[], employeeId: string) {
     tasks.filter((t) => t.status === "queued" && !t.employeeId).sort(oldest)[0]
   );
 }
+/** Scanning any ready box is allowed only after entering a live putaway zone.
+ * A server-confirmed carried box always wins, including after refresh or zone loss.
+ */
+export function putawayWork(
+  data: Pick<WorkspaceDto, "putawayTasks" | "warehouse">,
+  employeeId: string,
+) {
+  const carrying = employeeId
+    ? data.putawayTasks.find(
+        (task) =>
+          task.employeeId === employeeId && task.status === "in_transit",
+      )
+    : undefined;
+  if (carrying) return { kind: "place" as const, task: carrying };
+  const binding = employeeId
+    ? data.warehouse.zoneWork?.find((work) => work.employeeId === employeeId)
+    : undefined;
+  const zone = data.warehouse.workZones?.find(
+    (item) =>
+      item.id === binding?.zoneId && item.kind === "putaway" && !item.archived,
+  );
+  return zone ? { kind: "take" as const, zone } : { kind: "zone" as const };
+}
 export function selectMovement(tasks: MovementDto[], employeeId: string) {
   if (!employeeId) return undefined;
   return tasks

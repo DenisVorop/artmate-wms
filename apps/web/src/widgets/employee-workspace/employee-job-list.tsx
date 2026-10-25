@@ -1,0 +1,148 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import {
+  buildWorkQueue,
+  filterWorkQueue,
+  workQueueKindLabels,
+  useWorkQueueStocktakes,
+  type WorkQueueKind,
+} from "@/entities/work-queue";
+import type { WorkspaceDto } from "@/shared/api/generated/model";
+import { Button } from "@/shared/ui";
+import styles from "./workspace.module.css";
+
+/** Inspection keeps the active work mounted. No claims or document changes here. */
+export function EmployeeJobList({
+  data,
+  employeeId,
+  onResume,
+}: {
+  data: WorkspaceDto;
+  employeeId: string;
+  onResume: () => void;
+}) {
+  const [kind, setKind] = useState<WorkQueueKind | "all">("all");
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    title.current?.focus({ preventScroll: true });
+  }, []);
+  const stocktakes = useWorkQueueStocktakes();
+  const jobs = filterWorkQueue(buildWorkQueue(data, stocktakes.items), {
+    kind,
+  }).filter((job) => !job.employeeId || job.employeeId === employeeId);
+  const own = jobs.filter((job) => job.employeeId === employeeId);
+  const available = jobs.filter(
+    (job) => !job.employeeId && job.assignmentKnown,
+  );
+  const waiting = jobs.filter((job) => !job.employeeId && !job.assignmentKnown);
+  return (
+    <section className={styles.jobList} aria-labelledby="employee-jobs-title">
+      <div className={styles.jobHeading}>
+        <h1 id="employee-jobs-title" ref={title} tabIndex={-1}>
+          Все задания
+        </h1>
+        <p>Ваша работа и общая очередь склада.</p>
+      </div>
+      <label className={styles.jobFilter}>
+        Вид работы
+        <select
+          value={kind}
+          onChange={(event) =>
+            setKind(event.target.value as WorkQueueKind | "all")
+          }
+        >
+          <option value="all">Все виды</option>
+          {Object.entries(workQueueKindLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className={styles.queueHint}>
+        Чтобы взять работу, вернитесь к заданию и сканируйте QR нужной рабочей
+        зоны.
+      </p>
+      {(kind === "all" || kind === "stocktake") && stocktakes.isPending && (
+        <p className={styles.queueHint} role="status">
+          Загружаем задания инвентаризации…
+        </p>
+      )}
+      {(kind === "all" || kind === "stocktake") && stocktakes.isError && (
+        <div className={styles.warning} role="alert">
+          <p>Не удалось обновить инвентаризации. Остальные задания показаны.</p>
+          <button onClick={() => void stocktakes.refetch()}>Повторить</button>
+        </div>
+      )}
+      {!jobs.length && (
+        <p className={styles.queueEmpty}>
+          {kind === "all"
+            ? "Ваших и доступных заданий пока нет."
+            : "Заданий этого вида пока нет. Выберите другой вид работы."}
+        </p>
+      )}
+      {(
+        [
+          ["Мои задания", own],
+          ["Свободные задания", available],
+          ["Ожидают размещения", waiting],
+        ] as const
+      ).map(
+        ([title, entries]) =>
+          entries.length > 0 && (
+            <section key={title} className={styles.jobGroup} aria-label={title}>
+              <h3>
+                {title} <span>{entries.length}</span>
+              </h3>
+              <ul>
+                {entries.map((job) => (
+                  <li key={job.id} className={styles.jobCard}>
+                    <div className={styles.jobMeta}>
+                      <span>{job.title}</span>
+                      <span>
+                        {job.employeeId && job.state === "queued"
+                          ? "Назначено вам"
+                          : job.statusLabel}
+                      </span>
+                    </div>
+                    <h4>{job.skuName ?? job.objectLabel}</h4>
+                    {job.skuName && job.objectLabel !== job.skuName && (
+                      <p className={styles.jobCode}>{job.objectLabel}</p>
+                    )}
+                    <p className={styles.jobQuantity}>{job.quantityLabel}</p>
+                    {(job.fromLabel || job.toLabel) && (
+                      <p className={styles.jobRoute}>
+                        {job.fromLabel && <>Откуда: {job.fromLabel}</>}
+                        {job.fromLabel && job.toLabel && <br />}
+                        {job.toLabel && <>Куда: {job.toLabel}</>}
+                      </p>
+                    )}
+                    <small>{job.code}</small>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ),
+      )}
+      {(kind === "all" || kind === "stocktake") && stocktakes.hasNextPage && (
+        <div className={styles.queuePagination}>
+          <p>
+            Инвентаризации: загружено {stocktakes.items.length} из{" "}
+            {stocktakes.total}. Остальные виды показаны полностью.
+          </p>
+          <div>
+            <Button
+              variant="secondary"
+              disabled={stocktakes.isFetchingNextPage}
+              aria-busy={stocktakes.isFetchingNextPage}
+              onClick={() => void stocktakes.fetchNextPage()}
+            >
+              Загрузить ещё инвентаризации
+            </Button>
+          </div>
+        </div>
+      )}
+      <Button onClick={onResume}>К текущей работе</Button>
+    </section>
+  );
+}

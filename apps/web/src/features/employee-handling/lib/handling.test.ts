@@ -12,6 +12,7 @@ import {
   selectPutaway,
   selectReceipt,
   workBlock,
+  putawayWork,
 } from "./handling";
 const put = (
   id: string,
@@ -176,4 +177,52 @@ test("off-shift and incompatible planned movement prevent voluntary claim", () =
   data.employees[0].status = "working";
   data.movements = [move("planned", "planned")];
   assert.match(workBlock(data, "me", "putaway", "queued") ?? "", /перемещение/);
+});
+test("idle putaway zone asks for any box without selecting an arbitrary queued assignment", () => {
+  const data = {
+    putawayTasks: [put("first", "queued", null), put("second", "queued", null)],
+    warehouse: {
+      zoneWork: [
+        {
+          employeeId: "me",
+          zoneId: "put",
+          jobId: null,
+          jobKind: null,
+          palletId: null,
+          message: "",
+        },
+      ],
+      workZones: [
+        {
+          id: "put",
+          code: "PUT",
+          name: "Размещение",
+          kind: "putaway",
+          locationIds: [],
+          archived: false,
+          archivedAt: null,
+        },
+      ],
+    },
+  } as unknown as Pick<WorkspaceDto, "warehouse" | "putawayTasks">;
+  assert.equal(putawayWork(data, "me").kind, "take");
+  assert.equal(putawayWork(data, "other").kind, "zone");
+  assert.equal(putawayWork(data, "").kind, "zone");
+  data.warehouse.workZones[0].archived = true;
+  assert.equal(putawayWork(data, "me").kind, "zone");
+});
+test("refresh resumes own server-confirmed carried box before zone selection; queued, claimed or foreign boxes are never treated as carried", () => {
+  const data = {
+    putawayTasks: [
+      put("foreign", "in_transit", "other"),
+      put("old-claim", "claimed", "me"),
+      put("mine", "in_transit", "me"),
+    ],
+    warehouse: { zoneWork: [], workZones: [] },
+  } as unknown as Pick<WorkspaceDto, "warehouse" | "putawayTasks">;
+  const work = putawayWork(data, "me");
+  assert.equal(work.kind, "place");
+  assert.equal(work.kind === "place" ? work.task.id : null, "mine");
+  data.putawayTasks = data.putawayTasks.filter((task) => task.id !== "mine");
+  assert.equal(putawayWork(data, "me").kind, "zone");
 });

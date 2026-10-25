@@ -188,8 +188,8 @@ export function EmployeeAssembly({
                   <span className={styles.stepLabel}>1 · ИСТОЧНИК</span>
                   <h3>
                     {task.scannedUnits > 0
-                      ? "Следующая паллета"
-                      : "Найдите паллету"}
+                      ? "Сканируйте следующую паллету"
+                      : "Сканируйте паллету"}
                   </h3>
                   <div className={styles.destination}>
                     <MapPin size={22} />
@@ -262,6 +262,7 @@ export function EmployeeAssembly({
                   <span className={styles.stepLabel}>
                     3 · РАСКРАСКИ В КОРОБЕ
                   </span>
+                  <h3>Сканируйте каждую раскраску</h3>
                   <div
                     className={styles.counter}
                     aria-live="polite"

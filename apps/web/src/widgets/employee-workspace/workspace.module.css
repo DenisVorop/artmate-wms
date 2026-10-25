@@ -308,3 +308,135 @@
   color: inherit;
   cursor: pointer;
 }
+.workViews {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.workViews button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.workViews button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+  font-weight: 550;
+}
+.jobList {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.jobHeading h1 {
+  margin: 8px 0;
+  font-size: 30px;
+  letter-spacing: -0.03em;
+}
+.jobHeading p,
+.queueHint,
+.queueEmpty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 14px;
+}
+.jobFilter {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.jobFilter select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 15px;
+}
+.jobGroup h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.jobGroup h3 span {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.jobGroup ul {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+.jobCard {
+  display: grid;
+  gap: 9px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.jobMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.jobMeta span:last-child {
+  color: var(--accent);
+}
+.jobCard h4 {
+  font-size: 21px;
+  font-weight: 550;
+  line-height: 1.2;
+  margin: 0;
+}
+.jobCard p {
+  margin: 0;
+}
+.jobQuantity {
+  font-size: 15px;
+}
+.jobRoute,
+.jobCode,
+.jobCard small {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.jobCode,
+.jobCard small {
+  font-family: var(--font-mono), monospace;
+}
+.queuePagination p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.queuePagination > div {
+  display: flex;
+  gap: 12px;
+}

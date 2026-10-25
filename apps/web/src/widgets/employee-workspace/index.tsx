@@ -30,9 +30,11 @@ import {
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import styles from "./workspace.module.css";
+import { EmployeeJobList } from "./employee-job-list";
 export function EmployeeWorkspace(props: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
+  initialShowJobs?: boolean;
 }) {
   return (
     <EmployeeScanBoundary>
@@ -43,9 +45,11 @@ export function EmployeeWorkspace(props: {
 function EmployeeWorkspaceBody({
   initialMode = "zone",
   initialDocumentId,
+  initialShowJobs = false,
 }: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
+  initialShowJobs?: boolean;
 }) {
   const { user } = useSession(),
     workspace = useWorkspace(),
@@ -53,12 +57,20 @@ function EmployeeWorkspaceBody({
     auth = useAuthActions(),
     scan = useEmployeeScanActivity();
   const [menu, setMenu] = useState(false),
+    [showJobs, setShowJobs] = useState(initialShowJobs),
     [more, setMore] = useState(false),
     [help, setHelp] = useState(false),
     [password, setPassword] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
     [problem, setProblem] = useState<string | null>(null);
+  const workPanel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (showJobs) return;
+    workPanel.current
+      ?.querySelector<HTMLInputElement>('input[name="code"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [showJobs]);
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
@@ -180,7 +192,11 @@ function EmployeeWorkspaceBody({
   };
   const noShift = employee?.status !== "working";
   const zoneIdle =
-    mode === "zone" || (!!currentZone && !currentZone.assignment.jobKind);
+    mode === "zone" ||
+    (!!currentZone &&
+      !currentZone.assignment.jobKind &&
+      currentZone.zone.kind !== "putaway") ||
+    (mode === "putaway" && !currentZone && !priority?.carrying);
   const zoneEntry = showZoneScan || zoneIdle;
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) return zones.intercept(value);
@@ -236,6 +252,25 @@ function EmployeeWorkspaceBody({
               {menu ? <X /> : <Ellipsis />}
             </button>
           </header>
+          <nav className={styles.workViews} aria-label="Работа сотрудника">
+            <button
+              type="button"
+              aria-pressed={!showJobs}
+              onClick={() => setShowJobs(false)}
+            >
+              Текущая работа
+            </button>
+            <button
+              type="button"
+              aria-pressed={showJobs}
+              onClick={() => {
+                setShowJobs(true);
+                setMenu(false);
+              }}
+            >
+              Все задания
+            </button>
+          </nav>
           {menu && (
             <section
               id="employee-menu"
@@ -363,187 +398,199 @@ function EmployeeWorkspaceBody({
             </section>
           )}
           <main id="employee-main" className={styles.main}>
-            {mode !== "shift" && (
-              <h1 className={styles.srOnly}>Моё рабочее место</h1>
-            )}
-            {blocked && requestedMode !== mode && (
-              <div className={styles.warning} role="status">
-                <p>
-                  Рабочие условия изменились. Ввод сохранён на экране.{" "}
-                  {noShift
-                    ? "Возобновите смену через меню."
-                    : "Закончите текущий шаг перед переходом."}
-                </p>
-              </div>
-            )}
-            {notice && (
-              <div className={styles.completion} role="status">
-                <span>{notice}</span>
-                <button
-                  onClick={() => setNotice(null)}
-                  aria-label="Скрыть подтверждение"
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            )}
-            {problem && (
-              <div className={styles.warning} role="alert">
-                <p>{problem}</p>
-                <button
-                  onClick={() => setProblem(null)}
-                  aria-label="Скрыть сообщение"
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            )}
             {workspace.isError && data && (
               <div className={styles.warning} role="status">
-                <p>Связь со складом нестабильна.</p>
+                <p>
+                  Связь со складом нестабильна. Показаны последние загруженные
+                  данные.
+                </p>
                 <button onClick={() => void workspace.refetch()}>
                   Обновить
                 </button>
               </div>
             )}
-            {!data ? (
-              <section className={styles.state}>
-                <h1>
-                  {workspace.isError
-                    ? "Нет связи со складом"
-                    : "Открываем задание…"}
-                </h1>
-                {workspace.isError && (
-                  <Button onClick={() => void workspace.refetch()}>
-                    Повторить загрузку
-                  </Button>
-                )}
-              </section>
-            ) : !employee ? (
-              <section className={styles.state}>
-                <h1>Профиль сотрудника недоступен</h1>
-                <p>Обратитесь к руководителю.</p>
-              </section>
-            ) : mode === "shift" ? (
-              <EmployeeShift
-                employee={employee}
-                pending={day.pending}
-                error={day.error}
-                onStart={() => void shift("working")}
-                onWork={() => void choose("zone")}
+            {showJobs && data && employee && (
+              <EmployeeJobList
+                data={data}
+                employeeId={employee.id}
+                onResume={() => setShowJobs(false)}
               />
-            ) : (
-              <>
-                {currentZone && (
-                  <div className={styles.zoneHeading}>
-                    <div>
-                      <small>{zoneNames[currentZone.zone.kind]}</small>
-                      <strong>{currentZone.zone.name}</strong>
-                    </div>
-                    <button
-                      disabled={blocked}
-                      onClick={() => setShowZoneScan((value) => !value)}
-                    >
-                      {showZoneScan ? "К заданию" : "Сменить зону"}
-                    </button>
-                  </div>
-                )}
-                {!currentZone && !zoneEntry && (
-                  <button
-                    className={styles.zoneSwitch}
-                    disabled={blocked}
-                    onClick={() => setShowZoneScan(true)}
-                  >
-                    Сканировать рабочую зону
-                  </button>
-                )}
-                {zoneEntry ? (
-                  <section
-                    className={styles.zoneEntry}
-                    aria-label="Выбор рабочей зоны"
-                  >
-                    <h2>
-                      {zoneIdle && currentZone
-                        ? "В этой зоне пока нет работы"
-                        : "Где начнём работу?"}
-                    </h2>
-                    <p>
-                      {currentZone?.assignment.message ||
-                        "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
-                    </p>
-                    <EmployeeScan
-                      contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}`}
-                      label="Сканируйте QR рабочей зоны"
-                      disabled={zones.pending}
-                      onScan={async () => false}
-                      onProblem={setProblem}
-                    />
-                    {currentZone && (
-                      <Button
-                        disabled={blocked}
-                        onClick={() =>
-                          void zones.intercept(
-                            `artmate-wms:work-zone:${currentZone.zone.id}`,
-                          )
-                        }
-                      >
-                        Проверить задания в зоне
-                      </Button>
-                    )}
-                  </section>
-                ) : (
-                  <>
-                    {mode === "assembly" && (
-                      <EmployeeAssembly
-                        key={key}
-                        data={data}
-                        onIdle={() => void choose("putaway")}
-                        onProblem={setProblem}
-                      />
-                    )}
-                    {mode === "putaway" && (
-                      <EmployeePutaway
-                        key={key}
-                        data={data}
-                        onIdle={() => void choose("assembly")}
-                        onProblem={setProblem}
-                      />
-                    )}
-                    {mode === "receiving" && (
-                      <EmployeeReceiving
-                        key={key}
-                        data={data}
-                        onIdle={() => void choose("assembly")}
-                        onProblem={setProblem}
-                      />
-                    )}
-                    {mode === "movements" && (
-                      <EmployeeMovements
-                        data={data}
-                        onIdle={() => void choose("assembly")}
-                        onProblem={setProblem}
-                      />
-                    )}
-                    {mode === "shipping" && (
-                      <EmployeeShipping
-                        key={key}
-                        data={data}
-                        onIdle={() => void choose("zone")}
-                        onProblem={setProblem}
-                      />
-                    )}
-                    {mode === "stocktakes" && (
-                      <EmployeeStocktakes
-                        key={initialDocumentId ?? "queue"}
-                        initialDocumentId={initialDocumentId}
-                        onIdle={() => void choose("assembly", true)}
-                        onProblem={setProblem}
-                      />
-                    )}
-                  </>
-                )}
-              </>
             )}
+            <div ref={workPanel} hidden={showJobs && !!data && !!employee}>
+              {mode !== "shift" && (
+                <h1 className={styles.srOnly}>Моё рабочее место</h1>
+              )}
+              {blocked && requestedMode !== mode && (
+                <div className={styles.warning} role="status">
+                  <p>
+                    Рабочие условия изменились. Ввод сохранён на экране.{" "}
+                    {noShift
+                      ? "Возобновите смену через меню."
+                      : "Закончите текущий шаг перед переходом."}
+                  </p>
+                </div>
+              )}
+              {notice && (
+                <div className={styles.completion} role="status">
+                  <span>{notice}</span>
+                  <button
+                    onClick={() => setNotice(null)}
+                    aria-label="Скрыть подтверждение"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+              )}
+              {problem && (
+                <div className={styles.warning} role="alert">
+                  <p>{problem}</p>
+                  <button
+                    onClick={() => setProblem(null)}
+                    aria-label="Скрыть сообщение"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+              )}
+              {!data ? (
+                <section className={styles.state}>
+                  <h1>
+                    {workspace.isError
+                      ? "Нет связи со складом"
+                      : "Открываем задание…"}
+                  </h1>
+                  {workspace.isError && (
+                    <Button onClick={() => void workspace.refetch()}>
+                      Повторить загрузку
+                    </Button>
+                  )}
+                </section>
+              ) : !employee ? (
+                <section className={styles.state}>
+                  <h1>Профиль сотрудника недоступен</h1>
+                  <p>Обратитесь к руководителю.</p>
+                </section>
+              ) : mode === "shift" ? (
+                <EmployeeShift
+                  employee={employee}
+                  pending={day.pending}
+                  error={day.error}
+                  onStart={() => void shift("working")}
+                  onWork={() => void choose("zone")}
+                />
+              ) : (
+                <>
+                  {currentZone && (
+                    <div className={styles.zoneHeading}>
+                      <div>
+                        <small>{zoneNames[currentZone.zone.kind]}</small>
+                        <strong>{currentZone.zone.name}</strong>
+                      </div>
+                      <button
+                        disabled={blocked}
+                        onClick={() => setShowZoneScan((value) => !value)}
+                      >
+                        {showZoneScan ? "К заданию" : "Сменить зону"}
+                      </button>
+                    </div>
+                  )}
+                  {!currentZone && !zoneEntry && (
+                    <button
+                      className={styles.zoneSwitch}
+                      disabled={blocked}
+                      onClick={() => setShowZoneScan(true)}
+                    >
+                      Сканировать рабочую зону
+                    </button>
+                  )}
+                  {zoneEntry ? (
+                    <section
+                      className={styles.zoneEntry}
+                      aria-label="Выбор рабочей зоны"
+                    >
+                      <h2>
+                        {zoneIdle && currentZone
+                          ? "В этой зоне пока нет работы"
+                          : "Где начнём работу?"}
+                      </h2>
+                      <p>
+                        {currentZone?.assignment.message ||
+                          "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
+                      </p>
+                      <EmployeeScan
+                        contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}`}
+                        label="Сканируйте QR рабочей зоны"
+                        disabled={zones.pending}
+                        onScan={async () => false}
+                        onProblem={setProblem}
+                      />
+                      {currentZone && (
+                        <Button
+                          disabled={blocked}
+                          onClick={() =>
+                            void zones.intercept(
+                              `artmate-wms:work-zone:${currentZone.zone.id}`,
+                            )
+                          }
+                        >
+                          Проверить задания в зоне
+                        </Button>
+                      )}
+                    </section>
+                  ) : (
+                    <>
+                      {mode === "assembly" && (
+                        <EmployeeAssembly
+                          key={key}
+                          data={data}
+                          onIdle={() => void choose("putaway")}
+                          onProblem={setProblem}
+                        />
+                      )}
+                      {mode === "putaway" && (
+                        <EmployeePutaway
+                          key={key}
+                          data={data}
+                          onIdle={() => void choose("assembly")}
+                          onProblem={setProblem}
+                        />
+                      )}
+                      {mode === "receiving" && (
+                        <EmployeeReceiving
+                          key={key}
+                          data={data}
+                          onIdle={() => void choose("assembly")}
+                          onProblem={setProblem}
+                        />
+                      )}
+                      {mode === "movements" && (
+                        <EmployeeMovements
+                          data={data}
+                          onIdle={() => void choose("assembly")}
+                          onProblem={setProblem}
+                        />
+                      )}
+                      {mode === "shipping" && (
+                        <EmployeeShipping
+                          key={key}
+                          data={data}
+                          onIdle={() => void choose("zone")}
+                          onProblem={setProblem}
+                        />
+                      )}
+                      {mode === "stocktakes" && (
+                        <EmployeeStocktakes
+                          key={initialDocumentId ?? "queue"}
+                          initialDocumentId={initialDocumentId}
+                          onIdle={() => void choose("assembly", true)}
+                          onProblem={setProblem}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </main>
           <footer className={styles.footer}>
             <span

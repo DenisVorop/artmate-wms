@@ -67,7 +67,10 @@ export const warehouseOperations = new Set([
   "packTask",
   "claimPutawayTask",
   "takePutawayTask",
+  "takePutawayBox",
+  "takeAnyPutawayBox",
   "placePutawayTask",
+  "placePutawayBox",
   "releasePutawayTask",
   "createShipment",
   "shipShipment",
@@ -112,7 +115,10 @@ const workerWrites = new Set([
   "packTask",
   "claimPutawayTask",
   "takePutawayTask",
+  "takePutawayBox",
+  "takeAnyPutawayBox",
   "placePutawayTask",
+  "placePutawayBox",
   "releasePutawayTask",
   "createMovement",
   "takeMovement",
@@ -133,7 +139,10 @@ const actorWrites = new Set([
   "packTask",
   "claimPutawayTask",
   "takePutawayTask",
+  "takePutawayBox",
+  "takeAnyPutawayBox",
   "placePutawayTask",
+  "placePutawayBox",
   "releasePutawayTask",
   "adjustStock",
 ]);
@@ -219,10 +228,36 @@ export async function authorizeWarehouse(
       throw new ForbiddenException("Для вывоза паллеты начните свою смену");
   }
   if (state) {
+    if (op === "takeAnyPutawayBox") {
+      const binding = state.warehouse.zoneWork.find(
+        (w) => w.employeeId === account.employee_id,
+      );
+      const zone = state.warehouse.workZones.find(
+        (z) => z.id === binding?.zoneId,
+      );
+      if (!zone || zone.archived || zone.kind !== "putaway")
+        throw new ForbiddenException("Сначала отсканируйте QR зоны размещения");
+      const value = (body as D.TakePutawayBoxDto).boxCode;
+      const box = state.boxes.find(
+        (b) => value === b.code || value === `artmate-wms:box:${b.code}`,
+      );
+      const task =
+        box &&
+        state.putawayTasks.find(
+          (t) => t.boxId === box.id && t.status !== "completed",
+        );
+      if (task?.employeeId && task.employeeId !== account.employee_id)
+        throw new ForbiddenException("Этот короб уже взял другой сотрудник");
+    }
     if (
-      ["startZoneWork", "scanShipmentWork", "finishShipmentWork"].includes(
-        op,
-      ) &&
+      [
+        "startZoneWork",
+        "scanShipmentWork",
+        "finishShipmentWork",
+        "takePutawayBox",
+        "takeAnyPutawayBox",
+        "placePutawayBox",
+      ].includes(op) &&
       state.employees.find((e) => e.id === account.employee_id)?.status !==
         "working"
     )
@@ -285,7 +320,14 @@ export async function authorizeWarehouse(
         throw new ForbiddenException("Задание назначено другому сотруднику");
     }
     if (
-      ["takePutawayTask", "placePutawayTask", "releasePutawayTask"].includes(op)
+      [
+        "takePutawayTask",
+        "placePutawayTask",
+        "takePutawayBox",
+        "takeAnyPutawayBox",
+        "placePutawayBox",
+        "releasePutawayTask",
+      ].includes(op)
     ) {
       const task = state.putawayTasks.find((t) => t.id === id);
       if (task?.employeeId && task.employeeId !== account.employee_id)

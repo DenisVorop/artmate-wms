@@ -758,6 +758,24 @@ export class ClaimTaskDto extends CommandDto {
   @ApiProperty({ type: String }) @IsString() @MinLength(1) employeeId!: string;
 }
 export class ClaimPutawayTaskDto extends ClaimTaskDto {}
+export class TakePutawayBoxDto extends ClaimTaskDto {
+  @ApiProperty({
+    type: String,
+    description: "QR короба, который сотрудник забирает",
+  })
+  @IsString()
+  @MinLength(1)
+  boxCode!: string;
+}
+export class PlacePutawayBoxDto extends ClaimTaskDto {
+  @ApiProperty({
+    type: String,
+    description: "QR зарезервированного адреса для короба у сотрудника",
+  })
+  @IsString()
+  @MinLength(1)
+  locationCode!: string;
+}
 export class ConfirmPutawayTaskDto extends ClaimTaskDto {
   @ApiProperty({ type: String }) @IsString() @MinLength(1) boxCode!: string;
   @ApiProperty({ type: String })

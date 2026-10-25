@@ -26,6 +26,8 @@ import type {
   ClaimTaskDto,
   ClaimPutawayTaskDto,
   ConfirmPutawayTaskDto,
+  TakePutawayBoxDto,
+  PlacePutawayBoxDto,
   AssignTaskDto,
   ScanTaskDto,
   PackTaskDto,
@@ -186,6 +188,12 @@ export function useWarehouseCommands() {
       run(() => api.takePutawayTask(id, dto)),
     placePutawayTask: (id: string, dto: ConfirmPutawayTaskDto) =>
       run(() => api.placePutawayTask(id, dto)),
+    takeAnyPutawayBox: (dto: TakePutawayBoxDto) =>
+      run(() => api.takeAnyPutawayBox(dto)),
+    takePutawayBox: (id: string, dto: TakePutawayBoxDto) =>
+      run(() => api.takePutawayBox(id, dto)),
+    placePutawayBox: (id: string, dto: PlacePutawayBoxDto) =>
+      run(() => api.placePutawayBox(id, dto)),
     releasePutawayTask: (id: string, dto: ClaimPutawayTaskDto) =>
       run(() => api.releasePutawayTask(id, dto)),
     claimTask: (id: string, dto: ClaimTaskDto) =>

@@ -17,6 +17,7 @@ import {
   Layers3,
   NotebookTabs,
   ClipboardCheck,
+  ClipboardList,
   Menu,
   Package,
   Search,
@@ -32,6 +33,7 @@ import sessionStyles from "./session-controls.module.css";
 
 const allNavigation = [
   { href: "/", label: "Обзор", icon: ChartNoAxesCombined },
+  { href: "/tasks", label: "Все задания", icon: ClipboardList },
   { href: "/warehouse", label: "Карта склада", icon: Grid2X2 },
   { href: "/inventory", label: "Остатки", icon: Layers3 },
   { href: "/stocktakes", label: "Инвентаризация", icon: ClipboardCheck },
@@ -55,6 +57,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const auth = useAuthActions();
   const [passwordOpen, setPasswordOpen] = useState(false);
   const workerPaths = [
+    "/tasks",
     "/warehouse",
     "/receiving",
     "/assembly",

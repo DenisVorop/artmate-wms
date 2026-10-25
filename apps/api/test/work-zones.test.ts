@@ -509,27 +509,50 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
   );
   s = await start(putaway);
   assert.equal(s.tasks.find((t) => t.id === taskId)!.status, "paused");
-  assert.equal(binding(s).jobKind, "putaway");
+  assert.equal(binding(s).jobKind, null);
+  assert.equal(binding(s).jobId, null);
 });
 test("putaway carry resumes only same zone, blocks switch/shift, place autoadvances once without creating extra inventory", async () => {
   let s = await w.snapshot(),
-    assignment = binding(s),
-    t = s.putawayTasks.find((t) => t.id === assignment.jobId)!,
-    source = s.locations.find((l) => l.id === t.fromLocationId)!,
-    dest = s.locations.find((l) => l.id === t.toLocationId)!;
+    t = s.putawayTasks.find((t) => t.boxId === firstBox.id)!;
   const before = s.balance.totalUnits;
-  s = await ok(
-    `putaway-tasks/${t.id}/take`,
-    {
-      ...req(),
-      employeeId: worker.user.employeeId,
-      boxCode: firstBox.code,
-      locationCode: source.code,
-    },
-    worker,
-  );
+  const take = {
+    ...req(),
+    employeeId: worker.user.employeeId,
+    boxCode: firstBox.code,
+  };
+  for (const [body, actor, status] of [
+    [{ ...take, requestId: randomUUID(), boxCode: "WRONG" }, worker, 400],
+    [{ ...take, requestId: randomUUID() }, other, 403],
+    [{ ...take, requestId: randomUUID(), locationCode: "fake" }, worker, 400],
+  ] as const) {
+    const unchanged = await w.snapshot();
+    assert.equal(
+      (await call("POST", "putaway-tasks/take-box", body, actor)).status,
+      status,
+    );
+    assert.deepEqual(await w.snapshot(), unchanged);
+  }
+  s = await ok("putaway-tasks/take-box", take, worker);
+  assert.deepEqual(await ok("putaway-tasks/take-box", take, worker), s);
+  t = s.putawayTasks.find((task) => task.id === t.id)!;
+  const dest = s.locations.find((l) => l.id === t.toLocationId)!;
   assert.equal(s.boxes.find((b) => b.id === firstBox.id)!.status, "in_transit");
   assert.equal(s.balance.totalUnits, before);
+  await start(putaway, other);
+  const foreignBefore = await w.snapshot();
+  assert.equal(
+    (
+      await call(
+        "POST",
+        "putaway-tasks/take-box",
+        { ...req(), employeeId: other.user.employeeId, boxCode: firstBox.code },
+        other,
+      )
+    ).status,
+    403,
+  );
+  assert.deepEqual(await w.snapshot(), foreignBefore);
   const resumed = await start(putaway);
   assert.equal(binding(resumed).jobId, t.id);
   assert.equal(
@@ -558,14 +581,69 @@ test("putaway carry resumes only same zone, blocks switch/shift, place autoadvan
     ).status,
     400,
   );
-  s = await ok(
-    `putaway-tasks/${t.id}/place`,
-    {
-      ...req(),
-      employeeId: worker.user.employeeId,
-      boxCode: firstBox.code,
-      locationCode: dest.code,
-    },
+  const place = {
+    ...req(),
+    employeeId: worker.user.employeeId,
+    locationCode: dest.code,
+  };
+  for (const [body, actor, status] of [
+    [{ ...place, requestId: randomUUID(), locationCode: "WRONG" }, worker, 400],
+    [{ ...place, requestId: randomUUID() }, other, 403],
+    [
+      { ...place, requestId: randomUUID(), boxCode: firstBox.code },
+      worker,
+      400,
+    ],
+  ] as const) {
+    const unchanged = await w.snapshot();
+    assert.equal(
+      (await call("POST", `putaway-tasks/${t.id}/place-box`, body, actor))
+        .status,
+      status,
+    );
+    assert.deepEqual(await w.snapshot(), unchanged);
+  }
+  s = await ok(`putaway-tasks/${t.id}/place-box`, place, worker);
+  assert.deepEqual(
+    await ok(`putaway-tasks/${t.id}/place-box`, place, worker),
+    s,
+  );
+  const rows = await w.authTransaction((tx) =>
+    tx.query(
+      "SELECT * FROM work_events WHERE kind='putaway_box_placed' AND source_id=$1",
+      [t.id],
+    ),
+  );
+  assert.equal(rows.rows.length, 1);
+  assert.equal(rows.rows[0].employee_id, worker.user.employeeId);
+  await ok(
+    `employees/${worker.user.employeeId}/shift`,
+    { ...req(), status: "break" },
+    worker,
+  );
+  const afterBreak = await w.snapshot();
+  for (const [path, body] of [
+    ["take-box", take],
+    ["place-box", place],
+  ] as const) {
+    assert.equal(
+      (
+        await call(
+          "POST",
+          path === "take-box"
+            ? "putaway-tasks/take-box"
+            : `putaway-tasks/${t.id}/${path}`,
+          body,
+          worker,
+        )
+      ).status,
+      403,
+    );
+    assert.deepEqual(await w.snapshot(), afterBreak);
+  }
+  await ok(
+    `employees/${worker.user.employeeId}/shift`,
+    { ...req(), status: "working" },
     worker,
   );
   assert.equal(binding(s).jobId, null);

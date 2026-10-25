@@ -681,7 +681,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       stockPositions(state),
     );
     if (
-      /^(scanTask|packTask|takePutawayTask|placePutawayTask|takeMovement|placeMovement)\//.test(
+      /^(?:(scanTask|packTask|takePutawayTask|placePutawayTask|takePutawayBox|placePutawayBox|takeMovement|placeMovement)\/|takeAnyPutawayBox$)/.test(
         operation,
       )
     ) {
@@ -2206,86 +2206,151 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   takePutawayTask(id: string, b: D.ConfirmPutawayTaskDto) {
     return this._command(`takePutawayTask/${id}`, b, (s) => {
-      const t = find(s.putawayTasks, id, "Задание размещения");
-      this._putawayActor(s, t, b.employeeId, "claimed");
-      const { box, pallet, location } = this._putawaySource(s, t);
-      if (
-        !this._scanEntity(b.boxCode, "box", box.code, box.code) ||
-        !this._scanEntity(
-          b.locationCode,
-          "location",
-          location.id,
-          location.code,
-        )
-      )
-        fail("Неверный код короба или исходного адреса");
-      const target = this._activeLocation(s, t.toLocationId!);
-      const problem = putawayPlacementError(s, target, box, t.id);
-      if (problem) fail(problem);
-      box.status = "in_transit";
-      box.palletId = null;
-      box.locationId = null;
-      pallet.quantity--;
-      this._recomputePallet(s, pallet);
-      t.status = "in_transit";
-      t.takenAt = now();
-      activity(s, "Короб забран на размещение", box.code, "putaway");
+      this._takePutawayBox(s, id, b.employeeId, b.boxCode, b.locationCode);
     });
+  }
+  takePutawayBox(id: string, b: D.TakePutawayBoxDto) {
+    return this._command(`takePutawayBox/${id}`, b, (s) => {
+      this._takePutawayBox(s, id, b.employeeId, b.boxCode);
+    });
+  }
+  takeAnyPutawayBox(b: D.TakePutawayBoxDto) {
+    return this._command("takeAnyPutawayBox", b, (s) => {
+      this._movementEmployee(s, b.employeeId);
+      const binding = s.warehouse.zoneWork.find(
+        (w) => w.employeeId === b.employeeId,
+      );
+      const zone = s.warehouse.workZones.find((z) => z.id === binding?.zoneId);
+      if (!zone || zone.archived || zone.kind !== "putaway")
+        fail("Сначала отсканируйте QR зоны размещения");
+      validateWorkZone(s, zone);
+      const box = s.boxes.find((box) =>
+        this._scanEntity(b.boxCode, "box", box.code, box.code),
+      );
+      if (!box) fail("Неизвестный короб. Отсканируйте QR готового короба");
+      const task = s.putawayTasks.find(
+        (t) => t.boxId === box.id && t.status !== "completed",
+      );
+      if (!task || !zone.locationIds.includes(task.fromLocationId))
+        fail("Этот короб не ожидает размещения в текущей зоне");
+      if (task.employeeId && task.employeeId !== b.employeeId)
+        fail("Этот короб уже взял другой сотрудник");
+      const current = this._activePutaway(s, b.employeeId);
+      if (current?.status === "in_transit")
+        fail("Сначала поставьте короб, который уже находится у вас");
+      this._putawaySource(s, task);
+      if (current && current.id !== task.id) this._releasePutaway(current);
+      if (task.status === "queued")
+        this._claimPutaway(s, task.id, b.employeeId);
+      this._takePutawayBox(s, task.id, b.employeeId, b.boxCode);
+      this._setZoneJob(
+        s,
+        zone,
+        b.employeeId,
+        "putaway",
+        task.id,
+        null,
+        "Отсканируйте адрес назначения для короба у вас",
+      );
+    });
+  }
+  private _takePutawayBox(
+    s: D.WorkspaceDto,
+    id: string,
+    employeeId: string,
+    boxCode: string,
+    locationCode?: string,
+  ) {
+    const t = find(s.putawayTasks, id, "Задание размещения");
+    this._putawayActor(s, t, employeeId, "claimed");
+    const { box, pallet, location } = this._putawaySource(s, t);
+    if (
+      !this._scanEntity(boxCode, "box", box.code, box.code) ||
+      (locationCode !== undefined &&
+        !this._scanEntity(locationCode, "location", location.id, location.code))
+    )
+      fail("Неверный код короба или исходного адреса");
+    const target = this._activeLocation(s, t.toLocationId!);
+    const problem = putawayPlacementError(s, target, box, t.id);
+    if (problem) fail(problem);
+    box.status = "in_transit";
+    box.palletId = null;
+    box.locationId = null;
+    pallet.quantity--;
+    this._recomputePallet(s, pallet);
+    t.status = "in_transit";
+    t.takenAt = now();
+    activity(s, "Короб забран на размещение", box.code, "putaway");
   }
   placePutawayTask(id: string, b: D.ConfirmPutawayTaskDto) {
     return this._command(`placePutawayTask/${id}`, b, (s) => {
-      const t = find(s.putawayTasks, id, "Задание размещения");
-      this._putawayActor(s, t, b.employeeId, "in_transit");
-      const box = find(s.boxes, t.boxId, "Короб"),
-        target = this._activeLocation(s, t.toLocationId!);
-      if (
-        !this._scanEntity(b.boxCode, "box", box.code, box.code) ||
-        !this._scanEntity(b.locationCode, "location", target.id, target.code)
-      )
-        fail("Неверный код короба или зарезервированного адреса");
-      if (
-        box.status !== "in_transit" ||
-        box.palletId !== null ||
-        box.locationId !== null
-      )
-        fail("Короб не находится у сотрудника");
-      const problem = putawayPlacementError(s, target, box, t.id);
-      if (problem) fail(problem);
-      let pallet = s.pallets.find(
-        (p) => p.status === "stored" && p.locationId === target.id,
-      );
-      if (!pallet) {
-        const profile = box.packagingSnapshot;
-        pallet = {
-          id: randomUUID(),
-          code: nextCode("FG"),
-          skuId: box.skuId,
-          lotId: null,
-          kind: "finished",
-          status: "stored",
-          locationId: target.id,
-          returnLocationId: null,
-          packagingSnapshot: structuredClone(profile),
-          quantity: 0,
-          ...finishedMetrics(profile, 0),
-        };
-        s.pallets.push(pallet);
-      }
-      box.status = "stored";
-      box.palletId = pallet.id;
-      box.locationId = target.id;
-      pallet.quantity++;
-      this._recomputePallet(s, pallet);
-      t.status = "completed";
-      t.completedAt = now();
-      activity(
-        s,
-        "Короб размещён на хранение",
-        `${box.code} → ${target.code}`,
-        "putaway",
-      );
-      this._advanceZone(s, b.employeeId, "putaway", id);
+      this._placePutawayBox(s, id, b.employeeId, b.locationCode, b.boxCode);
     });
+  }
+  placePutawayBox(id: string, b: D.PlacePutawayBoxDto) {
+    return this._command(`placePutawayBox/${id}`, b, (s) => {
+      this._placePutawayBox(s, id, b.employeeId, b.locationCode);
+    });
+  }
+  private _placePutawayBox(
+    s: D.WorkspaceDto,
+    id: string,
+    employeeId: string,
+    locationCode: string,
+    boxCode?: string,
+  ) {
+    const t = find(s.putawayTasks, id, "Задание размещения");
+    this._putawayActor(s, t, employeeId, "in_transit");
+    const box = find(s.boxes, t.boxId, "Короб"),
+      target = this._activeLocation(s, t.toLocationId!);
+    if (
+      (boxCode !== undefined &&
+        !this._scanEntity(boxCode, "box", box.code, box.code)) ||
+      !this._scanEntity(locationCode, "location", target.id, target.code)
+    )
+      fail("Неверный код короба или зарезервированного адреса");
+    if (
+      box.status !== "in_transit" ||
+      box.palletId !== null ||
+      box.locationId !== null
+    )
+      fail("Короб не находится у сотрудника");
+    const problem = putawayPlacementError(s, target, box, t.id);
+    if (problem) fail(problem);
+    let pallet = s.pallets.find(
+      (p) => p.status === "stored" && p.locationId === target.id,
+    );
+    if (!pallet) {
+      const profile = box.packagingSnapshot;
+      pallet = {
+        id: randomUUID(),
+        code: nextCode("FG"),
+        skuId: box.skuId,
+        lotId: null,
+        kind: "finished",
+        status: "stored",
+        locationId: target.id,
+        returnLocationId: null,
+        packagingSnapshot: structuredClone(profile),
+        quantity: 0,
+        ...finishedMetrics(profile, 0),
+      };
+      s.pallets.push(pallet);
+    }
+    box.status = "stored";
+    box.palletId = pallet.id;
+    box.locationId = target.id;
+    pallet.quantity++;
+    this._recomputePallet(s, pallet);
+    t.status = "completed";
+    t.completedAt = now();
+    activity(
+      s,
+      "Короб размещён на хранение",
+      `${box.code} → ${target.code}`,
+      "putaway",
+    );
+    this._advanceZone(s, employeeId, "putaway", id);
   }
   private _releasePutaway(t: D.PutawayTaskDto) {
     t.status = "queued";
@@ -3332,28 +3397,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         assign("putaway", own.id, null, "Продолжите размещение своего короба");
         return;
       }
-      const candidates = s.putawayTasks
-        .filter(
-          (t) =>
-            t.status === "queued" &&
-            zone.locationIds.includes(t.fromLocationId),
-        )
-        .sort(
-          (a, b) =>
-            a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-        );
-      for (const t of candidates) {
-        try {
-          this._putawaySource(s, t);
-          if (!this._putawayOptions(s, t).suggestedLocationId) continue;
-        } catch {
-          continue;
-        }
-        this._claimPutaway(s, t.id, employeeId);
-        assign("putaway", t.id, null, "Короб взят на размещение");
-        return;
-      }
-      idle("Нет коробов, которые можно разместить с адресов этой зоны");
+      idle("Возьмите любой готовый короб и отсканируйте его QR");
     } else if (zone.kind === "shipping") {
       const own = s.shipments.find(
         (x) => x.employeeId === employeeId && x.status === "draft",

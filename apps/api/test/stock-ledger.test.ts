@@ -265,15 +265,13 @@ test("assembly raw→WIP→boxed and putaway carrying record per-lot zero net de
   const put = s.putawayTasks.find((t) => t.boxId === box.id)!;
   s = await w.claimPutawayTask(put.id, { ...req(), employeeId: actor });
   const current = s.putawayTasks.find((t) => t.id === put.id)!,
-    from = s.locations.find((l) => l.id === current.fromLocationId)!,
     target = s.locations.find((l) => l.id === current.toLocationId)!;
   const take = {
     ...req(),
     employeeId: actor,
     boxCode: box.code,
-    locationCode: from.code,
   };
-  s = await w.takePutawayTask(put.id, take);
+  s = await w.takePutawayBox(put.id, take);
   const carried = s.boxes.find((b) => b.id === box.id)!;
   assert.equal(carried.palletId, null);
   assert.equal(carried.locationId, null);
@@ -284,10 +282,9 @@ test("assembly raw→WIP→boxed and putaway carrying record per-lot zero net de
     e.lines.some((l) => l.locationId === null && l.quantityDelta === 2),
     true,
   );
-  s = await w.placePutawayTask(put.id, {
+  s = await w.placePutawayBox(put.id, {
     ...req(),
     employeeId: actor,
-    boxCode: box.code,
     locationCode: target.code,
   });
   box = s.boxes.find((b) => b.id === box.id)!;

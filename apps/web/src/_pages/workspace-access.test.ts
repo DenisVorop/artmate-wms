@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { canOpenWorkspaceView, landingForRole } from "./workspace-access";
 test("Рабочие прямые ссылки доступны сотруднику, управленческие не монтируют содержимое", () => {
   for (const route of [
+    "tasks",
     "warehouse",
     "receiving",
     "assembly",

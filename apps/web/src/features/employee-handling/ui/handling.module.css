@@ -69,6 +69,79 @@
 .secondary {
   font-size: 13px;
 }
+.instruction {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.instruction h2,
+.instruction h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(28px, 7vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.objectIdentity {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+.objectIdentity > strong {
+  font-size: clamp(25px, 6vw, 32px);
+  font-weight: 550;
+  line-height: 1.2;
+  color: var(--text);
+}
+.objectCode {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.boxNumber {
+  color: var(--text);
+  font-family: var(--font-mono), monospace;
+  font-size: 22px;
+  line-height: 1.35;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.destinationCode,
+.palletCode {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(28px, 8vw, 40px);
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.palletCode {
+  font-size: clamp(24px, 6vw, 32px);
+  color: var(--text);
+}
+.carriedObject {
+  display: grid;
+  gap: 5px;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.carriedObject > span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+.carriedObject > strong {
+  font-size: 20px;
+  line-height: 1.25;
+}
+.panel .scanInstruction {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 550;
+}
 @media (max-width: 560px) {
   .panel {
     padding: 18px;

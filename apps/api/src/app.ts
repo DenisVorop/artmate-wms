@@ -347,6 +347,64 @@ export class WarehouseController {
   ) {
     return this.warehouse.placePutawayTask(id, body);
   }
+  @Post("putaway-tasks/take-box")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "takeAnyPutawayBox" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.TakePutawayBoxDto })
+  takeAnyPutawayBox(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.TakePutawayBoxDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.TakePutawayBoxDto,
+  ) {
+    return this.warehouse.takeAnyPutawayBox(body);
+  }
+  @Post("putaway-tasks/:id/take-box")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "takePutawayBox" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.TakePutawayBoxDto })
+  @ApiParam({ name: "id", type: String })
+  takePutawayBox(
+    @Param("id") id: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.TakePutawayBoxDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.TakePutawayBoxDto,
+  ) {
+    return this.warehouse.takePutawayBox(id, body);
+  }
+  @Post("putaway-tasks/:id/place-box")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "placePutawayBox" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.PlacePutawayBoxDto })
+  @ApiParam({ name: "id", type: String })
+  placePutawayBox(
+    @Param("id") id: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.PlacePutawayBoxDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.PlacePutawayBoxDto,
+  ) {
+    return this.warehouse.placePutawayBox(id, body);
+  }
   @Post("putaway-tasks/:id/release")
   @HttpCode(200)
   @ApiOperation({ operationId: "releasePutawayTask" })

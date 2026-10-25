@@ -1,11 +1,10 @@
 "use client";
-import { Button, useEmployeeScanActivity } from "@/shared/ui";
+import { useState } from "react";
+import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { selectPutaway, workBlock } from "../lib/handling";
-import { useHandlingState } from "../lib/use-handling-state";
+import { putawayWork, workBlock } from "../lib/handling";
 import { useHandling } from "../model/use-handling";
-import { useHandlingOptions } from "../model/use-handling-options";
-import { Done, HandlingFrame, PairScan } from "./handling-parts";
+import { HandlingFrame } from "./handling-parts";
 import styles from "./handling.module.css";
 export type EmployeeHandlingProps = {
   data: WorkspaceDto;
@@ -19,195 +18,156 @@ export function EmployeePutaway({
 }: EmployeeHandlingProps) {
   const { employeeId, commands, execute } = useHandling();
   const { pending: scanPending } = useEmployeeScanActivity();
-  const candidate = selectPutaway(data.putawayTasks, employeeId);
-  const state = useHandlingState(candidate?.id);
-  const next = () => {
-    if (scanPending > 0 || commands.pending) return;
-    commands.clearError();
-    state.next();
-  };
-  const task =
-    candidate?.status === "in_transit"
-      ? candidate
-      : state.selectedId
-        ? data.putawayTasks.find((t) => t.id === state.selectedId)
-        : candidate;
-  const options = useHandlingOptions(
-    "putaway",
-    task?.id ?? "",
-    "",
-    task?.status === "queued" && !state.done,
+  const [placed, setPlaced] = useState(false);
+  // The server is the sole source of which box is physically in this employee's hands.
+  const work = putawayWork(data, employeeId);
+  const carrying = work.kind === "place" ? work.task : undefined;
+  const claimed = data.putawayTasks.find(
+    (task) => task.employeeId === employeeId && task.status === "claimed",
   );
-  const box = data.boxes.find((b) => b.id === task?.boxId);
-  const sku = data.skus.find((s) => s.id === task?.skuId);
-  const block = workBlock(data, employeeId, "putaway", task?.id);
-  const carrying = task?.status === "in_transit";
+  const box = data.boxes.find((item) => item.id === carrying?.boxId);
+  const sku = data.skus.find((item) => item.id === carrying?.skuId);
   const target = data.locations.find(
-    (l) => l.id === (carrying ? task.toLocationId : task?.fromLocationId),
+    (item) => item.id === carrying?.toLocationId,
   );
-  const suggested = options.data?.locations.find(
-    (l) => l.id === options.data.suggestedLocationId,
+  const zone = work.kind === "take" ? work.zone : undefined;
+  const block = workBlock(
+    data,
+    employeeId,
+    "putaway",
+    carrying?.id ?? claimed?.id,
   );
-  const done = state.done || task?.status === "completed";
+  const ready = data.putawayTasks.filter(
+    (task) =>
+      task.status === "queued" ||
+      (task.status === "claimed" && task.employeeId === employeeId),
+  ).length;
   return (
     <HandlingFrame
-      title="Размещение короба"
-      code={task?.code}
+      title="Размещение коробов"
+      code={carrying?.code}
       onIdle={onIdle}
-      carrying={carrying && !done}
+      carrying={!!carrying}
       pending={commands.pending}
       onProblem={onProblem}
     >
-      {done ? (
-        <Done message="Короб размещён на хранение." onNext={next} />
-      ) : !task ? (
-        <>
-          <p>
-            {state.selectedId
-              ? "Выбранное размещение больше недоступно."
-              : "Свободных размещений пока нет."}
+      {placed && (
+        <p className={`${styles.notice} ${styles.success}`} role="status">
+          Короб размещён. Можно взять следующий.
+        </p>
+      )}
+      {block && <p className={styles.notice}>{block}</p>}
+      {carrying ? (
+        box && target ? (
+          <>
+            <div className={styles.instruction}>
+              <span className={styles.eyebrow}>2 из 2 · адрес хранения</span>
+              <h2>Поставьте короб</h2>
+              <strong className={styles.destinationCode}>{target.code}</strong>
+              <p>{target.name}</p>
+              <div className={styles.carriedObject}>
+                <span>У вас в руках</span>
+                <strong>{sku?.name ?? "Тематика недоступна"}</strong>
+                <span className={styles.boxNumber}>
+                  Короб · {box.code.slice(-12)}
+                </span>
+                <span className={styles.objectCode}>{box.code}</span>
+              </div>
+              <p className={styles.scanInstruction}>
+                Сканируйте QR этого адреса
+              </p>
+            </div>
+            <EmployeeScan
+              key={`${employeeId}:${carrying.id}:place`}
+              contextKey={`${carrying.id}:place:${box.code}`}
+              label="Сканируйте QR адреса хранения"
+              pending={commands.pending}
+              error={commands.error}
+              disabled={!!block}
+              onProblem={onProblem}
+              onScan={(locationCode) =>
+                execute(
+                  () =>
+                    commands.placePutawayBox(carrying.id, {
+                      requestId: crypto.randomUUID(),
+                      employeeId,
+                      locationCode,
+                    }),
+                  () => setPlaced(true),
+                )
+              }
+            />
+          </>
+        ) : (
+          <p role="alert">
+            Адрес или данные переносимого короба недоступны. Позовите
+            руководителя: повторно сканировать короб не нужно.
           </p>
-          {state.selectedId && (
-            <Button
-              disabled={commands.pending || scanPending > 0}
-              onClick={next}
-            >
-              Обновить выбор задания
-            </Button>
+        )
+      ) : zone ? (
+        <>
+          <div className={styles.instruction}>
+            <span className={styles.eyebrow}>
+              1 из 2 · общая паллета сборки
+            </span>
+            <h2>Возьмите любой короб</h2>
+            <p>
+              С общей паллеты готовых коробов. После скана покажем, куда его
+              поставить.
+            </p>
+            <p className={styles.scanInstruction}>Сканируйте QR короба</p>
+          </div>
+          {ready === 0 && (
+            <p className={styles.secondary}>
+              По данным склада готовых коробов для размещения пока нет. Новые
+              появятся после сборки.
+            </p>
           )}
+          <EmployeeScan
+            key={`${employeeId}:${zone.id}:take`}
+            contextKey={`putaway-any:${employeeId}:${zone.id}`}
+            label="Сканируйте QR любого готового короба"
+            pending={commands.pending}
+            error={commands.error}
+            disabled={!!block}
+            onProblem={onProblem}
+            onScan={(boxCode) =>
+              execute(
+                () =>
+                  commands.takeAnyPutawayBox({
+                    requestId: crypto.randomUUID(),
+                    employeeId,
+                    boxCode,
+                  }),
+                () => setPlaced(false),
+              )
+            }
+          />
         </>
       ) : (
         <>
-          <h2>{sku?.name ?? "Тематика недоступна"}</h2>
+          <h2>Сканируйте зону размещения</h2>
           <p>
-            {box?.code ?? "Короб недоступен"} · {box?.units ?? "—"} раскрасок
+            Сначала подойдите к общей паллете и отсканируйте QR рабочей зоны.
           </p>
-          {block && <p className={styles.notice}>{block}</p>}
-          {task.status === "queued" ? (
-            <>
-              <p>Перенесите короб с общей паллеты на хранение.</p>
-              {options.isPending ? (
-                <p role="status">Подбираем адрес хранения…</p>
-              ) : options.isError ? (
-                <>
-                  <p role="alert">Не удалось подобрать адрес.</p>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void options.refetch()}
-                  >
-                    Повторить подбор
-                  </Button>
-                </>
-              ) : suggested ? (
-                <div className={styles.address}>
-                  <span>Рекомендуемый адрес</span>
-                  <strong className={styles.code}>{suggested.code}</strong>
-                </div>
-              ) : (
-                <p className={styles.notice}>
-                  {options.data?.reason ?? "Нет подходящего адреса хранения."}
-                </p>
-              )}
-              <Button
-                disabled={
-                  commands.pending ||
-                  !!block ||
-                  !suggested ||
-                  options.isPending ||
-                  options.isError
-                }
-                aria-busy={commands.pending}
-                onClick={() =>
-                  void execute(
-                    () =>
-                      commands.claimPutawayTask(task.id, {
-                        requestId: crypto.randomUUID(),
-                        employeeId,
-                      }),
-                    () => state.setSelectedId(task.id),
-                  )
-                }
-              >
-                Взять размещение
-              </Button>
-              {commands.error && (
-                <p role="alert" className={styles.error}>
-                  {commands.error}
-                </p>
-              )}
-            </>
-          ) : box && target && task.employeeId === employeeId ? (
-            <>
-              <PairScan
-                key={`${employeeId}:${task.id}:${task.status}`}
-                contextKey={`${task.id}:${task.status}`}
-                type="box"
-                id={box.code}
-                code={box.code}
-                addressCode={target.code}
-                phase={carrying ? "place" : "take"}
-                pending={commands.pending}
-                error={commands.error}
-                disabled={!!block}
-                onProblem={onProblem}
-                onConfirm={(boxCode, locationCode) =>
-                  execute(
-                    () =>
-                      carrying
-                        ? commands.placePutawayTask(task.id, {
-                            requestId: crypto.randomUUID(),
-                            employeeId,
-                            boxCode,
-                            locationCode,
-                          })
-                        : commands.takePutawayTask(task.id, {
-                            requestId: crypto.randomUUID(),
-                            employeeId,
-                            boxCode,
-                            locationCode,
-                          }),
-                    () => {
-                      state.setSelectedId(task.id);
-                      if (carrying) state.setDone(true);
-                    },
-                  )
-                }
-              />
-              {!carrying && (
-                <Button
-                  variant="ghost"
-                  disabled={commands.pending || scanPending > 0 || !!block}
-                  onClick={() =>
-                    scanPending === 0 &&
-                    void execute(
-                      () =>
-                        commands.releasePutawayTask(task.id, {
-                          requestId: crypto.randomUUID(),
-                          employeeId,
-                        }),
-                      next,
-                    )
-                  }
-                >
-                  Вернуть в очередь
-                </Button>
-              )}
-            </>
-          ) : (
-            <>
-              <p role="alert">
-                Данные короба, назначения или адреса изменились.
-              </p>
-              <Button
-                variant="secondary"
-                disabled={commands.pending || scanPending > 0}
-                onClick={next}
-              >
-                Обновить выбор задания
-              </Button>
-            </>
-          )}
         </>
+      )}
+      {claimed && !carrying && (
+        <Button
+          variant="ghost"
+          disabled={commands.pending || scanPending > 0 || !!block}
+          onClick={() => {
+            if (scanPending > 0) return;
+            void execute(() =>
+              commands.releasePutawayTask(claimed.id, {
+                requestId: crypto.randomUUID(),
+                employeeId,
+              }),
+            );
+          }}
+        >
+          Вернуть прежнее назначение в очередь
+        </Button>
       )}
     </HandlingFrame>
   );

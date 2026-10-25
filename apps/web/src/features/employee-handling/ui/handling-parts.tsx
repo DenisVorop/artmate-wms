@@ -92,14 +92,35 @@ export function PairScan({
   );
   return (
     <>
-      <div className={styles.address}>
-        <span>
-          {phase === "take" ? "Забрать с адреса" : "Разместить на адрес"}
-        </span>
-        <strong className={styles.code}>{addressCode}</strong>
-        <p>
-          {type === "box" ? "Короб" : "Паллета"} {code}
-        </p>
+      <div className={styles.instruction}>
+        <h3>
+          {scan.first
+            ? "Сканируйте адрес"
+            : type === "box"
+              ? "Сканируйте короб"
+              : "Сканируйте паллету"}
+        </h3>
+        {scan.first ? (
+          <>
+            <strong className={styles.destinationCode}>{addressCode}</strong>
+            <p>
+              {phase === "take"
+                ? "Подтвердите, откуда забираете груз."
+                : "Поставьте груз сюда и подтвердите QR адреса."}
+            </p>
+            <p className={styles.objectCode}>
+              {type === "box" ? "Короб" : "Паллета"} {code}
+            </p>
+          </>
+        ) : (
+          <>
+            <strong className={styles.palletCode}>{code}</strong>
+            <p>
+              {phase === "take" ? "Где взять" : "Куда поставить"}:{" "}
+              <b>{addressCode}</b>
+            </p>
+          </>
+        )}
       </div>
       <EmployeeScan
         contextKey={`${contextKey}:${scan.first ? "address" : "object"}`}

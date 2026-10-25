@@ -243,13 +243,11 @@ test("only factual completions count: no scans claims releases corrections retir
     employeeId: employee.id,
   });
   const active = state.putawayTasks.find((t) => t.id === put.id)!,
-    from = state.locations.find((l) => l.id === active.fromLocationId)!,
     to = state.locations.find((l) => l.id === active.toLocationId)!;
-  await w.takePutawayTask(put.id, {
+  await w.takePutawayBox(put.id, {
     ...req(),
     employeeId: employee.id,
     boxCode: box.code,
-    locationCode: from.code,
   });
   let before = await w.snapshot(),
     history = await shiftRows(employee.id);
@@ -264,11 +262,10 @@ test("only factual completions count: no scans claims releases corrections retir
   const putPlace = {
     ...req(),
     employeeId: employee.id,
-    boxCode: box.code,
     locationCode: to.code,
   };
-  state = await w.placePutawayTask(put.id, putPlace);
-  await w.placePutawayTask(put.id, putPlace);
+  state = await w.placePutawayBox(put.id, putPlace);
+  await w.placePutawayBox(put.id, putPlace);
   const finished = state.pallets.find(
     (p) => p.id === state.boxes.find((b) => b.id === box.id)!.palletId,
   )!;

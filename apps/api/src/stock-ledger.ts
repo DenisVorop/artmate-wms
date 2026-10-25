@@ -170,10 +170,25 @@ export function ledgerEvent(
     kind = "assembly";
     referenceType = "task";
     reference = s.tasks.find((x) => x.id === id);
-  } else if (["takePutawayTask", "placePutawayTask"].includes(op)) {
+  } else if (
+    [
+      "takePutawayTask",
+      "takeAnyPutawayBox",
+      "placePutawayTask",
+      "takePutawayBox",
+      "placePutawayBox",
+    ].includes(op)
+  ) {
     kind = "putaway";
     referenceType = "putaway_task";
-    reference = s.putawayTasks.find((x) => x.id === id);
+    reference =
+      op === "takeAnyPutawayBox"
+        ? s.putawayTasks.find(
+            (x) =>
+              x.status === "in_transit" &&
+              x.employeeId === (body as D.TakePutawayBoxDto).employeeId,
+          )
+        : s.putawayTasks.find((x) => x.id === id);
   } else if (["takeMovement", "placeMovement"].includes(op)) {
     kind = "movement";
     referenceType = "movement";
