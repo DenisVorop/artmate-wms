@@ -115,11 +115,29 @@ function advice(value: unknown) {
     )
   );
 }
+function planningStock(value: unknown) {
+  return (
+    record(value) &&
+    text(value.skuId) &&
+    typeof value.enabled === "boolean" &&
+    (value.units === null || integer(value.units)) &&
+    ["exact", "approximate"].includes(String(value.accuracy)) &&
+    text(value.note) &&
+    timestamp(value.countedAt) &&
+    integer(value.unitsPerBoxAtCount) &&
+    value.unitsPerBoxAtCount > 0 &&
+    integer(value.trackedUnitsAtCount) &&
+    integer(value.revision)
+  );
+}
 function planRow(value: unknown) {
   if (!record(value)) return false;
   return (
     advice(value.advice) &&
     typeof value.dataComplete === "boolean" &&
+    integer(value.unregisteredUnits) &&
+    nullableTimestamp(value.stockConfirmedAt) &&
+    typeof value.stockEstimated === "boolean" &&
     text(value.skuId) &&
     text(value.skuName) &&
     integer(value.unitsPerBox) &&
@@ -158,6 +176,8 @@ export function isMarketplaceOverviewResponse(
     Array.isArray(value.supplies) &&
     value.supplies.every(supply) &&
     settings(value.settings) &&
+    Array.isArray(value.planningStock) &&
+    value.planningStock.every(planningStock) &&
     record(value.plan) &&
     timestamp(value.plan.generatedAt) &&
     Array.isArray(value.plan.rows) &&

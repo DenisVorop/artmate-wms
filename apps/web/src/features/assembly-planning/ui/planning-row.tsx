@@ -1,5 +1,5 @@
 "use client";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,8 @@ import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
 import { boxesLabel } from "../lib/planning-view";
+import type { StockConfirmationValues } from "../lib/planning-form";
+import { PlanningStock } from "./planning-stock";
 import styles from "./assembly-planning.module.css";
 const number = (value: number | null, digits = 0) =>
   value == null
@@ -26,11 +28,13 @@ export function PlanningRow({
   pending,
   onCreate,
   onTransit,
+  onStock,
 }: {
   row: MarketplacePlanRowDto;
   pending: boolean;
   onCreate: () => Promise<void>;
   onTransit: (units: number) => Promise<boolean>;
+  onStock: (values: StockConfirmationValues) => Promise<boolean>;
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false),
@@ -40,6 +44,16 @@ export function PlanningRow({
     defaultValues:
       row.inTransitUnits == null ? {} : { inTransitUnits: row.inTransitUnits },
   });
+  const transitDirty = form.formState.isDirty;
+  const resetTransit = form.reset;
+  useEffect(() => {
+    if (!transitDirty)
+      resetTransit(
+        row.inTransitUnits == null
+          ? {}
+          : { inTransitUnits: row.inTransitUnits },
+      );
+  }, [row.inTransitUnits, transitDirty, resetTransit]);
   const { state, action, message } = row.advice;
   const needsAssembly =
     row.dataComplete && (state === "ready" || state === "raw_shortage");
@@ -136,7 +150,12 @@ export function PlanningRow({
             }
           />
           <Metric label="В пути, шт." value={number(row.inTransitUnits)} />
-          <Metric label="Готовых у нас, шт." value={number(row.readyUnits)} />
+          <Metric
+            label="Готовых у нас, шт."
+            value={
+              row.stockEstimated ? "Нужно уточнить" : number(row.readyUnits)
+            }
+          />
           <Metric label="Уже в сборке, шт." value={number(row.openTaskUnits)} />
           <Metric
             label="Сырья для сборки, шт."
@@ -146,6 +165,7 @@ export function PlanningRow({
         <p className={styles.help}>
           Готовый товар и текущие задания уже учтены в рекомендации.
         </p>
+        <PlanningStock row={row} pending={pending} onSave={onStock} />
         <Link
           className={styles.textLink}
           href="/integrations#marketplace-supplies-title"

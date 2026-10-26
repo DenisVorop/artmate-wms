@@ -7,6 +7,13 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
+import { plainToInstance } from "class-transformer";
+import {
+  outgoingSupplyKeys,
+  savePlanningStock,
+  trackedFinishedUnits,
+  type PlanningStockConfirmation,
+} from "./planning-stock";
 import { validateSync } from "class-validator";
 import { WarehouseService } from "../warehouse.service";
 import { Queryable } from "../database";
@@ -125,6 +132,10 @@ export class MarketplaceService {
     const m = await loadMarketplaces(tx),
       w = await this.warehouse.stocktakeState(tx);
     return {
+      planningStock: (m.planningStock ?? []).map(
+        ({ actorAccountId: _actor, outboundSupplyKeys: _keys, ...entry }) =>
+          entry,
+      ),
       connections: D.MARKETPLACE_PROVIDERS.map((provider) => {
         const c = m.connections.find((x) => x.provider === provider);
         return {
@@ -208,6 +219,76 @@ export class MarketplaceService {
       await this._cache(tx, b.requestId, fp, response);
       return response;
     });
+  }
+  confirmPlanningStock(body: D.ConfirmPlanningStockDto) {
+    const b = plainToInstance(D.ConfirmPlanningStockDto, body);
+    return this._command(
+      "confirmPlanningStock",
+      D.ConfirmPlanningStockDto,
+      b,
+      async (tx, m) => {
+        const actor = await this._manager(tx, true),
+          w = await this.warehouse.stocktakeState(tx),
+          seen = new Set<string>(),
+          batchRevision = randomUUID(),
+          countedAt = new Date().toISOString();
+        const changes: {
+          previous: PlanningStockConfirmation | null;
+          current: PlanningStockConfirmation;
+        }[] = [];
+        for (const input of b.entries) {
+          if (seen.has(input.skuId))
+            throw new BadRequestException(
+              "Тематика указана в подтверждении дважды",
+            );
+          seen.add(input.skuId);
+          const sku = w.skus.find((s) => s.id === input.skuId);
+          if (!sku) throw new BadRequestException("Тематика не найдена");
+          if (!input.note.trim())
+            throw new BadRequestException("Укажите причину подтверждения");
+          const trackedUnitsAtCount = trackedFinishedUnits(w, sku.id);
+          if (
+            input.enabled &&
+            input.accuracy === "exact" &&
+            input.units !== null &&
+            input.units < trackedUnitsAtCount
+          )
+            throw new ConflictException(
+              "Подтверждённый остаток меньше уже учтённых коробов. Проверьте количество.",
+            );
+          const entry: PlanningStockConfirmation = {
+            ...input,
+            note: input.note.trim(),
+            unitsPerBoxAtCount: sku.unitsPerBox,
+            trackedUnitsAtCount,
+            countedAt,
+            actorAccountId: actor.id,
+            revision:
+              (m.planningStock?.find((s) => s.skuId === sku.id)?.revision ??
+                0) + 1,
+            outboundSupplyKeys: outgoingSupplyKeys(m, sku.id),
+          };
+          changes.push({
+            previous: m.planningStock?.find((s) => s.skuId === sku.id) ?? null,
+            current: entry,
+          });
+          await savePlanningStock(tx, entry);
+        }
+        await tx.query(
+          "INSERT INTO planning_stock_confirmation_events(id,payload) VALUES($1,$2)",
+          [
+            b.requestId,
+            JSON.stringify({
+              requestId: b.requestId,
+              revision: batchRevision,
+              countedAt,
+              actorAccountId: actor.id,
+              changes,
+            }),
+          ],
+        );
+      },
+    );
   }
   async connectMarketplace(b: D.ConnectMarketplaceDto) {
     this._validate(D.ConnectMarketplaceDto, b);

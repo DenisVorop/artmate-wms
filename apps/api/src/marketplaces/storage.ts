@@ -1,3 +1,7 @@
+import {
+  initializePlanningStockStorage,
+  type PlanningStockConfirmation,
+} from "./planning-stock";
 import { Queryable } from "../database";
 import { MarketplaceSnapshot, MarketplaceProvider } from "./providers/types";
 import { MarketplaceSettingsDto } from "./dto";
@@ -33,6 +37,7 @@ export interface MarketplaceState {
   mappings: Mapping[];
   transit: Record<string, number>;
   settings: MarketplaceSettingsDto;
+  planningStock?: PlanningStockConfirmation[];
 }
 export const defaultSettings: MarketplaceSettingsDto = {
   horizonDays: 14,
@@ -41,6 +46,7 @@ export const defaultSettings: MarketplaceSettingsDto = {
   historyDays: 28,
 };
 export async function initializeMarketplaceStorage(tx: Queryable) {
+  await initializePlanningStockStorage(tx);
   for (const table of [
     "marketplace_connections",
     "marketplace_snapshots",
@@ -93,5 +99,8 @@ export async function loadMarketplaces(
       ),
     ),
     settings: settings[0] ?? { ...defaultSettings },
+    planningStock: await rows<PlanningStockConfirmation>(
+      "planning_stock_confirmations",
+    ),
   };
 }

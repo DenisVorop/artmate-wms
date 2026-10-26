@@ -185,11 +185,14 @@ export function AssemblyPlanningFeature() {
             )}
             {rows.map((row) => (
               <PlanningRow
-                key={`${row.skuId}:${row.inTransitUnits}`}
+                key={row.skuId}
                 row={row}
                 pending={actions.pending}
                 onTransit={async (units) =>
                   !!(await actions.transit(row.skuId, units))
+                }
+                onStock={async (values) =>
+                  !!(await actions.confirmStock(row.skuId, values))
                 }
                 onCreate={async () => {
                   const result = await actions.create(

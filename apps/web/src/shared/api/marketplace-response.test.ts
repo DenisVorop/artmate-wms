@@ -56,6 +56,7 @@ const overview = () => ({
     },
   ],
   settings: { historyDays: 28, horizonDays: 14, safetyDays: 3, leadDays: 7 },
+  planningStock: [],
   plan: {
     generatedAt: now,
     warnings: [],
@@ -86,6 +87,9 @@ const overview = () => ({
           },
         ],
         readyUnits: 40,
+        unregisteredUnits: 0,
+        stockConfirmedAt: null,
+        stockEstimated: false,
         shippingReadyUnits: 20,
         shipmentReservedUnits: 0,
         openTaskUnits: 20,
@@ -130,6 +134,10 @@ test("rejects malformed top-level and incomplete nested values before UI renderi
 test("rejects missing completeness, non-finite quantities and bad row structures", () => {
   for (const patch of [
     { dataComplete: undefined },
+    { unregisteredUnits: undefined },
+    { unregisteredUnits: -20 },
+    { stockConfirmedAt: "yesterday" },
+    { stockEstimated: undefined },
     { advice: undefined },
     { advice: { state: "ready", message: "Можно собирать", action: "unsafe" } },
     { advice: { state: "unknown", message: "Проверьте", action: "none" } },
@@ -252,4 +260,45 @@ test("rejects malformed document dates, quantities, review status and source met
     Object.assign(data.plan.rows[0]!.inboundSources[0]!, patch);
     assert.equal(isMarketplaceOverviewResponse(data), false);
   }
+});
+
+test("requires stock confirmation provenance and distinguishes approximate from missing stock", () => {
+  const confirmation = {
+    skuId: "sku",
+    enabled: true,
+    units: 300,
+    accuracy: "approximate",
+    note: "Около трёхсот наборов",
+    countedAt: now,
+    unitsPerBoxAtCount: 4,
+    trackedUnitsAtCount: 0,
+    revision: 1,
+  };
+  assert.equal(
+    isMarketplaceOverviewResponse({
+      ...overview(),
+      planningStock: [confirmation],
+    }),
+    true,
+  );
+  for (const patch of [
+    { units: -1 },
+    { accuracy: "guessed" },
+    { countedAt: "tomorrow" },
+    { trackedUnitsAtCount: Number.NaN },
+    { revision: -1 },
+    { unitsPerBoxAtCount: 0 },
+  ]) {
+    assert.equal(
+      isMarketplaceOverviewResponse({
+        ...overview(),
+        planningStock: [{ ...confirmation, ...patch }],
+      }),
+      false,
+    );
+  }
+  assert.equal(
+    isMarketplaceOverviewResponse({ ...overview(), planningStock: undefined }),
+    false,
+  );
 });

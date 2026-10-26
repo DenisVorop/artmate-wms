@@ -4,7 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as api from "@/shared/api/generated/client";
 import { getAuthEpoch, getAuthIdentityScope } from "@/shared/api/auth-memory";
 import { workspaceQueryKey } from "@/shared/api/query-keys";
-import type { PlanningValues } from "../lib/planning-form";
+import {
+  stockConfirmationEntry,
+  type PlanningValues,
+  type StockConfirmationValues,
+} from "../lib/planning-form";
 
 export function usePlanningActions() {
   const client = useQueryClient(),
@@ -70,6 +74,15 @@ export function usePlanningActions() {
             inTransitUnits,
           }),
         "Не удалось подтвердить товар в пути.",
+      ),
+    confirmStock: (skuId: string, values: StockConfirmationValues) =>
+      run(
+        () =>
+          api.confirmPlanningStock({
+            requestId: crypto.randomUUID(),
+            entries: [stockConfirmationEntry(skuId, values)],
+          }),
+        "Не удалось сохранить остаток.",
       ),
     create: (skuId: string, proposalHash: string) =>
       run(

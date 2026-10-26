@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import {
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  ValidateNested,
+  ValidateIf,
   IsBoolean,
   IsIn,
   IsInt,
@@ -17,6 +23,43 @@ export class MarketplaceCommandDto {
   @MinLength(1)
   @MaxLength(200)
   requestId!: string;
+}
+export class PlanningStockEntryDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  skuId!: string;
+  @ApiProperty({ type: Boolean }) @IsBoolean() enabled!: boolean;
+  @ApiProperty({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(100000000)
+  units!: number | null;
+  @ApiProperty({ type: String, enum: ["exact", "approximate"] })
+  @IsIn(["exact", "approximate"])
+  accuracy!: "exact" | "approximate";
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  note!: string;
+}
+export class ConfirmPlanningStockDto extends MarketplaceCommandDto {
+  @ApiProperty({ type: [PlanningStockEntryDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => PlanningStockEntryDto)
+  entries!: PlanningStockEntryDto[];
+}
+export class PlanningStockConfirmationDto extends PlanningStockEntryDto {
+  @ApiProperty({ type: Number }) unitsPerBoxAtCount!: number;
+  @ApiProperty({ type: Number }) trackedUnitsAtCount!: number;
+  @ApiProperty({ type: String }) countedAt!: string;
+  @ApiProperty({ type: Number }) revision!: number;
 }
 export class ConnectMarketplaceDto extends MarketplaceCommandDto {
   @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String })
@@ -208,6 +251,11 @@ export class MarketplacePlanAdviceDto {
   action!: "create" | "receiving" | "integrations" | "transit" | "none";
 }
 export class MarketplacePlanRowDto {
+  @ApiProperty({ type: Number }) unregisteredUnits!: number;
+  @ApiProperty({ type: String, nullable: true }) stockConfirmedAt!:
+    | string
+    | null;
+  @ApiProperty({ type: Boolean }) stockEstimated!: boolean;
   @ApiProperty({ type: MarketplacePlanAdviceDto })
   advice!: MarketplacePlanAdviceDto;
   @ApiProperty({ type: Boolean }) dataComplete!: boolean;
@@ -241,6 +289,8 @@ export class MarketplacePlanDto {
   @ApiProperty({ type: [String] }) warnings!: string[];
 }
 export class MarketplaceOverviewDto {
+  @ApiProperty({ type: [PlanningStockConfirmationDto] })
+  planningStock!: PlanningStockConfirmationDto[];
   @ApiProperty({ type: [MarketplaceConnectionDto] })
   connections!: MarketplaceConnectionDto[];
   @ApiProperty({ type: [MarketplaceSupplyDto] })

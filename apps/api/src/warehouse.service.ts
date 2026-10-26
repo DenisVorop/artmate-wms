@@ -305,6 +305,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           ["schema_version", "15"],
         );
       }
+      if (Number(version.rows[0]?.value ?? 1) < 16)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "16"],
+        );
     });
   }
   stocktakeState(tx: Queryable) {
