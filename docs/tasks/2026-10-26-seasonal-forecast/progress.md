@@ -36,7 +36,7 @@
 - Независимый review проверил prefix-only/fair configured baseline/account isolation/cache lease/hash, blocking findings исправлены.
 - Первый промежуточный прогон выявил старые ожидания schema14 и ошибку миграционной фикстуры; исправлены и подтверждены финальным полным прогоном. Sandbox HTTP EPERM проверен повторно с разрешённым localhost listen.
 
-Логи (локальные, вне Git): /private/tmp/wms-seasonal-final-tests.log, wms-seasonal-live-types.log, wms-seasonal-live-lint.log, wms-seasonal-live-build.log. Безопасные контрольные хеши: /private/tmp/wms-forecast-live-baseline.json; сравнение сразу после миграции unchanged=true. Лог сервиса /private/tmp/wms-seasonal-live.log; managed exec session7721 (будет обновлена после fairness restart), PID-файл .data/app-processes.json. PostgreSQL и телефонный gateway сохранены. Перед остановкой всегда проверить реальные процессы по PID-файлу, не убивать по имени/порту.
+Логи (локальные, вне Git): /private/tmp/wms-seasonal-final-tests.log, wms-seasonal-live-types.log, wms-seasonal-live-lint.log, wms-seasonal-live-build.log. Безопасные контрольные хеши: /private/tmp/wms-forecast-live-baseline.json; сравнение сразу после миграции unchanged=true. Лог сервиса /private/tmp/wms-seasonal-live.log; процесс запущен из scripts/start.mjs, актуальный PID-файл .data/app-processes.json. PostgreSQL и телефонный gateway сохранены. Перед остановкой всегда проверить реальные процессы по PID-файлу, не убивать по имени/порту.
 
 ## Ограничения данных
 Большая история загружается постепенно. Финансовые события WB не подтверждают ежедневные нули или историческое наличие. Короткие56дней заказов не доказывают77дневный сезонный прогноз; нужны достаточные прошлые holdouts. Модель может обоснованно оставить средний спрос даже после полной загрузки. Складские задания не создаются автоматически.
@@ -48,3 +48,5 @@
 Артефакты вне Git: /Users/denis.voropayev/Documents/ChatGPT/ВМС для склада/output/seasonal-forecast/{history-running.jpg,forecast-comparison.jpg,verification.json,ui-probe.json,console-probe.json}. Скриншот истории показывает оба фоновых задания; сравнение показывает текущий mean и честные причины недопуска годовых моделей. Никаких plaintext credentials в артефактах.
 
 Дополнительное исправление получасового drain:20связанных тестов pass; fairness архива:20целевых тестов и API types pass. Основная проверка712pass/2skip сохранена, это не новый полный прогон после двух точечных исправлений.
+
+Последняя live проверка после fairness restart: Finance/SID и оба архивных задания сохранились, склад/основные настройки и подключения unchanged=true. Сервер продолжает загрузку самостоятельно; ожидание полного архива — эксплуатационная фоновая работа, не повод повторять подключение или создавать новые задания.
