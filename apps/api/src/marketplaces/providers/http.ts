@@ -12,6 +12,9 @@ import {
 import type { MarketplaceFetchOptions } from "./types";
 
 const operations = {
+  "https://common-api.wildberries.ru/api/v1/seller-info": "/api/v1/seller-info",
+  "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed":
+    "/api/finance/v1/sales-reports/detailed",
   "https://content-api.wildberries.ru/content/v2/get/cards/list":
     "/content/v2/get/cards/list",
   "https://statistics-api.wildberries.ru/api/v1/supplier/orders":
@@ -263,13 +266,17 @@ function buildClient(
     const isWb = parsed.hostname !== "api-seller.ozon.ru";
     const provider = isWb ? "wildberries" : "ozon";
     const group =
-      parsed.hostname === "statistics-api.wildberries.ru"
-        ? "statistics"
-        : parsed.hostname === "seller-analytics-api.wildberries.ru"
-          ? "analytics"
-          : parsed.hostname === "content-api.wildberries.ru"
-            ? "content"
-            : "supplies";
+      parsed.hostname === "common-api.wildberries.ru"
+        ? "common"
+        : parsed.hostname === "finance-api.wildberries.ru"
+          ? "finance"
+          : parsed.hostname === "statistics-api.wildberries.ru"
+            ? "statistics"
+            : parsed.hostname === "seller-analytics-api.wildberries.ru"
+              ? "analytics"
+              : parsed.hostname === "content-api.wildberries.ru"
+                ? "content"
+                : "supplies";
     const pacingKey = isWb ? group : "ozon";
     const interval = isWb
       ? WB_REQUEST_INTERVAL_MS[group]

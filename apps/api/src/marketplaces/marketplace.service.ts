@@ -1,3 +1,4 @@
+import { readForecastPlanContext } from "../forecasting/forecast-storage";
 import {
   Inject,
   Injectable,
@@ -28,11 +29,17 @@ import {
   MARKETPLACE_RUN_LEASE_MS,
   MARKETPLACE_RUN_TIMEOUT_MS,
 } from "./providers/request-policy";
+import {
+  archiveMarketplaceSnapshot,
+  historyStore,
+} from "../forecasting/history-storage";
+import { fetchWbSellerId } from "../forecasting/history-providers";
 type FetchSnapshot = typeof fetchMarketplaceSnapshot;
 @Injectable()
 export class MarketplaceService {
   private readonly secrets: MarketplaceSecrets;
   private readonly fetchSnapshot: FetchSnapshot;
+  private readonly fetchSellerId = fetchWbSellerId;
   constructor(
     @Inject(WarehouseService) private readonly warehouse: WarehouseService,
   ) {
@@ -44,9 +51,12 @@ export class MarketplaceService {
     warehouse: WarehouseService,
     secrets: MarketplaceSecrets,
     fetchSnapshot: FetchSnapshot,
+    fetchSellerId: typeof fetchWbSellerId = async () => {
+      throw new Error("A test seller identity resolver is required");
+    },
   ) {
     const service = new MarketplaceService(warehouse);
-    Object.assign(service, { secrets, fetchSnapshot });
+    Object.assign(service, { secrets, fetchSnapshot, fetchSellerId });
     return service;
   }
   private async _manager(tx: Queryable, write = false) {
@@ -162,7 +172,12 @@ export class MarketplaceService {
         }),
       ),
       settings: m.settings,
-      plan: marketplacePlan(w, m),
+      plan: marketplacePlan(
+        w,
+        m,
+        new Date(),
+        await readForecastPlanContext(tx, m),
+      ),
     };
   }
   async getMarketplaces() {
@@ -194,21 +209,76 @@ export class MarketplaceService {
       return response;
     });
   }
-  connectMarketplace(b: D.ConnectMarketplaceDto) {
+  async connectMarketplace(b: D.ConnectMarketplaceDto) {
+    this._validate(D.ConnectMarketplaceDto, b);
+    if (b.provider === "ozon" && !b.clientId?.trim())
+      throw new BadRequestException("Укажите Client-Id Ozon");
+    const credentials: MarketplaceCredentials = {
+      apiKey: b.apiKey.trim(),
+      ...(b.provider === "ozon" ? { clientId: b.clientId!.trim() } : {}),
+    };
+    if (!credentials.apiKey) throw new BadRequestException("Введите API-ключ");
+    const initial = await this.warehouse.authTransaction(async (tx) => {
+      const actor = await this._manager(tx, true),
+        fp = await this._fingerprint("connectMarketplace", b, actor.id, true),
+        cached = await this._previous<D.MarketplaceOverviewDto>(
+          tx,
+          b.requestId,
+          fp,
+        );
+      if (cached) return { cached };
+      const old = (await loadMarketplaces(tx)).connections.find(
+        (c) => c.provider === b.provider,
+      );
+      return { actorId: actor.id, old };
+    });
+    if ("cached" in initial) return initial.cached!;
+    let sameWbSeller = false;
+    let candidateSellerId: string | undefined;
+    // Only an established trusted SID can preserve a WB archive. Identity
+    // requests happen outside SQL, and an unavailable old key never silently
+    // reassigns that archive to a replacement credential.
+    if (b.provider === "wildberries" && initial.old?.historySellerId) {
+      const signal = AbortSignal.timeout(180_000);
+      try {
+        const currentCredentials =
+          await this.secrets.decrypt<MarketplaceCredentials>(
+            initial.old.encrypted,
+            "wildberries",
+          );
+        const currentSellerId = await this.fetchSellerId(currentCredentials, {
+          signal,
+        });
+        candidateSellerId = await this.fetchSellerId(credentials, { signal });
+        if (currentSellerId !== initial.old.historySellerId)
+          throw new Error("Stored seller identity changed");
+        sameWbSeller = currentSellerId === candidateSellerId;
+        signal.throwIfAborted();
+      } catch {
+        throw new BadRequestException(
+          "Не удалось проверить магазин WB. Текущий ключ и архив сохранены; повторите замену позже.",
+        );
+      }
+    }
     return this._command(
       "connectMarketplace",
       D.ConnectMarketplaceDto,
       b,
       async (tx, m) => {
-        if (b.provider === "ozon" && !b.clientId?.trim())
-          throw new BadRequestException("Укажите Client-Id Ozon");
-        const old = m.connections.find((c) => c.provider === b.provider),
-          credentials: MarketplaceCredentials = {
-            apiKey: b.apiKey.trim(),
-            ...(b.provider === "ozon" ? { clientId: b.clientId!.trim() } : {}),
-          };
-        if (!credentials.apiKey)
-          throw new BadRequestException("Введите API-ключ");
+        const actor = await this._manager(tx, true);
+        if (actor.id !== initial.actorId)
+          throw new ForbiddenException("Сессия изменилась. Войдите снова");
+        const old = m.connections.find((c) => c.provider === b.provider);
+        if (
+          old?.version !== initial.old?.version ||
+          old?.encrypted !== initial.old?.encrypted ||
+          old?.historyStoreId !== initial.old?.historyStoreId ||
+          old?.historySellerId !== initial.old?.historySellerId ||
+          old?.financeVersion !== initial.old?.financeVersion
+        )
+          throw new ConflictException(
+            "Подключение изменилось. Повторите сохранение ключа.",
+          );
         const connection: Connection = {
           provider: b.provider,
           encrypted: await this.secrets.encrypt(credentials, b.provider),
@@ -222,7 +292,19 @@ export class MarketplaceService {
           warnings: [],
           runId: null,
         };
+        connection.historyStoreId =
+          sameWbSeller ||
+          (b.provider === "ozon" && old?.clientId === connection.clientId)
+            ? old?.historyStoreId
+            : undefined;
+        connection.historyStoreId = historyStore(connection);
+        if (candidateSellerId) connection.historySellerId = candidateSellerId;
+        if (sameWbSeller) {
+          connection.financeEncrypted = old?.financeEncrypted;
+          connection.financeVersion = old?.financeVersion;
+        }
         await put(tx, "marketplace_connections", b.provider, connection);
+        if (sameWbSeller) return;
         await tx.query("DELETE FROM marketplace_transit");
         // A replacement key may belong to another seller account. Require mappings to be confirmed again.
         await tx.query(
@@ -333,6 +415,10 @@ export class MarketplaceService {
       const loaded = await loadMarketplaces(tx),
         c = this._connection(loaded, b.provider);
       if (!c.enabled) throw new BadRequestException("Маркетплейс отключён");
+      if (c.historyLease && Date.parse(c.historyLease.until) > Date.now())
+        throw new ConflictException(
+          "Завершается страница истории. Повторите через минуту.",
+        );
       if (
         c.syncStatus === "running" &&
         c.lastAttemptAt &&
@@ -408,6 +494,8 @@ export class MarketplaceService {
       const m = await loadMarketplaces(tx),
         c = m.connections.find((entry) => entry.provider === provider);
       if (!c?.enabled || !c.encrypted) return undefined;
+      if (c.historyLease && Date.parse(c.historyLease.until) > Date.now())
+        return undefined;
       const attemptedAt = c.lastAttemptAt ? Date.parse(c.lastAttemptAt) : NaN;
       if (
         attemptedAt >= slotStartedAt ||
@@ -602,6 +690,7 @@ export class MarketplaceService {
       c.lastSuccessVersion = c.version;
       signal?.throwIfAborted();
       await put(tx, "marketplace_snapshots", c.provider, result.snapshot);
+      await archiveMarketplaceSnapshot(tx, c, result.snapshot!);
       signal?.throwIfAborted();
       await tx.query("DELETE FROM marketplace_transit");
       signal?.throwIfAborted();
@@ -625,7 +714,8 @@ export class MarketplaceService {
       if (cached) return cached;
       const state = await this.warehouse.stocktakeState(tx),
         marketplace = await loadMarketplaces(tx),
-        plan = marketplacePlan(state, marketplace),
+        forecast = await readForecastPlanContext(tx, marketplace),
+        plan = marketplacePlan(state, marketplace, new Date(), forecast),
         row = plan.rows.find((r) => r.skuId === b.skuId);
       if (!row || row.proposalHash !== b.proposalHash)
         throw new ConflictException("Расчёт устарел. Обновите рекомендации.");

@@ -1,3 +1,4 @@
+import type { ForecastPlanContext } from "../forecasting/forecast-storage";
 import { createHash } from "node:crypto";
 import * as W from "../dto";
 import { MarketplaceState } from "./storage";
@@ -11,6 +12,7 @@ export function marketplacePlan(
   w: W.WorkspaceDto,
   m: MarketplaceState,
   clock = new Date(),
+  forecast?: ForecastPlanContext,
 ): MarketplacePlanDto {
   const generatedAt = clock.toISOString(),
     global: string[] = [];
@@ -131,9 +133,18 @@ export function marketplacePlan(
       }
     }
     const averageDailyUnits = ordered / m.settings.historyDays;
-    const targetUnits = Math.ceil(
-      averageDailyUnits *
-        (m.settings.horizonDays + m.settings.safetyDays + m.settings.leadDays),
+    const goal = forecast?.goals[sku.id];
+    const minimumUnits =
+      (forecast?.minimumBoxes[sku.id] ?? 0) * sku.unitsPerBox;
+    const targetUnits = Math.max(
+      minimumUnits,
+      goal?.targetUnits ??
+        Math.ceil(
+          averageDailyUnits *
+            (m.settings.horizonDays +
+              m.settings.safetyDays +
+              m.settings.leadDays),
+        ),
     );
     const inboundSources: MarketplaceInboundSourceDto[] =
       snapshots.flatMap<MarketplaceInboundSourceDto>((snapshot) => {
@@ -340,7 +351,8 @@ export function marketplacePlan(
         "Рекомендация превышает предел одного задания: 1000 коробов",
       );
     warnings.push(
-      "Средний спрос рассчитан по заказам за вычетом отмен; сезонность и дни отсутствия товара не восстановлены",
+      goal?.message ??
+        "Средний спрос рассчитан по заказам за вычетом отмен; сезонность и дни отсутствия товара не восстановлены",
     );
     const canCreate = !blockers.length;
     // Presentation follows the same blockers; it never replaces missing quantities
@@ -381,10 +393,18 @@ export function marketplacePlan(
         JSON.stringify({
           revision: w.revision,
           skuId: sku.id,
-          m,
+          m: {
+            ...m,
+            connections: m.connections.map(
+              ({ historyLease: _historyLease, ...connection }) => connection,
+            ),
+          },
           from,
           to,
           recommendedBoxes,
+          forecast: forecast
+            ? { key: forecast.key, goal: goal ?? null, minimumUnits }
+            : null,
         }),
       )
       .digest("hex");

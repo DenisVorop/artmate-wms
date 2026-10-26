@@ -1,6 +1,8 @@
+import { ForecastScheduler } from "./forecasting/forecast-scheduler";
 import { SwaggerModule } from "@nestjs/swagger";
 import { createApp, buildOpenApi } from "./app";
 import { MarketplaceScheduler } from "./marketplaces/marketplace-scheduler";
+import { ForecastHistoryScheduler } from "./forecasting/history-scheduler";
 async function main() {
   const app = await createApp();
   SwaggerModule.setup("api/docs", app, buildOpenApi(app));
@@ -9,11 +11,15 @@ async function main() {
     process.env.API_HOST ?? "127.0.0.1",
   );
   const scheduler = app.get(MarketplaceScheduler);
+  const historyScheduler = app.get(ForecastHistoryScheduler);
+  const forecastScheduler = app.get(ForecastScheduler);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     try {
+      await forecastScheduler.stop();
+      await historyScheduler.stop();
       await scheduler.stop();
       await app.close();
     } catch {
@@ -24,6 +30,8 @@ async function main() {
   process.once("SIGTERM", () => void shutdown());
   process.once("SIGINT", () => void shutdown());
   scheduler.start();
+  historyScheduler.start();
+  forecastScheduler.start();
   console.log(
     `Artmate WMS API http://localhost:${process.env.API_PORT ?? 4080}/api/docs`,
   );

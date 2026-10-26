@@ -1,3 +1,4 @@
+import { initializeForecastStorage } from "./forecasting/forecast-storage";
 import {
   Injectable,
   BadRequestException,
@@ -30,7 +31,14 @@ import {
   closeBoxLabels,
 } from "./box-label-storage";
 import { initializeAuth } from "./auth-storage";
-import { initializeMarketplaceStorage } from "./marketplaces/storage";
+import {
+  initializeMarketplaceStorage,
+  loadMarketplaces,
+} from "./marketplaces/storage";
+import {
+  initializeForecastHistoryStorage,
+  bootstrapForecastHistory,
+} from "./forecasting/history-storage";
 import { createHash, randomUUID } from "node:crypto";
 import QRCode from "qrcode";
 import * as D from "./dto";
@@ -283,6 +291,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "14"],
         );
+      await initializeForecastHistoryStorage(tx);
+      await initializeForecastStorage(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 15) {
+        const marketplaces = await loadMarketplaces(tx);
+        await bootstrapForecastHistory(
+          tx,
+          marketplaces.connections,
+          marketplaces.snapshots,
+        );
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "15"],
+        );
+      }
     });
   }
   stocktakeState(tx: Queryable) {

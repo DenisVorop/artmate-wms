@@ -460,3 +460,73 @@ test("automatic refresh keeps a fresh verified version usable, while stale or re
   m.snapshots[0].asOf = "2026-10-23T10:00:00Z";
   assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, false);
 });
+
+test("seasonal goals preserve stock deductions, unknown blockers and invalidate an old proposal", () => {
+  const { w, m } = fixture();
+  const baseline = marketplacePlan(w, m, now).rows[0];
+  const context = {
+    key: "history-v1",
+    goals: {
+      "sku-cats": {
+        targetUnits: 200,
+        methodLabel: "Прогноз с сезонностью",
+        confidenceLabel: "Умеренная уверенность",
+        message: "Проверено на прошлом",
+        seasonalityApplied: true,
+      },
+    },
+    minimumBoxes: { "sku-cats": 0 },
+  };
+  const row = marketplacePlan(w, m, now, context).rows[0];
+  assert.equal(row.targetUnits, 200);
+  assert.equal(row.marketplaceUnits, 15);
+  assert.equal(row.recommendedBoxes, 10);
+  assert.notEqual(row.proposalHash, baseline.proposalHash);
+  assert.notEqual(
+    row.proposalHash,
+    marketplacePlan(w, m, now, { ...context, key: "history-v2" }).rows[0]
+      .proposalHash,
+  );
+  const fallback = { ...context, goals: {} };
+  assert.notEqual(
+    row.proposalHash,
+    marketplacePlan(w, m, now, fallback).rows[0].proposalHash,
+    "publishing cached model invalidates fallback proposal even under same input key",
+  );
+  delete m.transit["sku-cats"];
+  const incomplete = marketplacePlan(w, m, now, context).rows[0];
+  assert.equal(incomplete.dataComplete, false);
+  assert.equal(incomplete.canCreate, false);
+});
+
+test("minimum boxes apply without cached models and warehouse stock is deducted exactly once", () => {
+  const { w, m } = fixture();
+  m.snapshots.forEach((s) => {
+    s.demand = [];
+    s.stocks[0].availableUnits = 0;
+  });
+  const context = { key: "policy", goals: {}, minimumBoxes: { "sku-cats": 2 } };
+  let row = marketplacePlan(w, m, now, context).rows[0];
+  assert.equal(row.targetUnits, 40);
+  assert.equal(row.recommendedBoxes, 2);
+  w.boxes.push({
+    id: "ready",
+    skuId: "sku-cats",
+    units: 20,
+    status: "stored",
+  } as D.BoxDto);
+  row = marketplacePlan(w, m, now, context).rows[0];
+  assert.equal(row.recommendedBoxes, 1);
+});
+
+test("transient history page leases do not invalidate an unchanged assembly proposal", () => {
+  const { w, m } = fixture();
+  const before = marketplacePlan(w, m, now).rows[0].proposalHash;
+  m.connections[0].historyLease = {
+    runId: "page-1",
+    until: new Date(now.getTime() + 180000).toISOString(),
+  };
+  assert.equal(marketplacePlan(w, m, now).rows[0].proposalHash, before);
+  m.connections[0].version++;
+  assert.notEqual(marketplacePlan(w, m, now).rows[0].proposalHash, before);
+});

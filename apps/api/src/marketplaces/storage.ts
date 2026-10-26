@@ -15,6 +15,11 @@ export interface Connection {
   runId: string | null;
   syncMode?: "manual" | "automatic";
   lastSuccessVersion?: number;
+  historyStoreId?: string;
+  financeEncrypted?: string;
+  financeVersion?: number;
+  historySellerId?: string;
+  historyLease?: { runId: string; until: string };
 }
 export interface Mapping {
   provider: MarketplaceProvider;

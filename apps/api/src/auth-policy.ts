@@ -4,6 +4,12 @@ import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
+  "getForecastHistory",
+  "getForecastHistorySeries",
+  "startForecastHistory",
+  "connectForecastFinance",
+  "getForecastOverview",
+  "updateForecastPolicy",
   "getMarketplaces",
   "connectMarketplace",
   "toggleMarketplace",

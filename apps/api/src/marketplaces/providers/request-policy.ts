@@ -10,6 +10,8 @@ export const WB_STATISTICS_REQUEST_TIMEOUT_MS = 120_000;
 export const OZON_REQUEST_INTERVAL_MS = 1_000;
 export const WB_REQUEST_INTERVAL_MS = {
   statistics: 61_000,
+  finance: 61_000,
+  common: 61_000,
   analytics: 20_100,
   content: 650,
   supplies: 2_100,

@@ -1,4 +1,10 @@
 import "reflect-metadata";
+import { ForecastController } from "./forecasting/forecast-controller";
+import { ForecastService } from "./forecasting/forecast-service";
+import { ForecastScheduler } from "./forecasting/forecast-scheduler";
+import { ForecastHistoryController } from "./forecasting/history.controller";
+import { ForecastHistoryService } from "./forecasting/history.service";
+import { ForecastHistoryScheduler } from "./forecasting/history-scheduler";
 import { MarketplaceController } from "./marketplaces/marketplace.controller";
 import { MarketplaceService } from "./marketplaces/marketplace.service";
 import { MarketplaceScheduler } from "./marketplaces/marketplace-scheduler";
@@ -1243,6 +1249,8 @@ class JsonExceptionFilter implements ExceptionFilter {
     WorkZoneController,
     ShipmentWorkController,
     MarketplaceController,
+    ForecastHistoryController,
+    ForecastController,
   ],
   providers: [
     WarehouseService,
@@ -1251,6 +1259,10 @@ class JsonExceptionFilter implements ExceptionFilter {
     StocktakeService,
     MarketplaceService,
     MarketplaceScheduler,
+    ForecastHistoryService,
+    ForecastHistoryScheduler,
+    ForecastService,
+    ForecastScheduler,
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })

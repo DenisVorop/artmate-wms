@@ -82,7 +82,7 @@ test("schema12 derives empty zones without rewriting old warehouse metadata enti
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "14",
+        "15",
       );
     });
     await w.onModuleDestroy();
