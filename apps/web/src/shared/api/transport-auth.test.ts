@@ -173,7 +173,16 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
           safetyDays: 3,
           leadDays: 7,
         },
-        plan: { generatedAt: new Date().toISOString(), rows: [], warnings: [] },
+        plan: {
+          generatedAt: new Date().toISOString(),
+          dispatchDate: "2026-10-31",
+          leadDays: 7,
+          horizonDays: 14,
+          safetyDays: 3,
+          backlogMessage: "Очередь",
+          rows: [],
+          warnings: [],
+        },
       });
     },
   });

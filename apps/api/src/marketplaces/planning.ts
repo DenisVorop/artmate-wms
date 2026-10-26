@@ -1,4 +1,11 @@
 import type { ForecastPlanContext } from "../forecasting/forecast-storage";
+import { planningBacklog } from "./planning-backlog";
+import { baselineForecastSource } from "../forecasting/forecast-projection";
+import {
+  dispatchSchedule,
+  forecastQuantity,
+  unifiedStockPlan,
+} from "./unified-plan";
 import { outgoingSupplyKeys } from "./planning-stock";
 import { createHash } from "node:crypto";
 import * as W from "../dto";
@@ -7,6 +14,7 @@ import {
   MarketplacePlanDto,
   MarketplaceInboundSourceDto,
   MarketplacePlanAdviceDto,
+  MarketplaceProviderPlanDto,
 } from "./dto";
 const day = 86400000;
 export function marketplacePlan(
@@ -73,6 +81,12 @@ export function marketplacePlan(
   const from = new Date(Date.parse(to) - day * (m.settings.historyDays - 1))
     .toISOString()
     .slice(0, 10);
+  const schedule = dispatchSchedule(clock, m.settings.dispatchWeekday ?? 6),
+    forecastDays =
+      schedule.waitDays +
+      m.settings.leadDays +
+      m.settings.horizonDays +
+      m.settings.safetyDays;
   const assigned = new Set(
     w.shipments.filter((s) => s.status === "draft").flatMap((s) => s.boxIds),
   );
@@ -86,8 +100,7 @@ export function marketplacePlan(
       const blockers = [...global],
         warnings: string[] = [];
       let reviewMessage = globalAdviceMessage;
-      let ordered = 0,
-        marketplaceUnits = 0;
+      let marketplaceUnits = 0;
       const mappings = m.mappings.filter(
         (x) =>
           x.skuId === sku.id && enabled.some((c) => c.provider === x.provider),
@@ -122,39 +135,15 @@ export function marketplacePlan(
             (s, x) => s + (x.availableUnits ?? 0) * mapping.unitsPerItem,
             0,
           );
-          const demand = snapshot.demand.filter(
-            (x) =>
-              x.externalId === mapping.externalId &&
-              x.date >= from &&
-              x.date <= to,
-          );
-          ordered += demand.reduce(
-            (s, x) =>
-              s +
-              Math.max(0, x.orderedUnits - x.cancelledUnits) *
-                mapping.unitsPerItem,
-            0,
-          );
           if (stocks.some((x) => x.availableUnits === 0))
             warnings.push(
               "Нулевой остаток мог ограничить продажи; прогноз может быть занижен",
             );
         }
       }
-      const averageDailyUnits = ordered / m.settings.historyDays;
       const goal = forecast?.goals[sku.id];
       const minimumUnits =
         (forecast?.minimumBoxes[sku.id] ?? 0) * sku.unitsPerBox;
-      const targetUnits = Math.max(
-        minimumUnits,
-        goal?.targetUnits ??
-          Math.ceil(
-            averageDailyUnits *
-              (m.settings.horizonDays +
-                m.settings.safetyDays +
-                m.settings.leadDays),
-          ),
-      );
       const inboundSources: MarketplaceInboundSourceDto[] =
         snapshots.flatMap<MarketplaceInboundSourceDto>((snapshot) => {
           const related = mappings.filter(
@@ -265,7 +254,154 @@ export function marketplacePlan(
         blockers.push(
           "Подтвердите количество товара в пути на маркетплейсы, в том числе ноль",
         );
+      const providerNames = [
+        ...new Set(mappings.map((mapping) => mapping.provider)),
+      ];
+      const manual = m.transit[sku.id];
+      const unallocatedTransit =
+        manual !== undefined && manual > 0 && providerNames.length > 1;
+      if (unallocatedTransit) {
+        blockers.push("Суммарный товар в пути не распределён между площадками");
+        reviewMessage ??= "Уточните товар в пути отдельно по WB и Ozon.";
+      }
+      const sourceInput = {
+        asOf: to,
+        settings: m.settings,
+        snapshots,
+        mappings: m.mappings,
+        skus: w.skus,
+        policies: w.skus.map((item) => ({
+          skuId: item.id,
+          minimumBoxes: forecast?.minimumBoxes[item.id] ?? 0,
+          seasonalityEnabled: forecast?.seasonalityEnabled?.[item.id] ?? true,
+        })),
+      };
+      const providers: MarketplaceProviderPlanDto[] = providerNames.map(
+        (provider) => {
+          const snapshot = snapshots.find((item) => item.provider === provider);
+          const related = mappings.filter((item) => item.provider === provider);
+          const candidate = goal?.sources?.find(
+            (item) => item.provider === provider,
+          );
+          const values = new Map(
+            candidate?.dailyForecast.map((point) => [point.date, point.units]),
+          );
+          const completeForecast = Array.from(
+            { length: forecastDays },
+            (_, index) =>
+              new Date(Date.parse(schedule.today) + index * day)
+                .toISOString()
+                .slice(0, 10),
+          ).every((date) => {
+            const value = values.get(date);
+            return value !== undefined && Number.isFinite(value) && value >= 0;
+          });
+          const cached = completeForecast ? candidate : undefined;
+          const fallback = related.map((mapping) =>
+            baselineForecastSource(
+              sourceInput,
+              provider,
+              mapping.externalId,
+              forecastDays,
+            ),
+          );
+          const source = cached ?? {
+            provider,
+            dailyForecast:
+              fallback[0]?.dailyForecast.map((point, index) => ({
+                date: point.date,
+                units: fallback.reduce(
+                  (sum, item) => sum + (item.dailyForecast[index]?.units ?? 0),
+                  0,
+                ),
+              })) ?? [],
+            methodLabel: fallback.some((item) => item.scenario)
+              ? "Сценарий роста к Новому году"
+              : "Текущий спрос",
+            confidenceLabel: "Предварительная оценка",
+            scenario: fallback.some((item) => item.scenario),
+          };
+          const periodDays =
+            schedule.waitDays +
+            m.settings.leadDays +
+            m.settings.horizonDays +
+            m.settings.safetyDays;
+          const target = Math.max(
+            0,
+            Math.ceil(
+              forecastQuantity(source, schedule.today, periodDays) - 1e-9,
+            ),
+          );
+
+          const stocks = related.map((mapping) => ({
+            mapping,
+            entries:
+              snapshot?.stocks.filter(
+                (item) => item.externalId === mapping.externalId,
+              ) ?? [],
+          }));
+          const stockKnown = stocks.every(
+            (item) =>
+              item.entries.length > 0 &&
+              item.entries.every((entry) => entry.availableUnits !== null),
+          );
+          const stockUnits = stockKnown
+            ? stocks.reduce(
+                (sum, item) =>
+                  sum +
+                  item.entries.reduce(
+                    (total, entry) =>
+                      total + entry.availableUnits! * item.mapping.unitsPerItem,
+                    0,
+                  ),
+                0,
+              )
+            : null;
+          const inbound = unallocatedTransit
+            ? null
+            : manual !== undefined
+              ? manual
+              : (inboundSources.find((item) => item.provider === provider)
+                  ?.units ?? null);
+          const providerBlock =
+            global.some((reason) => reason.startsWith(`${provider}:`)) ||
+            !snapshot ||
+            (!!snapshot && (snapshot.from > from || snapshot.to < to));
+          const complete = !providerBlock && stockKnown && inbound !== null;
+          const dispatchBoxes = Math.ceil(
+            Math.max(0, target - (stockUnits ?? 0) - (inbound ?? 0)) /
+              sku.unitsPerBox,
+          );
+          return {
+            provider,
+            averageDailyUnits: source.dailyForecast.length
+              ? source.dailyForecast.reduce(
+                  (sum, point) => sum + point.units,
+                  0,
+                ) / source.dailyForecast.length
+              : 0,
+            targetUnits: target,
+            marketplaceUnits: stockUnits,
+            inTransitUnits: inbound,
+            dispatchBoxes,
+            dispatchUnits: dispatchBoxes * sku.unitsPerBox,
+            dataComplete: complete,
+            methodLabel: source.methodLabel,
+            confidenceLabel: source.confidenceLabel,
+            scenario: source.scenario,
+          };
+        },
+      );
+      const averageDailyUnits = providers.reduce(
+        (sum, provider) => sum + provider.averageDailyUnits,
+        0,
+      );
+      const targetUnits = Math.max(
+        minimumUnits,
+        providers.reduce((sum, provider) => sum + provider.targetUnits, 0),
+      );
       let dataComplete = blockers.length === 0;
+
       const boxes = w.boxes.filter(
         (b) =>
           b.skuId === sku.id && ["stored", "in_transit"].includes(b.status),
@@ -273,6 +409,16 @@ export function marketplacePlan(
       const shipmentReservedUnits = boxes
         .filter((b) => assigned.has(b.id))
         .reduce((s, b) => s + b.units, 0);
+      if (
+        shipmentReservedUnits > 0 &&
+        providers.some((provider) => provider.dispatchUnits > 0)
+      ) {
+        blockers.push(
+          "Неизвестно, к какой площадке относятся зарезервированные короба",
+        );
+        reviewMessage ??=
+          "Уточните, к какой отправке относятся зарезервированные короба.";
+      }
       const trackedReadyUnits = boxes
         .filter((b) => !assigned.has(b.id))
         .reduce((s, b) => s + b.units, 0);
@@ -385,18 +531,14 @@ export function marketplacePlan(
             ),
           0,
         );
-      // Draft shipments are outgoing supply; including them once avoids manufacturing their replacements twice.
-      const shortage = Math.max(
-        0,
-        targetUnits -
-          marketplaceUnits -
-          (inTransitUnits ?? 0) -
-          readyUnits -
-          shipmentReservedUnits -
-          openTaskUnits,
-      );
-      const recommendedBoxes = Math.ceil(shortage / sku.unitsPerBox),
-        recommendedUnits = recommendedBoxes * sku.unitsPerBox;
+      const unified = unifiedStockPlan({
+        providers,
+        ownUnits: readyUnits + shipmentReservedUnits,
+        reservedUnits: shipmentReservedUnits,
+        openTaskUnits,
+        unitsPerBox: sku.unitsPerBox,
+      });
+      const { recommendedBoxes, recommendedUnits } = unified;
       if (dataComplete && recommendedUnits > rawAvailableUnits)
         blockers.push(
           "Недостаточно свободных размещённых раскрасок для всей рекомендации",
@@ -461,6 +603,8 @@ export function marketplacePlan(
             from,
             to,
             recommendedBoxes,
+            dispatchDate: schedule.dispatchDate,
+            providers,
             forecast: forecast
               ? { key: forecast.key, goal: goal ?? null, minimumUnits }
               : null,
@@ -473,6 +617,14 @@ export function marketplacePlan(
         skuId: sku.id,
         skuName: sku.name,
         unitsPerBox: sku.unitsPerBox,
+        ...unified,
+        backlogRank: null as number | null,
+        backlogCanCreate: false,
+        backlogBoxes: 0,
+        backlogUnits: 0,
+        backlogCapacityKnown: false,
+        backlogReason: "Проверяем свободные места хранения.",
+        providers,
         averageDailyUnits,
         targetUnits,
         marketplaceUnits,
@@ -495,5 +647,32 @@ export function marketplacePlan(
         proposalHash,
       };
     });
-  return { generatedAt, rows, warnings: [...new Set(global)] };
+  const backlogMessage = planningBacklog(
+    w,
+    rows,
+    forecast?.minimumBoxes ?? {},
+    m.planningStock ?? [],
+  );
+  for (const row of rows)
+    row.proposalHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          base: row.proposalHash,
+          backlogRank: row.backlogRank,
+          backlogBoxes: row.backlogBoxes,
+          backlogCanCreate: row.backlogCanCreate,
+          backlogCapacityKnown: row.backlogCapacityKnown,
+        }),
+      )
+      .digest("hex");
+  return {
+    backlogMessage,
+    generatedAt,
+    dispatchDate: schedule.dispatchDate,
+    leadDays: m.settings.leadDays,
+    horizonDays: m.settings.horizonDays,
+    safetyDays: m.settings.safetyDays,
+    rows,
+    warnings: [...new Set(global)],
+  };
 }

@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { baselineFromObservations } from "./demand-baseline";
+import { fitAutoregressive } from "./engine-autoregressive";
+import { newYearScenarioFromObservations } from "./new-year-scenario";
 import type {
   ForecastCandidate,
   ForecastDailyValue,
@@ -14,13 +17,14 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v1.0.0";
+export const FORECAST_MODEL_VERSION = "seasonal-v2.0.0";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",
   "annual_seasonal",
   "annual_growth",
   "ridge",
+  "autoregressive",
 ];
 const MIN_ANNUAL_OBSERVATIONS = 400;
 const MIN_COVERAGE = 0.8;
@@ -262,14 +266,30 @@ function fit(
   asOf: number,
   horizon: number,
   baselineHistoryDays: number,
+  useNewYearScenario = false,
 ): Fit {
-  const recent = values.filter((p) => p.day > asOf - baselineHistoryDays);
-  const baseline = mean(recent.map((p) => p.units));
+  const fallback = baselineFromObservations(
+    values,
+    asOf,
+    horizon,
+    baselineHistoryDays,
+  );
+  const baselineDaily = useNewYearScenario
+    ? newYearScenarioFromObservations(
+        values,
+        asOf,
+        horizon,
+        baselineHistoryDays,
+      ).dailyForecast
+    : fallback.dailyForecast;
+  const baseline = fallback.dailyForecast[0].units;
   if (model === "mean")
     return {
-      values: Array(horizon).fill(baseline) as number[],
+      values: baselineDaily.map((p) => p.units),
       reason: null,
     };
+  if (model === "autoregressive")
+    return fitAutoregressive(values, asOf, horizon, baselineHistoryDays);
   const reason = annualReason(values, asOf);
   if (reason) return { values: null, reason };
   const byDay = new Map(values.map((p) => [p.day, p.units]));
@@ -395,6 +415,7 @@ function backtest(
   prepared: Prepared,
   horizon: number,
   baselineHistoryDays: number,
+  useNewYearScenario = false,
 ): Map<ForecastModel, Fold[]> {
   const results = new Map<ForecastModel, Fold[]>(
     MODELS.map((model) => [model, []]),
@@ -420,6 +441,7 @@ function backtest(
         cutoff,
         validationDays,
         baselineHistoryDays,
+        useNewYearScenario,
       ).values!;
       let baselineAbsolute = 0;
       for (const point of actual)
@@ -430,8 +452,14 @@ function backtest(
         const fitted =
           model === "mean"
             ? baseline
-            : fit(model, prefix, cutoff, validationDays, baselineHistoryDays)
-                .values;
+            : fit(
+                model,
+                prefix,
+                cutoff,
+                validationDays,
+                baselineHistoryDays,
+                useNewYearScenario,
+              ).values;
         if (!fitted) continue;
         let absolute = 0;
         let signed = 0;
@@ -525,9 +553,9 @@ export function runForecast(
   if (
     !Number.isInteger(options.horizonDays) ||
     options.horizonDays < 1 ||
-    options.horizonDays > 330
+    options.horizonDays > 366
   )
-    throw new Error("Forecast horizon must be between 1 and 330 days");
+    throw new Error("Forecast horizon must be between 1 and 366 days");
   if (
     options.minUnits !== undefined &&
     (!Number.isFinite(options.minUnits) ||
@@ -536,7 +564,12 @@ export function runForecast(
   )
     throw new Error("Forecast minimum must be a nonnegative finite quantity");
   const prepared = prepare(series, asOf);
-  const folds = backtest(prepared, options.horizonDays, baselineHistoryDays);
+  const folds = backtest(
+    prepared,
+    options.horizonDays,
+    baselineHistoryDays,
+    options.newYearScenario ?? false,
+  );
   const fitted = new Map(
     MODELS.map((model) => [
       model,
@@ -546,6 +579,7 @@ export function runForecast(
         asOf,
         options.horizonDays,
         baselineHistoryDays,
+        options.newYearScenario ?? false,
       ),
     ]),
   );
@@ -595,7 +629,12 @@ export function runForecast(
     selectedMetrics?.wape !== null &&
     (selectedMetrics?.wape ?? 1) < 0.25
       ? "high"
-      : coverage.knownDays >= 600 && coverage.coverageRatio >= 0.8
+      : (coverage.knownDays >= 600 ||
+            (selectedModel === "autoregressive" &&
+              coverage.knownDays >= 126 &&
+              selectedMetrics?.wape !== null &&
+              (selectedMetrics?.wape ?? 1) < 0.35)) &&
+          coverage.coverageRatio >= 0.8
         ? "medium"
         : "low";
   let fallbackReason: string | null = null;
@@ -621,6 +660,7 @@ export function runForecast(
         asOf: options.asOf,
         horizonDays: options.horizonDays,
         baselineHistoryDays,
+        newYearScenario: options.newYearScenario ?? false,
         minUnits: options.minUnits ?? 0,
       }),
     )
@@ -635,5 +675,14 @@ export function runForecast(
     fallbackReason,
     fingerprint,
     modelVersion: FORECAST_MODEL_VERSION,
+    scenario:
+      selectedModel === "mean" &&
+      !!options.newYearScenario &&
+      newYearScenarioFromObservations(
+        prepared.values,
+        asOf,
+        options.horizonDays,
+        baselineHistoryDays,
+      ).scenario,
   };
 }

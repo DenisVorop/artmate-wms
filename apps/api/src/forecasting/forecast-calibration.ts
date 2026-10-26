@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { ForecastSeries, ForecastDailyValue } from "./engine-types";
 import type { ForecastCandidateDto } from "./forecast-dto";
+import { baselineFromObservations } from "./demand-baseline";
+import { newYearScenarioFromObservations } from "./new-year-scenario";
 
 const DAY = 86_400_000;
 const MODEL = "financial_calibrated";
@@ -151,6 +153,7 @@ export function calibrateFinancialSeason(
   asOf: string,
   horizon: number,
   baselineHistoryDays = 56,
+  useNewYearScenario = false,
 ): FinancialCalibration {
   if (
     operational.provider !== financial.provider ||
@@ -181,11 +184,15 @@ export function calibrateFinancialSeason(
       if (!fitted.values) continue;
       const actual = op.filter((p) => p.day > cutoff && p.day <= cutoff + h);
       if (actual.length / h < 0.8) continue;
-      const baseline = mean(
-        prefix
-          .filter((p) => p.day > cutoff - baselineHistoryDays)
-          .map((p) => p.units),
-      );
+      const baseline = useNewYearScenario
+        ? newYearScenarioFromObservations(
+            prefix,
+            cutoff,
+            h,
+            baselineHistoryDays,
+          ).dailyForecast
+        : baselineFromObservations(prefix, cutoff, h, baselineHistoryDays)
+            .dailyForecast;
       let absolute = 0,
         signed = 0,
         baselineError = 0;
@@ -193,7 +200,7 @@ export function calibrateFinancialSeason(
         const error = fitted.values[p.day - cutoff - 1] - p.units;
         absolute += Math.abs(error);
         signed += error;
-        baselineError += Math.abs(baseline - p.units);
+        baselineError += Math.abs(baseline[p.day - cutoff - 1].units - p.units);
       }
       folds.push({
         horizon: h,
@@ -251,6 +258,7 @@ export function calibrateFinancialSeason(
         asOf,
         horizon,
         baselineHistoryDays,
+        useNewYearScenario,
         operationalMetric: operational.metric,
         financialMetric: financial.metric,
         operational: op,

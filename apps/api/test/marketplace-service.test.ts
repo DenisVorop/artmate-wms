@@ -72,6 +72,14 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
           demand: [
             {
               externalId: "p1",
+              date: period.from,
+              orderedUnits: 0,
+              cancelledUnits: 0,
+              returnedUnits: 0,
+              soldUnits: null,
+            },
+            {
+              externalId: "p1",
               date: period.to,
               orderedUnits: 560,
               cancelledUnits: 0,
@@ -225,7 +233,16 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     const proposal = confirmed.plan.rows.find((r) => r.skuId === "sku-cats")!;
     assert.equal(proposal.dataComplete, true);
-    assert.equal(proposal.canCreate, true);
+    assert.equal(
+      proposal.canCreate,
+      true,
+      JSON.stringify({
+        blockers: proposal.blockers,
+        average: proposal.averageDailyUnits,
+        recommended: proposal.recommendedBoxes,
+        raw: proposal.rawAvailableUnits,
+      }),
+    );
     assert.ok(proposal.recommendedBoxes > 0);
     const body = {
       ...req(),
@@ -269,7 +286,7 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     const first = outcomes[0];
     assert.equal(first.status, "fulfilled");
     if (first.status !== "fulfilled") throw new Error("First command must win");
-    const created = await w.snapshot();
+    let created = await w.snapshot();
     assert.equal(created.tasks.length, baseline.tasks.length + 1);
     assert.equal(created.tasks.at(-1)!.employeeId, null);
     assert.equal(created.tasks.at(-1)!.status, "queued");
@@ -301,6 +318,93 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
       ),
       /устарел/,
     );
+    // Optional work is an explicit one-box command with independent purpose,
+    // fresh capacity checks and the same transactional replay protection.
+    const covered = await as("manager", () =>
+      service.setMarketplaceTransit({
+        ...req(),
+        skuId: "sku-cats",
+        inTransitUnits: 100000,
+      }),
+    );
+    const optional = covered.plan.rows.find((row) => row.skuId === "sku-cats")!;
+    assert.equal(optional.recommendedBoxes, 0);
+    assert.equal(optional.backlogCanCreate, true, optional.backlogReason);
+    const optionalBody = {
+      ...req(),
+      skuId: "sku-cats",
+      proposalHash: optional.proposalHash,
+      purpose: "backlog" as const,
+    };
+    const optionalResult = await as("manager", () =>
+      service.createMarketplaceTask(optionalBody),
+    );
+    assert.equal(
+      (await w.snapshot()).tasks.find(
+        (task) => task.id === optionalResult.taskId,
+      )!.boxesTarget,
+      1,
+    );
+    assert.deepEqual(
+      await as("manager", () => service.createMarketplaceTask(optionalBody)),
+      optionalResult,
+    );
+    await assert.rejects(
+      as("manager", () =>
+        service.createMarketplaceTask({ ...optionalBody, purpose: "urgent" }),
+      ),
+      /requestId/,
+    );
+    await assert.rejects(
+      as("manager", () =>
+        service.createMarketplaceTask({ ...optionalBody, ...req() }),
+      ),
+      /устарел/,
+    );
+    const fresh = optionalResult.overview.plan.rows.find(
+      (row) => row.skuId === "sku-cats",
+    )!;
+    await as("manager", () =>
+      service.confirmPlanningStock({
+        ...req(),
+        entries: [
+          {
+            skuId: "sku-cats",
+            enabled: true,
+            units: 1000,
+            accuracy: "approximate",
+            note: "Test count",
+          },
+        ],
+      }),
+    );
+    await assert.rejects(
+      as("manager", () =>
+        service.createMarketplaceTask({
+          ...req(),
+          skuId: "sku-cats",
+          proposalHash: fresh.proposalHash,
+          purpose: "backlog",
+        }),
+      ),
+      /устарел/,
+    );
+    const blocked = (
+      await as("manager", () => service.getMarketplaces())
+    ).plan.rows.find((row) => row.skuId === "sku-cats")!;
+    assert.equal(blocked.backlogCanCreate, false);
+    await assert.rejects(
+      as("manager", () =>
+        service.createMarketplaceTask({
+          ...req(),
+          skuId: "sku-cats",
+          proposalHash: blocked.proposalHash,
+          purpose: "backlog",
+        }),
+      ),
+      /свободные места|размечен/i,
+    );
+    created = await w.snapshot();
     // An unrelated warehouse read completes while the provider request is awaiting its response.
     let started!: () => void, release!: () => void;
     const startedPromise = new Promise<void>((resolve) => {

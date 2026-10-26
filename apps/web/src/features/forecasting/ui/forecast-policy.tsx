@@ -52,7 +52,7 @@ export function ForecastPolicy({
           }
         >
           {form.formState.errors.minimumBoxes?.message ??
-            "Нижняя граница общего запаса, включая маркетплейсы и товар в пути."}
+            "Нижняя граница своего запаса для очереди сборки впрок."}
         </span>
       </label>
       <label className={styles.checkbox}>

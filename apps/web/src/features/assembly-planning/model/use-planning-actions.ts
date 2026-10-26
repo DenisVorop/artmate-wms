@@ -84,13 +84,18 @@ export function usePlanningActions() {
           }),
         "Не удалось сохранить остаток.",
       ),
-    create: (skuId: string, proposalHash: string) =>
+    create: (
+      skuId: string,
+      proposalHash: string,
+      purpose: "urgent" | "backlog" = "urgent",
+    ) =>
       run(
         () =>
           api.createMarketplaceTask({
             requestId: crypto.randomUUID(),
             skuId,
             proposalHash,
+            purpose,
           }),
         "Не удалось создать задание. Обновите расчёт.",
       ),

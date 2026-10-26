@@ -37,7 +37,7 @@ const allNavigation = [
   { href: "/tasks", label: "Все задания", icon: ClipboardList },
   { href: "/warehouse", label: "Карта склада", icon: Grid2X2 },
   { href: "/inventory", label: "Остатки", icon: Layers3 },
-  { href: "/planning", label: "План сборки", icon: ChartNoAxesCombined },
+  { href: "/planning", label: "Поставки и сборка", icon: ChartNoAxesCombined },
   { href: "/integrations", label: "Маркетплейсы", icon: Plug },
   { href: "/stocktakes", label: "Инвентаризация", icon: ClipboardCheck },
   { href: "/stock-ledger", label: "Журнал учёта", icon: NotebookTabs },

@@ -2,12 +2,17 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { MarketplaceSettingsDto } from "@/entities/assembly-plan";
-import { Button, Input } from "@/shared/ui";
+import { Button, Input, Select } from "@/shared/ui";
 import { planningSchema, type PlanningValues } from "../lib/planning-form";
 import styles from "./assembly-planning.module.css";
 const fields = [
   { name: "historyDays", label: "Продажи за, дней", min: 7, max: 89 },
-  { name: "horizonDays", label: "Запас на, дней", min: 1, max: 90 },
+  {
+    name: "horizonDays",
+    label: "Запас на маркетплейсах, дней",
+    min: 1,
+    max: 90,
+  },
   { name: "safetyDays", label: "Дополнительный запас, дней", min: 0, max: 60 },
   { name: "leadDays", label: "Доставка до складов, дней", min: 0, max: 60 },
 ] as const;
@@ -22,13 +27,17 @@ export function PlanningSettings({
 }) {
   const form = useForm<PlanningValues>({
     resolver: zodResolver(planningSchema),
-    defaultValues: settings,
+    defaultValues: {
+      ...settings,
+      dispatchWeekday: settings.dispatchWeekday ?? 6,
+    },
   });
   return (
     <details className={`glass-panel ${styles.settings}`}>
       <summary className={styles.settingsSummary}>
         <span>
-          Запас на <strong>{settings.horizonDays} дней</strong>
+          На маркетплейсах — запас на{" "}
+          <strong>{settings.horizonDays} дней</strong>
         </span>
         <span className={styles.settingsAction}>Настроить</span>
       </summary>
@@ -39,6 +48,27 @@ export function PlanningSettings({
           if (!pending && (await onSave(values))) form.reset(values);
         })}
       >
+        <label className="field">
+          День отгрузки
+          <Select
+            {...form.register("dispatchWeekday", { valueAsNumber: true })}
+            disabled={pending}
+          >
+            {[
+              [1, "Понедельник"],
+              [2, "Вторник"],
+              [3, "Среда"],
+              [4, "Четверг"],
+              [5, "Пятница"],
+              [6, "Суббота"],
+              [0, "Воскресенье"],
+            ].map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </label>
         {fields.map((field) => (
           <label key={field.name} className="field">
             {field.label}
@@ -62,7 +92,8 @@ export function PlanningSettings({
         </Button>
       </form>
       <p className={styles.help}>
-        После изменения периода план уточнится при ближайшем обновлении данных.
+        Период запаса относится к маркетплейсам. Сборка впрок идёт отдельной
+        очередью, без фиксированного запаса своего склада.
       </p>
     </details>
   );

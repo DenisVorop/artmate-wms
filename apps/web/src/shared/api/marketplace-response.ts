@@ -100,7 +100,9 @@ function settings(value: unknown) {
     integer(value.horizonDays) &&
     value.horizonDays > 0 &&
     integer(value.safetyDays) &&
-    integer(value.leadDays)
+    integer(value.leadDays) &&
+    (value.dispatchWeekday === undefined ||
+      (integer(value.dispatchWeekday) && value.dispatchWeekday <= 6))
   );
 }
 function advice(value: unknown) {
@@ -130,9 +132,45 @@ function planningStock(value: unknown) {
     integer(value.revision)
   );
 }
+function providerPlan(value: unknown) {
+  return (
+    record(value) &&
+    provider(value.provider) &&
+    quantity(value.averageDailyUnits) &&
+    [value.targetUnits, value.dispatchUnits, value.dispatchBoxes].every(
+      integer,
+    ) &&
+    [value.marketplaceUnits, value.inTransitUnits].every(
+      (n) => n === null || integer(n),
+    ) &&
+    typeof value.dataComplete === "boolean" &&
+    text(value.methodLabel) &&
+    text(value.confidenceLabel) &&
+    typeof value.scenario === "boolean"
+  );
+}
 function planRow(value: unknown) {
   if (!record(value)) return false;
   return (
+    Array.isArray(value.providers) &&
+    value.providers.every(providerPlan) &&
+    [
+      value.outboundBoxes,
+      value.outboundUnits,
+      value.newOutboundBoxes,
+      value.newOutboundUnits,
+      value.localAfterDispatchUnits,
+      value.dispatchShortageUnits,
+      value.assemblyShortageUnits,
+      value.localAfterAssemblyUnits,
+      value.backlogBoxes,
+      value.backlogUnits,
+    ].every(integer) &&
+    (value.backlogRank === null ||
+      (integer(value.backlogRank) && value.backlogRank > 0)) &&
+    typeof value.backlogCapacityKnown === "boolean" &&
+    typeof value.backlogCanCreate === "boolean" &&
+    text(value.backlogReason) &&
     advice(value.advice) &&
     typeof value.dataComplete === "boolean" &&
     integer(value.unregisteredUnits) &&
@@ -180,6 +218,13 @@ export function isMarketplaceOverviewResponse(
     value.planningStock.every(planningStock) &&
     record(value.plan) &&
     timestamp(value.plan.generatedAt) &&
+    text(value.plan.dispatchDate) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.plan.dispatchDate) &&
+    timestamp(value.plan.dispatchDate) &&
+    [value.plan.leadDays, value.plan.horizonDays, value.plan.safetyDays].every(
+      integer,
+    ) &&
+    text(value.plan.backlogMessage) &&
     Array.isArray(value.plan.rows) &&
     value.plan.rows.every(planRow) &&
     strings(value.plan.warnings)

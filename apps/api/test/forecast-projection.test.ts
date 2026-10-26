@@ -5,10 +5,10 @@ import { seedWorkspace } from "../src/seed";
 import {
   computeForecast,
   baselineForecastOverview,
+  baselineForecastSource,
   type ForecastComputeInput,
 } from "../src/forecasting/forecast-projection";
 import { computeForecastInWorker } from "../src/forecasting/forecast-worker";
-import { marketplacePlan } from "../src/marketplaces/planning";
 import {
   defaultSettings,
   type MarketplaceState,
@@ -115,33 +115,33 @@ function history(
     }),
   };
 }
-test("a fallback goal exactly matches the existing net-order mean, without replacing it with sparse archive mean", () => {
-  const { w, m, input } = fixture();
+test("new product fallback uses known days since observation and the same daily baseline as planning", () => {
+  const { input } = fixture();
+  const data = history("ordered", () => 10).points.slice(-14);
   input.series = [
     {
       ...history("ordered", () => 999),
-      points: [{ date: "2025-12-19", units: 999, availability: "unknown" }],
+      points: data,
     },
     {
       ...history("cancelled", () => 0),
-      points: [{ date: "2025-12-19", units: 0, availability: "unknown" }],
+      points: data.map((p) => ({ ...p, units: 0 })),
     },
   ];
   const result = computeForecast(input),
-    legacy = marketplacePlan(w, m, clock).rows.find(
-      (r) => r.skuId === input.skus[0].id,
-    )!;
-  assert.equal(result.goals[input.skus[0].id].targetUnits, legacy.targetUnits);
-  assert.equal(result.overview.rows[0].seasonalityApplied, false);
-  assert.equal(
-    result.overview.rows[0].sources[0].predictedUnits,
-    (64 / 56) * 77,
+    baseline = baselineForecastSource(input, "ozon", "one", 83);
+  assert.equal(result.goals[input.skus[0].id].targetUnits, 830);
+  assert.deepEqual(
+    result.goals[input.skus[0].id].sources![0].dailyForecast,
+    baseline.dailyForecast,
   );
+  assert.equal(result.overview.rows[0].seasonalityApplied, false);
+  assert.equal(result.overview.rows[0].sources[0].predictedUnits, 830);
   assert.equal(
     result.overview.rows[0].sources[0].points.filter(
       (p) => p.predicted !== null,
     )[0].predicted,
-    64 / 56,
+    10,
   );
 });
 test("a validated annual net-order model replaces only its own mapped source contribution", () => {
@@ -192,7 +192,7 @@ test("old account or disabled provider history cannot inform an active account f
   assert.deepEqual(result.overview, base.overview);
   assert.deepEqual(result.fingerprints, []);
 });
-test("seasonality switch immediately restores the exact legacy mean; minimum boxes is a floor", () => {
+test("seasonality switch uses the adaptive fallback; minimum boxes is a floor", () => {
   const { input } = fixture();
   input.series = [
     history("ordered", (_, date) => (date.getUTCMonth() >= 10 ? 50 : 5)),
@@ -205,16 +205,40 @@ test("seasonality switch immediately restores the exact legacy mean; minimum box
   assert.equal(row.seasonalityApplied, false);
   assert.equal(
     row.targetUnits,
-    Math.max(Math.ceil((64 / 56) * 77), 3 * input.skus[0].unitsPerBox),
+    Math.max(
+      Math.ceil(
+        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+          (n, p) => n + p.units,
+          0,
+        ),
+      ),
+      3 * input.skus[0].unitsPerBox,
+    ),
   );
   input.policies[0].minimumBoxes = 100;
   assert.equal(
     computeForecast(input).overview.rows[0].targetUnits,
-    100 * input.skus[0].unitsPerBox,
+    Math.max(
+      Math.ceil(
+        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+          (n, p) => n + p.units,
+          0,
+        ),
+      ),
+      100 * input.skus[0].unitsPerBox,
+    ),
   );
   assert.equal(
     baselineForecastOverview(input).rows[0].targetUnits,
-    100 * input.skus[0].unitsPerBox,
+    Math.max(
+      Math.ceil(
+        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+          (n, p) => n + p.units,
+          0,
+        ),
+      ),
+      100 * input.skus[0].unitsPerBox,
+    ),
   );
 });
 test("real isolated worker computes the same result and shutdown cannot publish a late result", async () => {
@@ -244,7 +268,7 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
   const ordered = {
     ...history("ordered", () => 0),
     points: sold.points
-      .slice(-300)
+      .slice(-310)
       .map((p) => ({ ...p, units: p.units! * 1.2 })),
   };
   const cancelled = {
@@ -279,4 +303,49 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
       .reason!,
     /трёх проверок/,
   );
+});
+
+test("cached goals preserve daily provider curves and aggregate cards without inflating them by minimum stock", () => {
+  const { input } = fixture();
+  input.series = [
+    {
+      ...history("ordered", () => 10),
+      points: history("ordered", () => 10).points.slice(-14),
+    },
+    {
+      ...history("cancelled", () => 0),
+      points: history("cancelled", () => 0).points.slice(-14),
+    },
+  ];
+  input.mappings.push({ ...input.mappings[0], externalId: "two" });
+  input.series.push(...input.series.map((s) => ({ ...s, externalId: "two" })));
+  input.policies[0].minimumBoxes = 1000;
+  const result = computeForecast(input),
+    goal = result.goals[input.skus[0].id];
+  assert.equal(goal.sources!.length, 1);
+  assert.equal(goal.sources![0].provider, "ozon");
+  assert.equal(goal.sources![0].dailyForecast.length, 83);
+  assert.equal(goal.sources![0].dailyForecast[0].date, "2025-12-20");
+  assert.equal(goal.sources![0].dailyForecast[0].units, 20);
+  assert.equal(goal.targetUnits, 1000 * input.skus[0].unitsPerBox);
+  assert.equal(
+    goal.sources![0].dailyForecast.reduce((n, p) => n + p.units, 0),
+    1660,
+  );
+});
+
+test("a validated short-term trained model reaches the plan without being labeled annual seasonality", () => {
+  const { input } = fixture();
+  input.series = [
+    history("ordered", (i) => (i % 7 < 5 ? 10 : 40)),
+    history("cancelled", () => 0),
+  ].map((s) => ({ ...s, points: s.points.slice(-350) }));
+  const result = computeForecast(input),
+    row = result.overview.rows[0],
+    goal = result.goals[input.skus[0].id];
+  assert.equal(row.seasonalityApplied, false);
+  assert.equal(row.methodLabel, "Обучаемая модель спроса");
+  assert.match(row.message, /проверена по прошлым заказам/);
+  assert.equal(goal.sources![0].methodLabel, "Обучаемая модель спроса");
+  assert.equal(goal.sources![0].scenario, false);
 });

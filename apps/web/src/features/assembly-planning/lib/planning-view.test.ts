@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
-import { boxesLabel, planningGroups, planningRows } from "./planning-view";
+import {
+  boxesLabel,
+  packagedLabel,
+  dispatchLabel,
+  planningGroups,
+  planningRows,
+} from "./planning-view";
 const row = (
   name: string,
   state: MarketplacePlanRowDto["advice"]["state"],
@@ -10,6 +16,10 @@ const row = (
 ) =>
   ({
     skuName: name,
+    unitsPerBox: 20,
+    outboundBoxes: boxes,
+    localAfterDispatchUnits: 20,
+    backlogRank: null,
     dataComplete: complete,
     recommendedBoxes: boxes,
     advice: { state },
@@ -23,6 +33,11 @@ test("summary and assembly list never present unknown quantities as confirmed wo
   ];
   const summary = planningGroups(rows);
   assert.equal(summary.boxes, 5);
+  assert.equal(summary.completeCount, 3);
+  assert.equal(
+    planningGroups([row("Неизвестно", "review", 99, false)]).completeCount,
+    0,
+  );
   assert.equal(summary.assembly.length, 2);
   assert.equal(summary.review.length, 1);
   assert.equal(summary.covered.length, 1);
@@ -51,4 +66,17 @@ test("Russian box counts remain readable at one, two, teen and twenty-one", () =
     [112, "112 коробов"],
   ] as const)
     assert.equal(boxesLabel(count), label);
+});
+
+test("unified totals exclude incomplete rows and preserve loose units without inventing boxes", () => {
+  const good = row("Готово", "covered", 0);
+  Object.assign(good, { outboundBoxes: 3, localAfterDispatchUnits: 45 });
+  const missing = row("Неизвестно", "review", 99, false);
+  const totals = planningGroups([good, missing]);
+  assert.equal(totals.outboundBoxes, 3);
+  assert.equal(totals.remainingBoxes, 2);
+  assert.equal(totals.partialBoxes, true);
+  assert.equal(packagedLabel(45, 20), "2 короба + 5 шт.");
+  assert.equal(dispatchLabel("2026-10-31"), "31 октября");
+  assert.deepEqual(planningRows([missing, good], "shipping"), [good]);
 });

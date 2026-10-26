@@ -77,7 +77,7 @@ function fixture() {
       },
     ],
     transit: {},
-    settings: { ...defaultSettings },
+    settings: { ...defaultSettings, dispatchWeekday: 1 },
     planningStock: [],
   };
   const confirmation: PlanningStockConfirmation = {
@@ -104,6 +104,20 @@ function fixture() {
         confidenceLabel: "Оценка",
         message: "",
         seasonalityApplied: false,
+        sources: [
+          {
+            provider: "ozon",
+            methodLabel: "Средний спрос",
+            confidenceLabel: "Оценка",
+            scenario: false,
+            dailyForecast: Array.from({ length: 24 }, (_, i) => ({
+              date: new Date(Date.parse("2026-10-26") + i * 86400000)
+                .toISOString()
+                .slice(0, 10),
+              units: 1000 / 24,
+            })),
+          },
+        ],
       },
     },
   };

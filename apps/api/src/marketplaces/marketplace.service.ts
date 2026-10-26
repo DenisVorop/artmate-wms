@@ -451,7 +451,13 @@ export class MarketplaceService {
       b,
       async (tx) => {
         const { requestId, ...settings } = b;
-        await put(tx, "marketplace_settings", "common", settings);
+        const existing = await loadMarketplaces(tx);
+        await put(tx, "marketplace_settings", "common", {
+          ...existing.settings,
+          ...Object.fromEntries(
+            Object.entries(settings).filter(([, value]) => value !== undefined),
+          ),
+        });
       },
     );
   }
@@ -800,8 +806,12 @@ export class MarketplaceService {
         row = plan.rows.find((r) => r.skuId === b.skuId);
       if (!row || row.proposalHash !== b.proposalHash)
         throw new ConflictException("Расчёт устарел. Обновите рекомендации.");
-      if (!row.canCreate)
-        throw new BadRequestException(row.blockers.join(". "));
+      const backlog = b.purpose === "backlog";
+      if (backlog ? !row.backlogCanCreate : !row.canCreate)
+        throw new BadRequestException(
+          backlog ? row.backlogReason : row.blockers.join(". "),
+        );
+      const boxesTarget = backlog ? row.backlogBoxes : row.recommendedBoxes;
       const taskId = await this.warehouse.commitPlanningTask(
         tx,
         structuredClone(state),
@@ -809,7 +819,7 @@ export class MarketplaceService {
         {
           requestId: b.requestId,
           skuId: b.skuId,
-          boxesTarget: row.recommendedBoxes,
+          boxesTarget,
         },
       );
       await put(tx, "marketplace_task_origins", taskId, {
@@ -819,7 +829,8 @@ export class MarketplaceService {
         proposalHash: b.proposalHash,
         createdAt: new Date().toISOString(),
         actorAccountId: actor.id,
-        recommendedBoxes: row.recommendedBoxes,
+        recommendedBoxes: boxesTarget,
+        purpose: b.purpose ?? "urgent",
         settings: marketplace.settings,
         calculation: row,
         sources: marketplace.snapshots

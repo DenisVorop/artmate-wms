@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const planningSchema = z.object({
+  dispatchWeekday: z.number().int().min(0).max(6),
   historyDays: z
     .number({ invalid_type_error: "Укажите количество дней" })
     .int()
@@ -24,6 +25,7 @@ export const planningSchema = z.object({
 });
 export type PlanningValues = z.infer<typeof planningSchema>;
 export const planningDefaults: PlanningValues = {
+  dispatchWeekday: 6,
   historyDays: 28,
   horizonDays: 14,
   safetyDays: 3,

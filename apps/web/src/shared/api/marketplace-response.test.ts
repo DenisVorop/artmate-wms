@@ -59,9 +59,44 @@ const overview = () => ({
   planningStock: [],
   plan: {
     generatedAt: now,
+    dispatchDate: "2026-10-31",
+    leadDays: 7,
+    horizonDays: 14,
+    safetyDays: 3,
+    backlogMessage:
+      "Следующая тематика выбирается по спросу и свободным местам.",
     warnings: [],
     rows: [
       {
+        providers: [
+          {
+            provider: "wildberries",
+            averageDailyUnits: 0,
+            targetUnits: 0,
+            marketplaceUnits: null,
+            inTransitUnits: null,
+            dispatchBoxes: 0,
+            dispatchUnits: 0,
+            dataComplete: false,
+            methodLabel: "Недостаточно данных",
+            confidenceLabel: "Низкая",
+            scenario: false,
+          },
+        ],
+        outboundBoxes: 0,
+        outboundUnits: 0,
+        newOutboundBoxes: 0,
+        newOutboundUnits: 0,
+        localAfterDispatchUnits: 0,
+        dispatchShortageUnits: 0,
+        assemblyShortageUnits: 0,
+        localAfterAssemblyUnits: 0,
+        backlogBoxes: 0,
+        backlogUnits: 0,
+        backlogRank: null,
+        backlogCapacityKnown: false,
+        backlogCanCreate: false,
+        backlogReason: "Нужно подтвердить свободные места.",
         advice: {
           state: "review",
           message: "Уточните поставки",
@@ -301,4 +336,33 @@ test("requires stock confirmation provenance and distinguishes approximate from 
     isMarketplaceOverviewResponse({ ...overview(), planningStock: undefined }),
     false,
   );
+});
+
+test("unified quantities and provider completeness are required before totals render", () => {
+  for (const patch of [
+    { outboundBoxes: undefined },
+    { outboundUnits: -1 },
+    { localAfterDispatchUnits: NaN },
+    { providers: [null] },
+    { backlogRank: 0 },
+    { backlogCanCreate: undefined },
+    { backlogCapacityKnown: undefined },
+  ]) {
+    const data = overview();
+    Object.assign(data.plan.rows[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
+  for (const patch of [
+    { marketplaceUnits: undefined },
+    { inTransitUnits: -1 },
+    { scenario: undefined },
+    { dispatchBoxes: 0.5 },
+  ]) {
+    const data = overview();
+    Object.assign(data.plan.rows[0]!.providers[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(data), false);
+  }
+  const data = overview();
+  Object.assign(data.plan, { dispatchDate: "Saturday" });
+  assert.equal(isMarketplaceOverviewResponse(data), false);
 });

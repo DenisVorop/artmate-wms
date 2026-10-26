@@ -134,6 +134,12 @@ export class MarketplaceSettingsDto {
   @Min(7)
   @Max(89)
   historyDays!: number;
+  @ApiPropertyOptional({ type: Number, default: 6, minimum: 0, maximum: 6 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dispatchWeekday?: number;
 }
 export class UpdateMarketplaceSettingsDto extends MarketplaceSettingsDto {
   @ApiProperty({ type: String })
@@ -155,6 +161,14 @@ export class SetMarketplaceTransitDto extends MarketplaceCommandDto {
   inTransitUnits!: number;
 }
 export class CreateMarketplaceTaskDto extends MarketplaceCommandDto {
+  @ApiPropertyOptional({
+    enum: ["urgent", "backlog"],
+    type: String,
+    default: "urgent",
+  })
+  @IsOptional()
+  @IsIn(["urgent", "backlog"])
+  purpose?: "urgent" | "backlog";
   @ApiProperty({ type: String })
   @IsString()
   @MinLength(1)
@@ -250,7 +264,40 @@ export class MarketplacePlanAdviceDto {
   })
   action!: "create" | "receiving" | "integrations" | "transit" | "none";
 }
+export class MarketplaceProviderPlanDto {
+  @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: Number }) averageDailyUnits!: number;
+  @ApiProperty({ type: Number }) targetUnits!: number;
+  @ApiProperty({ type: Number, nullable: true }) marketplaceUnits!:
+    | number
+    | null;
+  @ApiProperty({ type: Number, nullable: true }) inTransitUnits!: number | null;
+  @ApiProperty({ type: Number }) dispatchUnits!: number;
+  @ApiProperty({ type: Number }) dispatchBoxes!: number;
+  @ApiProperty({ type: Boolean }) dataComplete!: boolean;
+  @ApiProperty({ type: String }) methodLabel!: string;
+  @ApiProperty({ type: String }) confidenceLabel!: string;
+  @ApiProperty({ type: Boolean }) scenario!: boolean;
+}
 export class MarketplacePlanRowDto {
+  @ApiProperty({ type: [MarketplaceProviderPlanDto] })
+  providers!: MarketplaceProviderPlanDto[];
+  @ApiProperty({ type: Number }) outboundBoxes!: number;
+  @ApiProperty({ type: Number }) outboundUnits!: number;
+  @ApiProperty({ type: Number }) newOutboundBoxes!: number;
+  @ApiProperty({ type: Number }) newOutboundUnits!: number;
+  @ApiProperty({ type: Number }) localAfterDispatchUnits!: number;
+  @ApiProperty({ type: Number }) dispatchShortageUnits!: number;
+  @ApiProperty({ type: Number }) assemblyShortageUnits!: number;
+  @ApiProperty({ type: Number }) localAfterAssemblyUnits!: number;
+  @ApiProperty({ type: Number, nullable: true }) backlogRank!: number | null;
+  @ApiProperty({ type: Boolean }) backlogCanCreate!: boolean;
+  @ApiProperty({ type: Number }) backlogBoxes!: number;
+  @ApiProperty({ type: Number }) backlogUnits!: number;
+  @ApiProperty({ type: Boolean }) backlogCapacityKnown!: boolean;
+  @ApiProperty({ type: String }) backlogReason!: string;
   @ApiProperty({ type: Number }) unregisteredUnits!: number;
   @ApiProperty({ type: String, nullable: true }) stockConfirmedAt!:
     | string
@@ -283,6 +330,11 @@ export class MarketplacePlanRowDto {
   @ApiProperty({ type: String }) proposalHash!: string;
 }
 export class MarketplacePlanDto {
+  @ApiProperty({ type: String }) backlogMessage!: string;
+  @ApiProperty({ type: String }) dispatchDate!: string;
+  @ApiProperty({ type: Number }) leadDays!: number;
+  @ApiProperty({ type: Number }) horizonDays!: number;
+  @ApiProperty({ type: Number }) safetyDays!: number;
   @ApiProperty({ type: String }) generatedAt!: string;
   @ApiProperty({ type: [MarketplacePlanRowDto] })
   rows!: MarketplacePlanRowDto[];

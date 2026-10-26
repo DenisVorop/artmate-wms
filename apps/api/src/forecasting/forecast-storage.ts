@@ -10,7 +10,15 @@ export interface ForecastPolicy {
   minimumBoxes: number;
   seasonalityEnabled: boolean;
 }
+export interface ForecastPlanSource {
+  provider: "wildberries" | "ozon";
+  dailyForecast: { date: string; units: number }[];
+  methodLabel: string;
+  confidenceLabel: string;
+  scenario: boolean;
+}
 export interface ForecastPlanGoal {
+  sources?: ForecastPlanSource[];
   targetUnits: number;
   methodLabel: string;
   confidenceLabel: string;
@@ -21,6 +29,7 @@ export interface ForecastPlanContext {
   key: string;
   goals: Record<string, ForecastPlanGoal>;
   minimumBoxes: Record<string, number>;
+  seasonalityEnabled?: Record<string, boolean>;
 }
 export interface ForecastCache {
   key: string;
@@ -114,6 +123,7 @@ export async function forecastInputKey(
       horizonDays: m.settings.horizonDays,
       safetyDays: m.settings.safetyDays,
       leadDays: m.settings.leadDays,
+      dispatchWeekday: m.settings.dispatchWeekday ?? 6,
     },
     connections: m.connections
       .filter((c) => c.enabled)
@@ -180,6 +190,9 @@ export async function readForecastPlanContext(
   return {
     key,
     goals: cache?.key === key ? cache.goals : {},
+    seasonalityEnabled: Object.fromEntries(
+      policies.map((p) => [p.skuId, p.seasonalityEnabled]),
+    ),
     minimumBoxes: Object.fromEntries(
       policies.map((p) => [p.skuId, p.minimumBoxes]),
     ),

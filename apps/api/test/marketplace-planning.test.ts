@@ -51,6 +51,14 @@ const snapshot = (
       returnedUnits: 1,
       soldUnits: 27,
     },
+    {
+      externalId: "one",
+      date: "2026-09-27",
+      orderedUnits: 0,
+      cancelledUnits: 0,
+      returnedUnits: 0,
+      soldUnits: 0,
+    },
   ],
   coverage: { catalog: true, stocks: true, demand: true, inbound: false },
   warnings: [],
@@ -78,7 +86,7 @@ function fixture() {
       },
     ],
     transit: { "sku-cats": 0 },
-    settings: { ...defaultSettings },
+    settings: { ...defaultSettings, dispatchWeekday: 0 },
   };
   return { w, m };
 }
@@ -191,6 +199,14 @@ test("forecast uses completed Moscow days across UTC midnight and known API tran
       cancelledUnits: 0,
       returnedUnits: 0,
       soldUnits: null,
+    },
+    {
+      externalId: "one",
+      date: "2026-09-28",
+      orderedUnits: 0,
+      cancelledUnits: 0,
+      returnedUnits: 0,
+      soldUnits: 0,
     },
   ];
   row = marketplacePlan(w, m, afterMoscowMidnight).rows[0];
@@ -473,6 +489,18 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
         confidenceLabel: "Умеренная уверенность",
         message: "Проверено на прошлом",
         seasonalityApplied: true,
+        sources: (["wildberries", "ozon"] as const).map((provider) => ({
+          provider,
+          methodLabel: "Прогноз с сезонностью",
+          confidenceLabel: "Умеренная уверенность",
+          scenario: false,
+          dailyForecast: Array.from({ length: 24 }, (_, i) => ({
+            date: new Date(Date.parse("2026-10-25") + i * 86400000)
+              .toISOString()
+              .slice(0, 10),
+            units: 100 / 24,
+          })),
+        })),
       },
     },
     minimumBoxes: { "sku-cats": 0 },
@@ -499,7 +527,7 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
   assert.equal(incomplete.canCreate, false);
 });
 
-test("minimum boxes apply without cached models and warehouse stock is deducted exactly once", () => {
+test("explicit minimum stock policy remains optional preparation and never invents dispatch demand", () => {
   const { w, m } = fixture();
   m.snapshots.forEach((s) => {
     s.demand = [];
@@ -508,7 +536,9 @@ test("minimum boxes apply without cached models and warehouse stock is deducted 
   const context = { key: "policy", goals: {}, minimumBoxes: { "sku-cats": 2 } };
   let row = marketplacePlan(w, m, now, context).rows[0];
   assert.equal(row.targetUnits, 40);
-  assert.equal(row.recommendedBoxes, 2);
+  assert.equal(row.recommendedBoxes, 0);
+  assert.equal(row.outboundBoxes, 0);
+  assert.equal(row.backlogRank, 1);
   w.boxes.push({
     id: "ready",
     skuId: "sku-cats",
@@ -516,7 +546,7 @@ test("minimum boxes apply without cached models and warehouse stock is deducted 
     status: "stored",
   } as D.BoxDto);
   row = marketplacePlan(w, m, now, context).rows[0];
-  assert.equal(row.recommendedBoxes, 1);
+  assert.equal(row.recommendedBoxes, 0);
 });
 
 test("transient history page leases do not invalidate an unchanged assembly proposal", () => {

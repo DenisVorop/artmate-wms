@@ -4,7 +4,8 @@ export type ForecastModel =
   | "mean"
   | "annual_seasonal"
   | "annual_growth"
-  | "ridge";
+  | "ridge"
+  | "autoregressive";
 export type ForecastConfidence = "low" | "medium" | "high";
 
 export interface ForecastPoint {
@@ -29,6 +30,8 @@ export interface ForecastOptions {
   horizonDays: number;
   /** Window of the deployed mean baseline; comparisons must use the same setting. */
   baselineHistoryDays?: number;
+  /** Explicit calendar scenario, never labeled as learned annual seasonality. */
+  newYearScenario?: boolean;
   /** Optional stock floor; applied to the total goal, never added to demand. */
   minUnits?: number;
 }
@@ -92,4 +95,5 @@ export interface ForecastResult {
   fallbackReason: string | null;
   fingerprint: string;
   modelVersion: string;
+  scenario: boolean;
 }

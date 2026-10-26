@@ -7,6 +7,7 @@ import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
 import { usePlanningActions } from "../model/use-planning-actions";
 import {
   boxesLabel,
+  dispatchLabel,
   planningGroups,
   planningRows,
   type PlanningFilter,
@@ -20,31 +21,29 @@ export function AssemblyPlanningFeature() {
     actions = usePlanningActions();
   const [notice, setNotice] = useState(""),
     [filter, setFilter] = useState<PlanningFilter | null>(null);
-  if (query.isPending) return <LoadingState label="Готовим план сборки…" />;
+  if (query.isPending) return <LoadingState label="Готовим план…" />;
   if (!query.data) return <ErrorState onRetry={() => void query.refetch()} />;
   const { plan, settings, connections, products } = query.data;
   const connected = connections.some((item) => item.configured && item.enabled);
   const groups = planningGroups(plan.rows);
-  const active =
-    filter ??
-    (groups.assembly.length
-      ? "assembly"
-      : groups.review.length
-        ? "review"
-        : "all");
+  const active = filter ?? "all";
   const rows = planningRows(plan.rows, active);
   const tabs: { id: PlanningFilter; label: string; count: number }[] = [
+    { id: "all", label: "Все товары", count: plan.rows.length },
+    { id: "shipping", label: "К отправке", count: groups.shipping.length },
     { id: "assembly", label: "Нужно собрать", count: groups.assembly.length },
     { id: "review", label: "Нужна проверка", count: groups.review.length },
-    { id: "all", label: "Все товары", count: plan.rows.length },
   ];
   return (
     <div className={styles.feature}>
       <header className={styles.header}>
         <div>
           <p className="eyebrow">ЗАПАСЫ И ПРОДАЖИ</p>
-          <h1 className="page-heading">План сборки</h1>
-          <p>Обновляется автоматически каждые 30 минут.</p>
+          <h1 className="page-heading">Поставки и сборка</h1>
+          <p>
+            К отгрузке {dispatchLabel(plan.dispatchDate)} · данные обновляются
+            каждые 30 минут.
+          </p>
         </div>
         <div className={styles.actions}>
           <Link className="button button--ghost" href="/integrations">
@@ -109,27 +108,88 @@ export function AssemblyPlanningFeature() {
             aria-label="Итог плана"
           >
             <div className={styles.total}>
-              <span>Потребность в сборке</span>
+              <span>Отправить на WB и Ozon</span>
               <strong>
-                {groups.assembly.length
-                  ? boxesLabel(groups.boxes)
-                  : groups.review.length
-                    ? "Нужно уточнить данные"
-                    : "Запаса достаточно"}
+                {groups.completeCount
+                  ? boxesLabel(groups.outboundBoxes)
+                  : "Нужны данные"}
               </strong>
-              {groups.review.length > 0 && (
-                <small>Товары без расчёта — в списке «Нужна проверка».</small>
-              )}
+              <small>Потребность к {dispatchLabel(plan.dispatchDate)}</small>
             </div>
-            <div className={styles.overviewStat}>
-              <strong>{groups.assembly.length}</strong>
-              <span>Тематик к сборке</span>
+            <div className={styles.total}>
+              <span>Останется у нас после отправки</span>
+              <strong>
+                {groups.completeCount
+                  ? boxesLabel(groups.remainingBoxes)
+                  : "Нужны данные"}
+              </strong>
+              <small>
+                {groups.partialBoxes
+                  ? "И товар в неполных коробах"
+                  : "Из текущего готового запаса"}
+              </small>
             </div>
-            <div className={styles.overviewStat}>
-              <strong>{groups.covered.length}</strong>
-              <span>С достаточным запасом</span>
+            <div className={styles.total}>
+              <span>Собрать к отгрузке</span>
+              <strong className={styles.quantityAccent}>
+                {groups.completeCount
+                  ? boxesLabel(groups.boxes)
+                  : "Нужны данные"}
+              </strong>
+              <small>Текущие задания уже учтены</small>
             </div>
           </section>
+          {groups.review.length > 0 && (
+            <p className={styles.warning} role="status">
+              Итог пока неполный: {groups.review.length} товаров требуют
+              проверки. Их количество не включено.
+            </p>
+          )}
+          <details className={`glass-panel ${styles.backlog}`}>
+            <summary className={styles.settingsSummary}>
+              Что собирать после срочных заданий{" "}
+              <span className={styles.settingsAction}>Очередь впрок</span>
+            </summary>
+            <p className={styles.help}>{plan.backlogMessage}</p>
+            {groups.backlog.length > 0 && (
+              <ol className={styles.backlogList}>
+                {groups.backlog.slice(0, 5).map((row) => (
+                  <li key={row.skuId}>
+                    <div>
+                      <strong>{row.skuName}</strong>
+                      {row.backlogCapacityKnown && (
+                        <p className={styles.help}>{row.backlogReason}</p>
+                      )}
+                    </div>
+                    {row.backlogCanCreate && (
+                      <Button
+                        variant="secondary"
+                        disabled={actions.pending}
+                        onClick={() =>
+                          void (async () => {
+                            const result = await actions.create(
+                              row.skuId,
+                              row.proposalHash,
+                              "backlog",
+                            );
+                            if (result)
+                              setNotice(
+                                `В очередь добавлен один короб «${row.skuName}».`,
+                              );
+                          })()
+                        }
+                      >
+                        Собрать следующий короб
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <Link className={styles.textLink} href="/tasks">
+              Все задания склада →
+            </Link>
+          </details>
           <div
             className={styles.filters}
             role="group"
@@ -156,8 +216,10 @@ export function AssemblyPlanningFeature() {
                 <EmptyState
                   title={
                     active === "assembly"
-                      ? "Дополнительная сборка не нужна"
-                      : "Проверка не требуется"
+                      ? "Срочная сборка не нужна"
+                      : active === "shipping"
+                        ? "Отправка пока не требуется"
+                        : "Проверка не требуется"
                   }
                   description={
                     active === "assembly" && groups.review.length

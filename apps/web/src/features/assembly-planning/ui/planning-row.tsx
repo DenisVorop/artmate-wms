@@ -7,7 +7,7 @@ import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
-import { boxesLabel } from "../lib/planning-view";
+import { boxesLabel, packagedLabel } from "../lib/planning-view";
 import type { StockConfirmationValues } from "../lib/planning-form";
 import { PlanningStock } from "./planning-stock";
 import styles from "./assembly-planning.module.css";
@@ -74,20 +74,45 @@ export function PlanningRow({
             {status[state]}
           </Badge>
         </div>
-        <div className={styles.quantity}>
-          <strong className={needsAssembly ? styles.quantityAccent : undefined}>
-            {needsAssembly
-              ? boxesLabel(row.recommendedBoxes)
-              : state === "covered"
-                ? "Собирать не нужно"
-                : "Расчёт ожидает проверки"}
-          </strong>
-          {needsAssembly && (
+        <div className={styles.quantities}>
+          <div className={styles.quantity}>
+            <span>Отправить</span>
+            <strong>
+              {row.dataComplete ? boxesLabel(row.outboundBoxes) : "Уточнить"}
+            </strong>
+            <span>WB и Ozon</span>
+          </div>
+          <div className={styles.quantity}>
+            <span>Останется у нас</span>
+            <strong>
+              {row.dataComplete
+                ? packagedLabel(row.localAfterDispatchUnits, row.unitsPerBox)
+                : "Уточнить"}
+            </strong>
             <span>
-              {number(row.recommendedUnits)} шт. · по {number(row.unitsPerBox)}{" "}
-              в коробе
+              {row.dataComplete && row.dispatchShortageUnits > 0
+                ? `Для отправки не хватает ${packagedLabel(row.dispatchShortageUnits, row.unitsPerBox)}`
+                : "После отгрузки"}
             </span>
-          )}
+          </div>
+          <div className={styles.quantity}>
+            <span>Собрать к отгрузке</span>
+            <strong
+              className={needsAssembly ? styles.quantityAccent : undefined}
+            >
+              {needsAssembly
+                ? boxesLabel(row.recommendedBoxes)
+                : state === "covered"
+                  ? boxesLabel(0)
+                  : "Расчёт ожидает проверки"}
+            </strong>
+            {needsAssembly && (
+              <span>
+                {number(row.recommendedUnits)} шт. · по{" "}
+                {number(row.unitsPerBox)} в коробе
+              </span>
+            )}
+          </div>
         </div>
         <div className={styles.rowAction}>
           {action === "create" && (
@@ -134,6 +159,45 @@ export function PlanningRow({
         onToggle={(event) => setExpanded(event.currentTarget.open)}
       >
         <summary>Подробнее</summary>
+        <div className={styles.providers}>
+          {row.providers.map((source) => (
+            <div className={styles.provider} key={source.provider}>
+              <div className={styles.providerHeading}>
+                <strong>
+                  {source.provider === "ozon" ? "Ozon" : "Wildberries"}
+                </strong>
+                <span>
+                  {source.dataComplete
+                    ? boxesLabel(source.dispatchBoxes) + " к отправке"
+                    : "Нужно уточнить данные"}
+                </span>
+              </div>
+              <p className={styles.help}>
+                {source.methodLabel}
+                {source.scenario ? " · Сценарий" : ""} ·{" "}
+                {source.confidenceLabel}
+              </p>
+              <dl className={styles.metrics}>
+                <Metric
+                  label="Заказов в день"
+                  value={
+                    source.dataComplete
+                      ? number(source.averageDailyUnits, 1)
+                      : "Не уточнено"
+                  }
+                />
+                <Metric
+                  label="На маркетплейсе, шт."
+                  value={number(source.marketplaceUnits)}
+                />
+                <Metric
+                  label="В пути, шт."
+                  value={number(source.inTransitUnits)}
+                />
+              </dl>
+            </div>
+          ))}
+        </div>
         <dl className={styles.metrics}>
           <Metric
             label="Заказов в день"
@@ -156,6 +220,10 @@ export function PlanningRow({
               row.stockEstimated ? "Нужно уточнить" : number(row.readyUnits)
             }
           />
+          <Metric
+            label="Размечено для отгрузки, шт."
+            value={number(row.shippingReadyUnits)}
+          />
           <Metric label="Уже в сборке, шт." value={number(row.openTaskUnits)} />
           <Metric
             label="Сырья для сборки, шт."
@@ -163,7 +231,9 @@ export function PlanningRow({
           />
         </dl>
         <p className={styles.help}>
-          Готовый товар и текущие задания уже учтены в рекомендации.
+          Показана потребность маркетплейсов, а не созданная поставка. Готовый
+          товар и текущие задания уже учтены. Неразмеченные короба нужно
+          привязать к адресам перед отгрузкой через WMS.
         </p>
         <PlanningStock row={row} pending={pending} onSave={onStock} />
         <Link

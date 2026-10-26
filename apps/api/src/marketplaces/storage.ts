@@ -44,6 +44,7 @@ export const defaultSettings: MarketplaceSettingsDto = {
   safetyDays: 3,
   leadDays: 7,
   historyDays: 28,
+  dispatchWeekday: 6,
 };
 export async function initializeMarketplaceStorage(tx: Queryable) {
   await initializePlanningStockStorage(tx);
@@ -98,7 +99,7 @@ export async function loadMarketplaces(
         (r) => [r.skuId, r.units],
       ),
     ),
-    settings: settings[0] ?? { ...defaultSettings },
+    settings: { ...defaultSettings, ...settings[0] },
     planningStock: await rows<PlanningStockConfirmation>(
       "planning_stock_confirmations",
     ),

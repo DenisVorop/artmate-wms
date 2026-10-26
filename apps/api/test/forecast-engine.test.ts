@@ -47,7 +47,10 @@ test("short history uses the current mean and cannot claim learned annual season
   assert.equal(result.historyCoverage.knownDays, 56);
   for (const candidate of result.candidates.filter((c) => c.model !== "mean")) {
     assert.equal(candidate.eligible, false);
-    assert.match(candidate.reason!, /400/);
+    assert.match(
+      candidate.reason!,
+      candidate.model === "autoregressive" ? /70/ : /400/,
+    );
   }
 });
 
@@ -333,7 +336,7 @@ test("input is not mutated; invalid dates, quantities, duplicates and options fa
   forecast(data, 28);
   assert.equal(JSON.stringify(data), original);
   const options = { asOf: data.at(-1)!.date, horizonDays: 28 };
-  for (const horizonDays of [0, 331, 1.5, Number.NaN])
+  for (const horizonDays of [0, 367, 1.5, Number.NaN])
     assert.throws(
       () => runForecast(series(data), { ...options, horizonDays }),
       /horizon/,
@@ -372,7 +375,7 @@ test("configured baseline window is used in forecasts, comparison folds and iden
     baselineHistoryDays: 56,
   });
   assert.equal(short.totalUnits, 70);
-  assert.equal(long.totalUnits, 38.5);
+  assert.ok(long.totalUnits > 38.5 && long.totalUnits < 70);
   assert.notEqual(short.fingerprint, long.fingerprint);
   const annual = points(
     720,

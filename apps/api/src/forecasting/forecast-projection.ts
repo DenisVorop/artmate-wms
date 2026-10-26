@@ -7,6 +7,8 @@ import type {
 import type { ForecastHistorySeries } from "./history-types";
 import { runForecast, FORECAST_MODEL_VERSION } from "./engine";
 import { calibrateFinancialSeason } from "./forecast-calibration";
+import { demandBaseline } from "./demand-baseline";
+import { newYearScenario } from "./new-year-scenario";
 import type {
   ForecastModel,
   ForecastResult,
@@ -16,6 +18,7 @@ import type {
   ForecastCache,
   ForecastPlanGoal,
   ForecastPolicy,
+  ForecastPlanSource,
 } from "./forecast-storage";
 import type {
   ForecastOverviewDto,
@@ -41,6 +44,7 @@ const MODEL_LABELS: Record<ForecastModel, string> = {
   annual_seasonal: "Прошлогодний сезон",
   annual_growth: "Сезон с поправкой на рост",
   ridge: "Сезонная модель и тренд",
+  autoregressive: "Обучаемая модель спроса",
 };
 const confidenceLabel = (value: ForecastResult["confidence"]) =>
   value === "high"
@@ -81,38 +85,145 @@ function netSeries(
     }),
   };
 }
+type BaselineInput = Pick<
+  ForecastComputeInput,
+  "asOf" | "settings" | "mappings" | "snapshots" | "skus" | "policies"
+> & {
+  series?: ForecastHistorySeries[];
+  connections?: ForecastComputeInput["connections"];
+};
+function isNewYear(input: BaselineInput, skuId: string) {
+  const sku = input.skus.find((s) => s.id === skuId);
+  return (
+    !!sku &&
+    sku.name
+      .toLocaleLowerCase("ru")
+      .replace(/[^а-яёa-z0-9]/g, "")
+      .includes("новыйгод") &&
+    input.policies.find((p) => p.skuId === skuId)?.seasonalityEnabled !== false
+  );
+}
+function baselineSeries(
+  input: BaselineInput,
+  provider: MarketplaceProvider,
+  externalId: string,
+): ForecastSeries {
+  const mapping = input.mappings.find(
+    (m) => m.provider === provider && m.externalId === externalId,
+  );
+  const group =
+    input.series?.filter(
+      (s) =>
+        s.provider === provider &&
+        s.externalId === externalId &&
+        (!input.connections ||
+          input.connections.some(
+            (c) => c.provider === provider && c.storeId === s.storeId,
+          )),
+    ) ?? [];
+  const ordered = group.find((s) => s.metric === "ordered"),
+    cancelled = group.find((s) => s.metric === "cancelled");
+  if (ordered && cancelled) return netSeries(ordered, cancelled);
+  const snapshot = input.snapshots.find((s) => s.provider === provider);
+  const records = (snapshot?.demand ?? [])
+    .filter(
+      (d) =>
+        d.externalId === externalId &&
+        d.date >= snapshot!.from &&
+        d.date <= snapshot!.to &&
+        d.date <= input.asOf,
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const counts = new Map<string, number>();
+  for (const d of records)
+    counts.set(
+      d.date,
+      (counts.get(d.date) ?? 0) +
+        Math.max(0, d.orderedUnits - d.cancelledUnits) *
+          (mapping?.unitsPerItem ?? 1),
+    );
+  const points: ForecastSeries["points"] = [];
+  if (records.length)
+    for (
+      let day = Date.parse(records[0].date);
+      day <= Date.parse(input.asOf);
+      day += 86400000
+    ) {
+      const date = new Date(day).toISOString().slice(0, 10),
+        complete = !!snapshot?.coverage.demand && date <= snapshot.to;
+      points.push({
+        date,
+        units: counts.get(date) ?? (complete ? 0 : null),
+        availability: "unknown",
+      });
+    }
+  return {
+    id: JSON.stringify([provider, externalId]),
+    provider,
+    storeId:
+      input.connections?.find((c) => c.provider === provider)?.storeId ??
+      provider,
+    externalId,
+    metric: "net_ordered",
+    points,
+  };
+}
+export function baselineForecastSource(
+  input: BaselineInput,
+  provider: MarketplaceProvider,
+  externalId: string,
+  horizonDays: number,
+): Omit<ForecastPlanSource, "provider"> {
+  const series = baselineSeries(input, provider, externalId),
+    mapping = input.mappings.find(
+      (m) => m.provider === provider && m.externalId === externalId,
+    );
+  const baseline = demandBaseline(
+    series.points,
+    input.asOf,
+    horizonDays,
+    input.settings.historyDays,
+  );
+  const scenario =
+    mapping && isNewYear(input, mapping.skuId)
+      ? newYearScenario(
+          series.points,
+          input.asOf,
+          horizonDays,
+          input.settings.historyDays,
+        )
+      : null;
+  return {
+    dailyForecast: scenario?.dailyForecast ?? baseline.dailyForecast,
+    methodLabel: scenario?.scenario
+      ? "Сценарий к Новому году"
+      : baseline.knownDays
+        ? "Недавний спрос"
+        : "Недостаточно истории",
+    confidenceLabel: "Предварительная оценка",
+    scenario: scenario?.scenario ?? false,
+  };
+}
+function forecastHorizon(input: Pick<ForecastComputeInput, "settings">) {
+  return Math.min(
+    366,
+    input.settings.horizonDays +
+      input.settings.safetyDays +
+      input.settings.leadDays +
+      6,
+  );
+}
 function baselineContribution(
   input: ForecastComputeInput,
   provider: MarketplaceProvider,
   externalId: string,
 ): number {
-  const mapping = input.mappings.find(
-    (m) => m.provider === provider && m.externalId === externalId,
-  );
-  const snapshot = input.snapshots.find((s) => s.provider === provider);
-  const from = new Date(
-    Date.parse(input.asOf) - 86_400_000 * (input.settings.historyDays - 1),
-  )
-    .toISOString()
-    .slice(0, 10);
-  const ordered = (snapshot?.demand ?? [])
-    .filter(
-      (d) =>
-        d.externalId === externalId && d.date >= from && d.date <= input.asOf,
-    )
-    .reduce(
-      (n, d) =>
-        n +
-        Math.max(0, d.orderedUnits - d.cancelledUnits) *
-          (mapping?.unitsPerItem ?? 1),
-      0,
-    );
-  return (
-    (ordered / input.settings.historyDays) *
-    (input.settings.horizonDays +
-      input.settings.safetyDays +
-      input.settings.leadDays)
-  );
+  return baselineForecastSource(
+    input,
+    provider,
+    externalId,
+    forecastHorizon(input),
+  ).dailyForecast.reduce((n, p) => n + p.units, 0);
 }
 function chartSource(
   series: ForecastSeries,
@@ -200,10 +311,8 @@ export function baselineForecastOverview(
 export function computeForecast(input: ForecastComputeInput): ForecastCache {
   const overview = baselineForecastOverview(input),
     fingerprints: string[] = [];
-  const horizon =
-    input.settings.horizonDays +
-    input.settings.safetyDays +
-    input.settings.leadDays;
+  const horizon = forecastHorizon(input);
+  const goalSources = new Map<string, ForecastPlanSource[]>();
   const active = input.series.filter((s) =>
     input.connections.some(
       (c) => c.provider === s.provider && c.storeId === s.storeId,
@@ -217,7 +326,32 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         input.connections.some((c) => c.provider === m.provider),
     );
     let demand = 0,
-      seasonal = 0;
+      seasonal = 0,
+      learned = 0,
+      scenarios = 0;
+    const planSources: ForecastPlanSource[] = [];
+    goalSources.set(row.skuId, planSources);
+    const register = (
+      provider: MarketplaceProvider,
+      source: Omit<ForecastPlanSource, "provider">,
+    ) => {
+      const prior = planSources.find((s) => s.provider === provider);
+      if (!prior) {
+        planSources.push({ provider, ...source });
+        return;
+      }
+      const byDate = new Map(prior.dailyForecast.map((p) => [p.date, p.units]));
+      for (const p of source.dailyForecast)
+        byDate.set(p.date, (byDate.get(p.date) ?? 0) + p.units);
+      prior.dailyForecast = [...byDate]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, units]) => ({ date, units }));
+      if (prior.methodLabel !== source.methodLabel)
+        prior.methodLabel = "Прогноз спроса";
+      if (source.confidenceLabel === "Предварительная оценка")
+        prior.confidenceLabel = source.confidenceLabel;
+      prior.scenario ||= source.scenario;
+    };
     const confidences: ForecastResult["confidence"][] = [];
     const knownDates = new Set<string>();
     for (const mapping of related) {
@@ -229,13 +363,20 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       );
       const ordered = group.find((s) => s.metric === "ordered"),
         cancelled = group.find((s) => s.metric === "cancelled");
-      const baseline = baselineContribution(
-        input,
+      const baselineSource = baselineForecastSource(
+        { ...input, series: active },
         mapping.provider,
         mapping.externalId,
+        horizon,
+      );
+      const baseline = baselineSource.dailyForecast.reduce(
+        (n, p) => n + p.units,
+        0,
       );
       if (!ordered) {
         demand += baseline;
+        register(mapping.provider, baselineSource);
+        if (baselineSource.scenario) scenarios++;
         confidences.push("low");
         continue;
       }
@@ -244,6 +385,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
           asOf: input.asOf,
           horizonDays: horizon,
           baselineHistoryDays: input.settings.historyDays,
+          newYearScenario: isNewYear(input, row.skuId),
         });
       fingerprints.push(result.fingerprint);
       const sold = group.find((s) => s.metric === "sold");
@@ -266,6 +408,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             input.asOf,
             horizon,
             input.settings.historyDays,
+            isNewYear(input, row.skuId),
           )
         : null;
       if (calibrated) fingerprints.push(calibrated.fingerprint);
@@ -288,7 +431,33 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
           ? result.totalUnits
           : baseline;
       demand += predictedUnits;
-      if (useSeasonal) seasonal++;
+      const annual =
+        useCalibrated ||
+        (directSeasonal && result.selectedModel !== "autoregressive");
+      if (annual) seasonal++;
+      if (directSeasonal && result.selectedModel === "autoregressive")
+        learned++;
+      const scenario = !useSeasonal && baselineSource.scenario;
+      if (scenario) scenarios++;
+      const dailyForecast = useCalibrated
+        ? calibrated!.dailyForecast
+        : directSeasonal
+          ? result.dailyForecast
+          : baselineSource.dailyForecast;
+      register(mapping.provider, {
+        dailyForecast,
+        methodLabel: useCalibrated
+          ? calibrated!.candidate.label
+          : directSeasonal
+            ? MODEL_LABELS[result.selectedModel]
+            : baselineSource.methodLabel,
+        confidenceLabel: useCalibrated
+          ? "Умеренная уверенность"
+          : useSeasonal
+            ? confidenceLabel(result.confidence)
+            : baselineSource.confidenceLabel,
+        scenario,
+      });
       confidences.push(
         useCalibrated ? "medium" : useSeasonal ? result.confidence : "low",
       );
@@ -317,11 +486,14 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         ];
       }
       if (!useSeasonal) {
-        source.modelLabel = "Средний спрос";
-        // Keep displayed forecast consistent with the exact legacy mean used by the planner.
-        const average = baseline / horizon;
+        source.modelLabel = baselineSource.methodLabel;
+        const byDate = new Map(
+          baselineSource.dailyForecast.map((p) => [p.date, p.units]),
+        );
         source.points = source.points.map((p) =>
-          p.predicted !== null ? { ...p, predicted: average } : p,
+          p.predicted !== null
+            ? { ...p, predicted: byDate.get(p.date) ?? null }
+            : p,
         );
       }
       row.sources.push(source);
@@ -363,7 +535,13 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       policy.minimumBoxes * sku.unitsPerBox,
     );
     row.seasonalityApplied = seasonal > 0;
-    row.methodLabel = seasonal ? "Прогноз с сезонностью" : "Средний спрос";
+    row.methodLabel = seasonal
+      ? "Прогноз с сезонностью"
+      : learned
+        ? "Обучаемая модель спроса"
+        : scenarios
+          ? "Сценарий к Новому году"
+          : "Недавний спрос";
     row.confidenceLabel = confidenceLabel(
       confidences.length && confidences.every((c) => c === "high")
         ? "high"
@@ -377,18 +555,22 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     row.knownDays = dates.length;
     row.message = seasonal
       ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
-      : !policy.seasonalityEnabled
-        ? "Сезонность отключена. Используется средний спрос."
-        : related.length
-          ? "Годовая сезонность пока не подтверждена; используется текущий средний спрос."
-          : "Свяжите тематику с товарами маркетплейсов.";
+      : learned
+        ? "Обучаемая модель проверена по прошлым заказам и улучшила прогноз недавнего спроса."
+        : scenarios
+          ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
+          : !policy.seasonalityEnabled
+            ? "Автопрогноз отключён. Используется недавний спрос."
+            : related.length
+              ? "Сложные модели пока не подтвердили преимущество; учитываем недавний спрос и известные дни после появления товара."
+              : "Свяжите тематику с товарами маркетплейсов.";
   }
   overview.ready = true;
   overview.computing = false;
   overview.generatedAt = input.generatedAt;
   overview.message = overview.rows.some((r) => r.seasonalityApplied)
     ? "Прогноз учитывает проверенную сезонность. Остатки и поставки вычитаются в плане сборки."
-    : "Сезонность ещё проверяется на истории. Пока используется текущий средний спрос.";
+    : "Прогноз учитывает недавний спрос. Обучаемые модели применяются после проверки на прошлом.";
   const goals: Record<string, ForecastPlanGoal> = Object.fromEntries(
     overview.rows.map((r) => [
       r.skuId,
@@ -398,6 +580,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         confidenceLabel: r.confidenceLabel,
         message: r.message,
         seasonalityApplied: r.seasonalityApplied,
+        sources: goalSources.get(r.skuId) ?? [],
       },
     ]),
   );
