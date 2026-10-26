@@ -1,3 +1,4 @@
+import { PREPARATION_DAYS } from "../marketplaces/unified-plan";
 import type { SkuDto } from "../dto";
 import type { MarketplaceState } from "../marketplaces/storage";
 import type {
@@ -9,6 +10,11 @@ import { runForecast, FORECAST_MODEL_VERSION } from "./engine";
 import { calibrateFinancialSeason } from "./forecast-calibration";
 import { demandBaseline } from "./demand-baseline";
 import { newYearScenario } from "./new-year-scenario";
+import {
+  runMonthlyHybridForecast,
+  applyMonthlySegment,
+  MONTHLY_ML_DAYS,
+} from "./monthly-hybrid";
 import type {
   ForecastModel,
   ForecastResult,
@@ -202,15 +208,45 @@ export function baselineForecastSource(
         : "Недостаточно истории",
     confidenceLabel: "Предварительная оценка",
     scenario: scenario?.scenario ?? false,
+    salesForecastKnown:
+      (!!input.series?.some(
+        (s) =>
+          s.provider === provider &&
+          s.externalId === externalId &&
+          s.metric === "ordered" &&
+          (!input.connections ||
+            input.connections.some(
+              (c) => c.provider === provider && c.storeId === s.storeId,
+            )),
+      ) ||
+        input.snapshots.find((s) => s.provider === provider)?.coverage
+          .demand === true) &&
+      baseline.knownDays > 0 &&
+      series.points.some(
+        (p) =>
+          p.units !== null &&
+          p.availability !== "out_of_stock" &&
+          p.date <= input.asOf &&
+          p.date >=
+            new Date(
+              Date.parse(input.asOf) -
+                (Math.min(14, input.settings.historyDays) - 1) * 86400000,
+            )
+              .toISOString()
+              .slice(0, 10),
+      ),
   };
 }
 function forecastHorizon(input: Pick<ForecastComputeInput, "settings">) {
-  return Math.min(
-    366,
-    input.settings.horizonDays +
-      input.settings.safetyDays +
-      input.settings.leadDays +
-      6,
+  return Math.max(
+    30,
+    Math.min(
+      366,
+      input.settings.horizonDays +
+        input.settings.safetyDays +
+        input.settings.leadDays +
+        (PREPARATION_DAYS - 1),
+    ),
   );
 }
 function baselineContribution(
@@ -351,6 +387,8 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       if (source.confidenceLabel === "Предварительная оценка")
         prior.confidenceLabel = source.confidenceLabel;
       prior.scenario ||= source.scenario;
+      prior.salesForecastKnown =
+        prior.salesForecastKnown === true && source.salesForecastKnown === true;
     };
     const confidences: ForecastResult["confidence"][] = [];
     const knownDates = new Set<string>();
@@ -381,13 +419,14 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         continue;
       }
       const series = netSeries(ordered, cancelled),
-        result = runForecast(series, {
+        hybrid = runMonthlyHybridForecast(series, {
           asOf: input.asOf,
           horizonDays: horizon,
           baselineHistoryDays: input.settings.historyDays,
           newYearScenario: isNewYear(input, row.skuId),
         });
-      fingerprints.push(result.fingerprint);
+      const result = hybrid.long;
+      fingerprints.push(hybrid.fingerprint);
       const sold = group.find((s) => s.metric === "sold");
       // Gross sold is an explicitly separate seasonal feature. Returns remain separate,
       // never coalesced into fake zero-return days or added to operational quantities.
@@ -425,41 +464,64 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         calibrated?.candidate.eligible &&
         !directSeasonal;
       const useSeasonal = directSeasonal || !!useCalibrated;
-      const predictedUnits = useCalibrated
-        ? calibrated!.totalUnits
-        : directSeasonal
-          ? result.totalUnits
-          : baseline;
-      demand += predictedUnits;
+      const useMonthlyMl = policy.seasonalityEnabled && hybrid.usesMonthlyMl;
       const annual =
         useCalibrated ||
         (directSeasonal && result.selectedModel !== "autoregressive");
       if (annual) seasonal++;
-      if (directSeasonal && result.selectedModel === "autoregressive")
-        learned++;
-      const scenario = !useSeasonal && baselineSource.scenario;
+      if (useMonthlyMl) learned++;
+      const scenario =
+        !useSeasonal &&
+        baselineSource.scenario &&
+        (!useMonthlyMl ||
+          baselineSource.dailyForecast.some(
+            (p) =>
+              p.date > hybrid.monthly.dailyForecast.at(-1)!.date &&
+              p.date.slice(0, 4) === input.asOf.slice(0, 4) &&
+              p.date.slice(5, 7) >= "11",
+          ));
       if (scenario) scenarios++;
-      const dailyForecast = useCalibrated
+      const tailForecast = useCalibrated
         ? calibrated!.dailyForecast
         : directSeasonal
           ? result.dailyForecast
           : baselineSource.dailyForecast;
-      register(mapping.provider, {
-        dailyForecast,
-        methodLabel: useCalibrated
+      const dailyForecast = useMonthlyMl
+        ? applyMonthlySegment(hybrid.monthly, tailForecast)
+        : tailForecast;
+      const predictedUnits = dailyForecast.reduce((n, p) => n + p.units, 0);
+      demand += predictedUnits;
+      const methodLabel = useMonthlyMl
+        ? `ML: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : useSeasonal ? "сезонный прогноз" : "текущий спрос"}`
+        : useCalibrated
           ? calibrated!.candidate.label
           : directSeasonal
             ? MODEL_LABELS[result.selectedModel]
-            : baselineSource.methodLabel,
-        confidenceLabel: useCalibrated
-          ? "Умеренная уверенность"
-          : useSeasonal
-            ? confidenceLabel(result.confidence)
-            : baselineSource.confidenceLabel,
+            : baselineSource.methodLabel;
+      register(mapping.provider, {
+        dailyForecast,
+        methodLabel,
+        confidenceLabel: useMonthlyMl
+          ? confidenceLabel(hybrid.monthly.confidence)
+          : useCalibrated
+            ? "Умеренная уверенность"
+            : useSeasonal
+              ? confidenceLabel(result.confidence)
+              : baselineSource.confidenceLabel,
         scenario,
+        salesForecastKnown:
+          useMonthlyMl ||
+          useSeasonal ||
+          baselineSource.salesForecastKnown === true,
       });
       confidences.push(
-        useCalibrated ? "medium" : useSeasonal ? result.confidence : "low",
+        useMonthlyMl
+          ? hybrid.monthly.confidence
+          : useCalibrated
+            ? "medium"
+            : useSeasonal
+              ? result.confidence
+              : "low",
       );
       for (const point of series.points)
         if (point.units !== null && point.date <= input.asOf)
@@ -471,31 +533,43 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         "Заказы за вычетом отмен",
         predictedUnits,
       );
+      const monthlyCandidate = hybrid.monthly.candidates.find(
+        (c) => c.model === "autoregressive",
+      )!;
+      const monthlyMetrics = monthlyCandidate.metrics?.byHorizon.find(
+        (m) => m.horizonDays === MONTHLY_ML_DAYS,
+      );
+      source.candidates = source.candidates.map((c) =>
+        c.model === "autoregressive"
+          ? {
+              model: c.model,
+              label: `ML: прогноз на ${MONTHLY_ML_DAYS} дней`,
+              eligible: monthlyCandidate.eligible,
+              reason: monthlyCandidate.eligible
+                ? `Проверено на горизонте ${MONTHLY_ML_DAYS} дней; более дальние даты оцениваются отдельно.`
+                : `Горизонт ${MONTHLY_ML_DAYS} дней: ${monthlyCandidate.reason}`,
+              mae: monthlyMetrics?.mae ?? null,
+              wape: monthlyMetrics?.wape ?? null,
+              bias: monthlyMetrics?.bias ?? null,
+              folds: monthlyMetrics?.folds ?? 0,
+            }
+          : {
+              ...c,
+              reason: c.eligible
+                ? `Проверено на горизонте ${horizon} дней.`
+                : c.reason,
+            },
+      );
       if (calibrated) source.candidates.push(calibrated.candidate);
-      if (useCalibrated) {
-        source.modelLabel = calibrated!.candidate.label;
-        source.points = [
-          ...source.points.filter(
-            (p) => p.actual !== null || p.predicted === null,
-          ),
-          ...calibrated!.dailyForecast.map((p) => ({
-            date: p.date,
-            actual: null,
-            predicted: p.units,
-          })),
-        ];
-      }
-      if (!useSeasonal) {
-        source.modelLabel = baselineSource.methodLabel;
-        const byDate = new Map(
-          baselineSource.dailyForecast.map((p) => [p.date, p.units]),
-        );
-        source.points = source.points.map((p) =>
-          p.predicted !== null
-            ? { ...p, predicted: byDate.get(p.date) ?? null }
-            : p,
-        );
-      }
+      source.modelLabel = methodLabel;
+      source.points = [
+        ...source.points.filter((p) => p.predicted === null),
+        ...dailyForecast.map((p) => ({
+          date: p.date,
+          actual: null,
+          predicted: p.units,
+        })),
+      ];
       row.sources.push(source);
     }
     // Never mix financial sales/returns into an operational order forecast.
@@ -535,10 +609,10 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       policy.minimumBoxes * sku.unitsPerBox,
     );
     row.seasonalityApplied = seasonal > 0;
-    row.methodLabel = seasonal
-      ? "Прогноз с сезонностью"
-      : learned
-        ? "Обучаемая модель спроса"
+    row.methodLabel = learned
+      ? "ML: ближайшие 30 дней; дальше — отдельная оценка"
+      : seasonal
+        ? "Прогноз с сезонностью"
         : scenarios
           ? "Сценарий к Новому году"
           : "Недавний спрос";
@@ -553,10 +627,10 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     row.historyFrom = dates[0] ?? null;
     row.historyTo = dates.at(-1) ?? null;
     row.knownDays = dates.length;
-    row.message = seasonal
-      ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
-      : learned
-        ? "Обучаемая модель проверена по прошлым заказам и улучшила прогноз недавнего спроса."
+    row.message = learned
+      ? "ML-прогноз количества продаж проверен на ближайшие 30 дней. Более дальний запас оценивается отдельно по сезонности или текущему спросу."
+      : seasonal
+        ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
         : scenarios
           ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
           : !policy.seasonalityEnabled

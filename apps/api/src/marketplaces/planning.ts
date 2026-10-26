@@ -3,6 +3,9 @@ import { planningBacklog } from "./planning-backlog";
 import { baselineForecastSource } from "../forecasting/forecast-projection";
 import {
   dispatchSchedule,
+  preparationSchedule,
+  PREPARATION_DAYS,
+  UNIFIED_PLAN_VERSION,
   forecastQuantity,
   unifiedStockPlan,
 } from "./unified-plan";
@@ -15,6 +18,8 @@ import {
   MarketplaceInboundSourceDto,
   MarketplacePlanAdviceDto,
   MarketplaceProviderPlanDto,
+  MarketplaceWeeklyDispatchDto,
+  MarketplaceWeeklySalesDto,
 } from "./dto";
 const day = 86400000;
 export function marketplacePlan(
@@ -82,11 +87,15 @@ export function marketplacePlan(
     .toISOString()
     .slice(0, 10);
   const schedule = dispatchSchedule(clock, m.settings.dispatchWeekday ?? 6),
-    forecastDays =
-      schedule.waitDays +
-      m.settings.leadDays +
-      m.settings.horizonDays +
-      m.settings.safetyDays;
+    preparation = preparationSchedule(schedule.today, schedule.dispatchDate),
+    forecastDays = Math.max(
+      PREPARATION_DAYS,
+      (Date.parse(preparation.dates.at(-1)!) - Date.parse(schedule.today)) /
+        day +
+        m.settings.leadDays +
+        m.settings.horizonDays +
+        m.settings.safetyDays,
+    );
   const assigned = new Set(
     w.shipments.filter((s) => s.status === "draft").flatMap((s) => s.boxIds),
   );
@@ -276,6 +285,29 @@ export function marketplacePlan(
           seasonalityEnabled: forecast?.seasonalityEnabled?.[item.id] ?? true,
         })),
       };
+      const weeklyDispatches: MarketplaceWeeklyDispatchDto[] =
+        preparation.dates.map((date) => ({
+          date,
+          boxes: 0,
+          units: 0,
+          providers: [],
+        }));
+      const weeklySales: MarketplaceWeeklySalesDto[] = Array.from(
+        { length: Math.ceil(PREPARATION_DAYS / 7) },
+        (_, index) => ({
+          from: new Date(Date.parse(schedule.today) + index * 7 * day)
+            .toISOString()
+            .slice(0, 10),
+          to: new Date(
+            Date.parse(schedule.today) +
+              Math.min(PREPARATION_DAYS - 1, index * 7 + 6) * day,
+          )
+            .toISOString()
+            .slice(0, 10),
+          units: 0,
+          providers: [],
+        }),
+      );
       const providers: MarketplaceProviderPlanDto[] = providerNames.map(
         (provider) => {
           const snapshot = snapshots.find((item) => item.provider === provider);
@@ -320,7 +352,53 @@ export function marketplacePlan(
               : "Текущий спрос",
             confidenceLabel: "Предварительная оценка",
             scenario: fallback.some((item) => item.scenario),
+            salesForecastKnown:
+              fallback.length > 0 &&
+              fallback.every(
+                (item, index) =>
+                  item.salesForecastKnown ??
+                  !!snapshot?.demand.some(
+                    (record) =>
+                      record.externalId === related[index]?.externalId &&
+                      record.date >=
+                        new Date(Date.parse(to) - 13 * day)
+                          .toISOString()
+                          .slice(0, 10) &&
+                      record.date <= to,
+                  ),
+              ),
           };
+          const observedDemand = related.every((mapping) =>
+            snapshot?.demand.some(
+              (record) =>
+                record.externalId === mapping.externalId &&
+                record.date >=
+                  new Date(Date.parse(to) - 13 * day)
+                    .toISOString()
+                    .slice(0, 10) &&
+                record.date <= to,
+            ),
+          );
+          const salesForecastKnown =
+            !!snapshot?.coverage.demand &&
+            snapshot.to >= to &&
+            Number.isFinite(Date.parse(snapshot.asOf)) &&
+            clock.getTime() - Date.parse(snapshot.asOf) <= day &&
+            (source.salesForecastKnown ?? observedDemand);
+          const expectedSalesUnits30 = forecastQuantity(
+            source,
+            schedule.today,
+            PREPARATION_DAYS,
+          );
+          for (const week of weeklySales) {
+            const units = forecastQuantity(
+              source,
+              week.from,
+              (Date.parse(week.to) - Date.parse(week.from)) / day + 1,
+            );
+            week.units += units;
+            week.providers.push({ provider, units, known: salesForecastKnown });
+          }
           const periodDays =
             schedule.waitDays +
             m.settings.leadDays +
@@ -367,13 +445,47 @@ export function marketplacePlan(
             global.some((reason) => reason.startsWith(`${provider}:`)) ||
             !snapshot ||
             (!!snapshot && (snapshot.from > from || snapshot.to < to));
-          const complete = !providerBlock && stockKnown && inbound !== null;
+          const complete =
+            !providerBlock &&
+            stockKnown &&
+            inbound !== null &&
+            salesForecastKnown;
           const dispatchBoxes = Math.ceil(
             Math.max(0, target - (stockUnits ?? 0) - (inbound ?? 0)) /
               sku.unitsPerBox,
           );
+          let previousBoxes = 0;
+          for (const week of weeklyDispatches) {
+            const daysToCover =
+              (Date.parse(week.date) - Date.parse(schedule.today)) / day +
+              m.settings.leadDays +
+              m.settings.horizonDays +
+              m.settings.safetyDays;
+            const cumulativeTarget = Math.max(
+              0,
+              Math.ceil(
+                forecastQuantity(source, schedule.today, daysToCover) - 1e-9,
+              ),
+            );
+            // Current marketplace stock and already sent inbound are a single
+            // initial position, not a deduction to repeat on each weekly leg.
+            const cumulativeBoxes = Math.ceil(
+              Math.max(
+                0,
+                cumulativeTarget - (stockUnits ?? 0) - (inbound ?? 0),
+              ) / sku.unitsPerBox,
+            );
+            const boxes = Math.max(0, cumulativeBoxes - previousBoxes);
+            const units = boxes * sku.unitsPerBox;
+            week.providers.push({ provider, boxes, units });
+            week.boxes += boxes;
+            week.units += units;
+            previousBoxes = cumulativeBoxes;
+          }
           return {
             provider,
+            expectedSalesUnits30,
+            salesForecastKnown,
             averageDailyUnits: source.dailyForecast.length
               ? source.dailyForecast.reduce(
                   (sum, point) => sum + point.units,
@@ -392,6 +504,17 @@ export function marketplacePlan(
           };
         },
       );
+      if (providers.some((provider) => !provider.salesForecastKnown)) {
+        blockers.push(
+          "Недостаточно подтверждённой истории продаж для прогноза тематики",
+        );
+        reviewMessage ??=
+          "Недостаточно истории продаж для прогноза этой тематики.";
+      }
+      const monthlyOutboundUnits = weeklyDispatches.reduce(
+        (sum, week) => sum + week.units,
+        0,
+      );
       const averageDailyUnits = providers.reduce(
         (sum, provider) => sum + provider.averageDailyUnits,
         0,
@@ -409,10 +532,7 @@ export function marketplacePlan(
       const shipmentReservedUnits = boxes
         .filter((b) => assigned.has(b.id))
         .reduce((s, b) => s + b.units, 0);
-      if (
-        shipmentReservedUnits > 0 &&
-        providers.some((provider) => provider.dispatchUnits > 0)
-      ) {
+      if (shipmentReservedUnits > 0 && monthlyOutboundUnits > 0) {
         blockers.push(
           "Неизвестно, к какой площадке относятся зарезервированные короба",
         );
@@ -537,6 +657,7 @@ export function marketplacePlan(
         reservedUnits: shipmentReservedUnits,
         openTaskUnits,
         unitsPerBox: sku.unitsPerBox,
+        monthlyOutboundUnits,
       });
       const { recommendedBoxes, recommendedUnits } = unified;
       if (dataComplete && recommendedUnits > rawAvailableUnits)
@@ -604,6 +725,9 @@ export function marketplacePlan(
             to,
             recommendedBoxes,
             dispatchDate: schedule.dispatchDate,
+            planningVersion: UNIFIED_PLAN_VERSION,
+            preparationThrough: preparation.through,
+            weeklyDispatches,
             providers,
             forecast: forecast
               ? { key: forecast.key, goal: goal ?? null, minimumUnits }
@@ -618,6 +742,15 @@ export function marketplacePlan(
         skuName: sku.name,
         unitsPerBox: sku.unitsPerBox,
         ...unified,
+        weeklyDispatches,
+        expectedSalesUnits30: providers.reduce(
+          (sum, provider) => sum + provider.expectedSalesUnits30,
+          0,
+        ),
+        salesForecastKnown:
+          providers.length > 0 &&
+          providers.every((provider) => provider.salesForecastKnown),
+        weeklySales,
         backlogRank: null as number | null,
         backlogCanCreate: false,
         backlogBoxes: 0,
@@ -667,6 +800,8 @@ export function marketplacePlan(
       .digest("hex");
   return {
     backlogMessage,
+    preparationDays: PREPARATION_DAYS,
+    preparationThrough: preparation.through,
     generatedAt,
     dispatchDate: schedule.dispatchDate,
     leadDays: m.settings.leadDays,

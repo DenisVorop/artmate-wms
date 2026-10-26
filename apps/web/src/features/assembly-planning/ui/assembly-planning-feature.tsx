@@ -108,7 +108,7 @@ export function AssemblyPlanningFeature() {
             aria-label="Итог плана"
           >
             <div className={styles.total}>
-              <span>Отправить на WB и Ozon</span>
+              <span>Ближайшая отправка</span>
               <strong>
                 {groups.completeCount
                   ? boxesLabel(groups.outboundBoxes)
@@ -117,7 +117,7 @@ export function AssemblyPlanningFeature() {
               <small>Потребность к {dispatchLabel(plan.dispatchDate)}</small>
             </div>
             <div className={styles.total}>
-              <span>Останется у нас после отправки</span>
+              <span>Останется после этой отправки</span>
               <strong>
                 {groups.completeCount
                   ? boxesLabel(groups.remainingBoxes)
@@ -130,13 +130,16 @@ export function AssemblyPlanningFeature() {
               </small>
             </div>
             <div className={styles.total}>
-              <span>Собрать к отгрузке</span>
+              <span>Собрать на месяц</span>
               <strong className={styles.quantityAccent}>
                 {groups.completeCount
                   ? boxesLabel(groups.boxes)
                   : "Нужны данные"}
               </strong>
-              <small>Текущие задания уже учтены</small>
+              <small>
+                На все отправки до {dispatchLabel(plan.preparationThrough)} ·
+                текущая сборка учтена
+              </small>
             </div>
           </section>
           {groups.review.length > 0 && (
@@ -145,6 +148,28 @@ export function AssemblyPlanningFeature() {
               проверки. Их количество не включено.
             </p>
           )}
+          <details className={`glass-panel ${styles.backlog}`}>
+            <summary className={styles.settingsSummary}>
+              Отправки на месяц{" "}
+              <span>
+                {groups.completeCount
+                  ? boxesLabel(groups.monthlyOutboundBoxes)
+                  : "Нужны данные"}
+              </span>
+            </summary>
+            <div className={styles.weeklyPlan}>
+              {groups.weeklyDispatches.map((week) => (
+                <div className={styles.quantity} key={week.date}>
+                  <span>{dispatchLabel(week.date)}</span>
+                  <strong>{boxesLabel(week.boxes)}</strong>
+                </div>
+              ))}
+            </div>
+            <p className={styles.help}>
+              План до {dispatchLabel(plan.preparationThrough)}. Это
+              рекомендации; поставки автоматически не создаются.
+            </p>
+          </details>
           <details className={`glass-panel ${styles.backlog}`}>
             <summary className={styles.settingsSummary}>
               Что собирать после срочных заданий{" "}

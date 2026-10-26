@@ -129,14 +129,14 @@ test("new product fallback uses known days since observation and the same daily 
     },
   ];
   const result = computeForecast(input),
-    baseline = baselineForecastSource(input, "ozon", "one", 83);
-  assert.equal(result.goals[input.skus[0].id].targetUnits, 830);
+    baseline = baselineForecastSource(input, "ozon", "one", 106);
+  assert.equal(result.goals[input.skus[0].id].targetUnits, 1060);
   assert.deepEqual(
     result.goals[input.skus[0].id].sources![0].dailyForecast,
     baseline.dailyForecast,
   );
   assert.equal(result.overview.rows[0].seasonalityApplied, false);
-  assert.equal(result.overview.rows[0].sources[0].predictedUnits, 830);
+  assert.equal(result.overview.rows[0].sources[0].predictedUnits, 1060);
   assert.equal(
     result.overview.rows[0].sources[0].points.filter(
       (p) => p.predicted !== null,
@@ -207,7 +207,7 @@ test("seasonality switch uses the adaptive fallback; minimum boxes is a floor", 
     row.targetUnits,
     Math.max(
       Math.ceil(
-        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+        baselineForecastSource(input, "ozon", "one", 106).dailyForecast.reduce(
           (n, p) => n + p.units,
           0,
         ),
@@ -220,7 +220,7 @@ test("seasonality switch uses the adaptive fallback; minimum boxes is a floor", 
     computeForecast(input).overview.rows[0].targetUnits,
     Math.max(
       Math.ceil(
-        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+        baselineForecastSource(input, "ozon", "one", 106).dailyForecast.reduce(
           (n, p) => n + p.units,
           0,
         ),
@@ -232,7 +232,7 @@ test("seasonality switch uses the adaptive fallback; minimum boxes is a floor", 
     baselineForecastOverview(input).rows[0].targetUnits,
     Math.max(
       Math.ceil(
-        baselineForecastSource(input, "ozon", "one", 83).dailyForecast.reduce(
+        baselineForecastSource(input, "ozon", "one", 106).dailyForecast.reduce(
           (n, p) => n + p.units,
           0,
         ),
@@ -268,7 +268,7 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
   const ordered = {
     ...history("ordered", () => 0),
     points: sold.points
-      .slice(-310)
+      .slice(-380)
       .map((p) => ({ ...p, units: p.units! * 1.2 })),
   };
   const cancelled = {
@@ -324,13 +324,13 @@ test("cached goals preserve daily provider curves and aggregate cards without in
     goal = result.goals[input.skus[0].id];
   assert.equal(goal.sources!.length, 1);
   assert.equal(goal.sources![0].provider, "ozon");
-  assert.equal(goal.sources![0].dailyForecast.length, 83);
+  assert.equal(goal.sources![0].dailyForecast.length, 106);
   assert.equal(goal.sources![0].dailyForecast[0].date, "2025-12-20");
   assert.equal(goal.sources![0].dailyForecast[0].units, 20);
   assert.equal(goal.targetUnits, 1000 * input.skus[0].unitsPerBox);
   assert.equal(
     goal.sources![0].dailyForecast.reduce((n, p) => n + p.units, 0),
-    1660,
+    2120,
   );
 });
 
@@ -339,13 +339,91 @@ test("a validated short-term trained model reaches the plan without being labele
   input.series = [
     history("ordered", (i) => (i % 7 < 5 ? 10 : 40)),
     history("cancelled", () => 0),
-  ].map((s) => ({ ...s, points: s.points.slice(-350) }));
+  ].map((s) => ({ ...s, points: s.points.slice(-400) }));
   const result = computeForecast(input),
     row = result.overview.rows[0],
     goal = result.goals[input.skus[0].id];
   assert.equal(row.seasonalityApplied, false);
-  assert.equal(row.methodLabel, "Обучаемая модель спроса");
-  assert.match(row.message, /проверена по прошлым заказам/);
-  assert.equal(goal.sources![0].methodLabel, "Обучаемая модель спроса");
+  assert.match(row.methodLabel, /ML: ближайшие 30 дней/);
+  assert.match(row.message, /проверен на ближайшие 30 дней/);
+  assert.match(goal.sources![0].methodLabel, /ML: ближайшие 30 дней/);
   assert.equal(goal.sources![0].scenario, false);
+});
+
+test("forecast curves cover every Saturday in a thirty-day preparation window even at maximum settings", () => {
+  const { input } = fixture();
+  input.settings.horizonDays = 180;
+  input.settings.safetyDays = 60;
+  input.settings.leadDays = 90;
+  input.series = [
+    {
+      ...history("ordered", () => 10),
+      points: history("ordered", () => 10).points.slice(-14),
+    },
+    {
+      ...history("cancelled", () => 0),
+      points: history("cancelled", () => 0).points.slice(-14),
+    },
+  ];
+  const source = computeForecast(input).goals[input.skus[0].id].sources![0];
+  assert.equal(source.dailyForecast.length, 359);
+  assert.equal(source.dailyForecast[0].date, "2025-12-20");
+  assert.equal(source.dailyForecast.at(-1)!.date, "2026-12-13");
+});
+
+test("30-day learned segment reaches a 106-day planning curve while its tail remains the deployed fallback", () => {
+  const { input } = fixture();
+  input.series = [
+    history("ordered", (i) => (i % 7 < 5 ? 10 : 40)),
+    history("cancelled", () => 0),
+  ].map((s) => ({ ...s, points: s.points.slice(-180) }));
+  const result = computeForecast(input),
+    goal = result.goals[input.skus[0].id],
+    source = goal.sources![0];
+  assert.equal(source.dailyForecast.length, 106);
+  assert.match(
+    source.methodLabel,
+    /ML: ближайшие 30 дней; далее текущий спрос/,
+  );
+  const baseline = baselineForecastSource(input, "ozon", "one", 106);
+  assert.deepEqual(
+    source.dailyForecast.slice(30),
+    baseline.dailyForecast.slice(30),
+  );
+  const candidate = result.overview.rows[0].sources[0].candidates.find(
+    (c) => c.model === "autoregressive",
+  )!;
+  assert.equal(candidate.eligible, true);
+  assert.equal(candidate.folds, 3);
+  assert.match(candidate.reason!, /30 дней/);
+  assert.equal(source.salesForecastKnown, true);
+});
+
+test("unknown demand is distinct from an explicitly observed zero and never becomes a known zero forecast", () => {
+  const { input } = fixture();
+  input.snapshots[0].demand = [];
+  assert.equal(
+    baselineForecastSource(input, "ozon", "one", 106).salesForecastKnown,
+    false,
+  );
+  const missing = computeForecast(input).goals[input.skus[0].id].sources![0];
+  assert.equal(missing.salesForecastKnown, false);
+  input.snapshots[0].demand = [
+    {
+      externalId: "one",
+      date: input.asOf,
+      orderedUnits: 0,
+      cancelledUnits: 0,
+      soldUnits: 0,
+      returnedUnits: 0,
+    },
+  ];
+  const zero = baselineForecastSource(input, "ozon", "one", 106);
+  assert.equal(zero.salesForecastKnown, true);
+  assert.ok(zero.dailyForecast.every((p) => p.units === 0));
+  input.snapshots[0].coverage.demand = false;
+  assert.equal(
+    baselineForecastSource(input, "ozon", "one", 106).salesForecastKnown,
+    false,
+  );
 });

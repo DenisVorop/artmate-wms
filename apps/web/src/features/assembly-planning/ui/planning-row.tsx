@@ -7,7 +7,7 @@ import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
-import { boxesLabel, packagedLabel } from "../lib/planning-view";
+import { boxesLabel, packagedLabel, dispatchLabel } from "../lib/planning-view";
 import type { StockConfirmationValues } from "../lib/planning-form";
 import { PlanningStock } from "./planning-stock";
 import styles from "./assembly-planning.module.css";
@@ -76,7 +76,16 @@ export function PlanningRow({
         </div>
         <div className={styles.quantities}>
           <div className={styles.quantity}>
-            <span>Отправить</span>
+            <span>Ожидаем продать за 30 дней</span>
+            <strong>
+              {row.salesForecastKnown
+                ? `≈ ${number(row.expectedSalesUnits30)} шт.`
+                : "Нужны данные"}
+            </strong>
+            <span>Прогноз по этой тематике</span>
+          </div>
+          <div className={styles.quantity}>
+            <span>Ближайшая отправка</span>
             <strong>
               {row.dataComplete ? boxesLabel(row.outboundBoxes) : "Уточнить"}
             </strong>
@@ -96,7 +105,7 @@ export function PlanningRow({
             </span>
           </div>
           <div className={styles.quantity}>
-            <span>Собрать к отгрузке</span>
+            <span>Собрать на месяц</span>
             <strong
               className={needsAssembly ? styles.quantityAccent : undefined}
             >
@@ -159,6 +168,74 @@ export function PlanningRow({
         onToggle={(event) => setExpanded(event.currentTarget.open)}
       >
         <summary>Подробнее</summary>
+        <h3 className={styles.forecastHeading}>
+          Сколько ожидаем продать по неделям
+        </h3>
+        <div className={styles.weeklyPlan}>
+          {row.weeklySales.map((week) => (
+            <div className={styles.quantity} key={week.from}>
+              <span>
+                {dispatchLabel(week.from)} — {dispatchLabel(week.to)}
+              </span>
+              <strong>
+                {row.salesForecastKnown
+                  ? `≈ ${number(week.units)} шт.`
+                  : "Нужны данные"}
+              </strong>
+              {week.providers.map((source) => (
+                <span key={source.provider}>
+                  {source.provider === "ozon" ? "Ozon" : "WB"}:{" "}
+                  {source.known
+                    ? `≈ ${number(source.units)} шт.`
+                    : "нет прогноза"}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+        <dl className={styles.metrics}>
+          <Metric
+            label="Отправки за месяц"
+            value={
+              row.dataComplete
+                ? boxesLabel(row.monthlyOutboundBoxes)
+                : "Не уточнено"
+            }
+          />
+          <Metric
+            label="Останется после всех отправок"
+            value={
+              row.dataComplete
+                ? packagedLabel(
+                    row.localAfterPlannedDispatchUnits,
+                    row.unitsPerBox,
+                  )
+                : "Не уточнено"
+            }
+          />
+          <Metric
+            label="В сборке уже учтено"
+            value={packagedLabel(row.openTaskUnits, row.unitsPerBox)}
+          />
+        </dl>
+        {row.dataComplete && (
+          <div className={styles.weeklyPlan}>
+            {row.weeklyDispatches.map((week) => (
+              <div className={styles.quantity} key={week.date}>
+                <span>{dispatchLabel(week.date)}</span>
+                <strong>{boxesLabel(week.boxes)}</strong>
+                <span>
+                  {week.providers
+                    .map(
+                      (source) =>
+                        `${source.provider === "ozon" ? "Ozon" : "WB"}: ${source.boxes}`,
+                    )
+                    .join(" · ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className={styles.providers}>
           {row.providers.map((source) => (
             <div className={styles.provider} key={source.provider}>
@@ -178,6 +255,14 @@ export function PlanningRow({
                 {source.confidenceLabel}
               </p>
               <dl className={styles.metrics}>
+                <Metric
+                  label="Ожидаем за 30 дней, шт."
+                  value={
+                    source.salesForecastKnown
+                      ? `≈ ${number(source.expectedSalesUnits30)}`
+                      : "Нужны данные"
+                  }
+                />
                 <Metric
                   label="Заказов в день"
                   value={

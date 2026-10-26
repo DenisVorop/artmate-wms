@@ -16,6 +16,8 @@ const row = (
 ) =>
   ({
     skuName: name,
+    weeklyDispatches: [],
+    monthlyOutboundBoxes: boxes,
     unitsPerBox: 20,
     outboundBoxes: boxes,
     localAfterDispatchUnits: 20,
@@ -23,7 +25,7 @@ const row = (
     dataComplete: complete,
     recommendedBoxes: boxes,
     advice: { state },
-  }) as MarketplacePlanRowDto;
+  }) as unknown as MarketplacePlanRowDto;
 test("summary and assembly list never present unknown quantities as confirmed work", () => {
   const rows = [
     row("Зима", "raw_shortage", 2),
@@ -79,4 +81,28 @@ test("unified totals exclude incomplete rows and preserve loose units without in
   assert.equal(packagedLabel(45, 20), "2 короба + 5 шт.");
   assert.equal(dispatchLabel("2026-10-31"), "31 октября");
   assert.deepEqual(planningRows([missing, good], "shipping"), [good]);
+});
+
+test("weekly totals use server projections once and exclude incomplete themes", () => {
+  const a = row("Месяц", "raw_shortage", 4);
+  Object.assign(a, {
+    outboundBoxes: 0,
+    monthlyOutboundBoxes: 4,
+    weeklyDispatches: [
+      { date: "2026-11-07", boxes: 2 },
+      { date: "2026-11-14", boxes: 2 },
+    ],
+  });
+  const unknown = row("Неизвестно", "review", 99, false);
+  Object.assign(unknown, {
+    weeklyDispatches: [{ date: "2026-11-07", boxes: 99 }],
+  });
+  const g = planningGroups([a, unknown]);
+  assert.equal(g.outboundBoxes, 0);
+  assert.equal(g.boxes, 4);
+  assert.equal(g.monthlyOutboundBoxes, 4);
+  assert.deepEqual(g.weeklyDispatches, [
+    { date: "2026-11-07", boxes: 2 },
+    { date: "2026-11-14", boxes: 2 },
+  ]);
 });

@@ -17,7 +17,7 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v2.0.0";
+export const FORECAST_MODEL_VERSION = "seasonal-v2.1.0";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",
@@ -416,6 +416,7 @@ function backtest(
   horizon: number,
   baselineHistoryDays: number,
   useNewYearScenario = false,
+  allowAutoregressive = true,
 ): Map<ForecastModel, Fold[]> {
   const results = new Map<ForecastModel, Fold[]>(
     MODELS.map((model) => [model, []]),
@@ -449,6 +450,7 @@ function backtest(
           baseline[point.day - cutoff - 1] - point.units,
         );
       for (const model of MODELS) {
+        if (model === "autoregressive" && !allowAutoregressive) continue;
         const fitted =
           model === "mean"
             ? baseline
@@ -569,18 +571,25 @@ export function runForecast(
     options.horizonDays,
     baselineHistoryDays,
     options.newYearScenario ?? false,
+    options.allowAutoregressive ?? true,
   );
   const fitted = new Map(
     MODELS.map((model) => [
       model,
-      fit(
-        model,
-        prepared.values,
-        asOf,
-        options.horizonDays,
-        baselineHistoryDays,
-        options.newYearScenario ?? false,
-      ),
+      model === "autoregressive" && options.allowAutoregressive === false
+        ? {
+            values: null,
+            reason:
+              "Краткосрочная ML-модель проверяется отдельно на ближайшие 30 дней.",
+          }
+        : fit(
+            model,
+            prepared.values,
+            asOf,
+            options.horizonDays,
+            baselineHistoryDays,
+            options.newYearScenario ?? false,
+          ),
     ]),
   );
   const candidates: ForecastCandidate[] = MODELS.map((model) => {
@@ -661,6 +670,7 @@ export function runForecast(
         horizonDays: options.horizonDays,
         baselineHistoryDays,
         newYearScenario: options.newYearScenario ?? false,
+        allowAutoregressive: options.allowAutoregressive ?? true,
         minUnits: options.minUnits ?? 0,
       }),
     )

@@ -96,8 +96,8 @@ test("aggregate WB and Ozon multipacks in internal units, round boxes and count 
   assert.equal(row.averageDailyUnits, 3);
   assert.equal(row.targetUnits, 72);
   assert.equal(row.marketplaceUnits, 15);
-  assert.equal(row.recommendedBoxes, 3);
-  assert.equal(row.recommendedUnits, 60);
+  assert.equal(row.recommendedBoxes, 8);
+  assert.equal(row.recommendedUnits, 160);
   w.tasks.push({
     id: "work",
     skuId: "sku-cats",
@@ -121,7 +121,7 @@ test("aggregate WB and Ozon multipacks in internal units, round boxes and count 
   assert.equal(row.openTaskUnits, 20);
   assert.equal(row.readyUnits, 20);
   assert.equal(row.shippingReadyUnits, 0);
-  assert.equal(row.recommendedBoxes, 1);
+  assert.equal(row.recommendedBoxes, 6);
   w.shipments.push({
     id: "shipment",
     skuId: "sku-cats",
@@ -131,7 +131,7 @@ test("aggregate WB and Ozon multipacks in internal units, round boxes and count 
   row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.readyUnits, 0);
   assert.equal(row.shipmentReservedUnits, 20);
-  assert.equal(row.recommendedBoxes, 1);
+  assert.equal(row.recommendedBoxes, 6);
 });
 test("unknown/stale/incomplete/unmapped data blocks publication; unplaced raw is never capacity", () => {
   const { w, m } = fixture();
@@ -217,7 +217,16 @@ test("forecast uses completed Moscow days across UTC midnight and known API tran
 test("missing data never claims no demand; confirmed zero demand remains a valid no-work result", () => {
   const { w, m } = fixture();
   m.snapshots.forEach((s) => {
-    s.demand = [];
+    s.demand = [
+      {
+        externalId: "one",
+        date: "2026-10-24",
+        orderedUnits: 0,
+        cancelledUnits: 0,
+        returnedUnits: 0,
+        soldUnits: 0,
+      },
+    ];
     s.stocks[0].availableUnits = 0;
   });
   delete m.transit["sku-cats"];
@@ -407,12 +416,12 @@ test("business advice asks for receiving only placed and free raw stock can sati
   }));
   const row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.dataComplete, true);
-  assert.equal(row.recommendedBoxes, 3);
+  assert.equal(row.recommendedBoxes, 8);
   assert.equal(row.rawAvailableUnits, 0);
   assert.equal(row.canCreate, false);
   assert.deepEqual(row.advice, {
     state: "raw_shortage",
-    message: "Примите и разместите товар: не хватает 60 шт.",
+    message: "Примите и разместите товар: не хватает 160 шт.",
     action: "receiving",
   });
 });
@@ -421,7 +430,16 @@ test("business advice distinguishes covered demand from unknown quantities witho
   const { w, m } = fixture();
   w.pallets = [];
   m.snapshots.forEach((s) => {
-    s.demand = [];
+    s.demand = [
+      {
+        externalId: "one",
+        date: "2026-10-24",
+        orderedUnits: 0,
+        cancelledUnits: 0,
+        returnedUnits: 0,
+        soldUnits: 0,
+      },
+    ];
   });
   let row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.dataComplete, true);
@@ -494,7 +512,7 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
           methodLabel: "Прогноз с сезонностью",
           confidenceLabel: "Умеренная уверенность",
           scenario: false,
-          dailyForecast: Array.from({ length: 24 }, (_, i) => ({
+          dailyForecast: Array.from({ length: 60 }, (_, i) => ({
             date: new Date(Date.parse("2026-10-25") + i * 86400000)
               .toISOString()
               .slice(0, 10),
@@ -508,7 +526,7 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
   const row = marketplacePlan(w, m, now, context).rows[0];
   assert.equal(row.targetUnits, 200);
   assert.equal(row.marketplaceUnits, 15);
-  assert.equal(row.recommendedBoxes, 10);
+  assert.equal(row.recommendedBoxes, 22);
   assert.notEqual(row.proposalHash, baseline.proposalHash);
   assert.notEqual(
     row.proposalHash,
@@ -530,7 +548,16 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
 test("explicit minimum stock policy remains optional preparation and never invents dispatch demand", () => {
   const { w, m } = fixture();
   m.snapshots.forEach((s) => {
-    s.demand = [];
+    s.demand = [
+      {
+        externalId: "one",
+        date: "2026-10-24",
+        orderedUnits: 0,
+        cancelledUnits: 0,
+        returnedUnits: 0,
+        soldUnits: 0,
+      },
+    ];
     s.stocks[0].availableUnits = 0;
   });
   const context = { key: "policy", goals: {}, minimumBoxes: { "sku-cats": 2 } };

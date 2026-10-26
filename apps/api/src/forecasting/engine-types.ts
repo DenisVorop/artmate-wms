@@ -32,6 +32,8 @@ export interface ForecastOptions {
   baselineHistoryDays?: number;
   /** Explicit calendar scenario, never labeled as learned annual seasonality. */
   newYearScenario?: boolean;
+  /** Internal segment policy. Default preserves full-horizon model selection. */
+  allowAutoregressive?: boolean;
   /** Optional stock floor; applied to the total goal, never added to demand. */
   minUnits?: number;
 }

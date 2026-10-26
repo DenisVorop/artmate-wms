@@ -34,7 +34,18 @@ export function planningGroups(rows: MarketplacePlanRowDto[]) {
   const complete = rows.filter(
     (row) => row.dataComplete && row.advice.state !== "review",
   );
+  const weeks = new Map<string, number>();
+  for (const row of complete)
+    for (const week of row.weeklyDispatches)
+      weeks.set(week.date, (weeks.get(week.date) ?? 0) + week.boxes);
   return {
+    monthlyOutboundBoxes: complete.reduce(
+      (sum, row) => sum + row.monthlyOutboundBoxes,
+      0,
+    ),
+    weeklyDispatches: [...weeks]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, boxes]) => ({ date, boxes })),
     assembly,
     completeCount: complete.length,
     shipping: complete.filter((row) => row.outboundBoxes > 0),

@@ -137,6 +137,8 @@ function providerPlan(value: unknown) {
     record(value) &&
     provider(value.provider) &&
     quantity(value.averageDailyUnits) &&
+    quantity(value.expectedSalesUnits30) &&
+    typeof value.salesForecastKnown === "boolean" &&
     [value.targetUnits, value.dispatchUnits, value.dispatchBoxes].every(
       integer,
     ) &&
@@ -149,9 +151,57 @@ function providerPlan(value: unknown) {
     typeof value.scenario === "boolean"
   );
 }
+function weeklyDispatch(value: unknown) {
+  return (
+    record(value) &&
+    text(value.date) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.date) &&
+    timestamp(value.date) &&
+    integer(value.boxes) &&
+    integer(value.units) &&
+    Array.isArray(value.providers) &&
+    value.providers.every(
+      (p) =>
+        record(p) &&
+        provider(p.provider) &&
+        integer(p.boxes) &&
+        integer(p.units),
+    )
+  );
+}
+function weeklySale(value: unknown) {
+  return (
+    record(value) &&
+    text(value.from) &&
+    timestamp(value.from) &&
+    text(value.to) &&
+    timestamp(value.to) &&
+    quantity(value.units) &&
+    Array.isArray(value.providers) &&
+    value.providers.every(
+      (p) =>
+        record(p) &&
+        provider(p.provider) &&
+        quantity(p.units) &&
+        typeof p.known === "boolean",
+    )
+  );
+}
 function planRow(value: unknown) {
   if (!record(value)) return false;
   return (
+    quantity(value.expectedSalesUnits30) &&
+    typeof value.salesForecastKnown === "boolean" &&
+    Array.isArray(value.weeklySales) &&
+    value.weeklySales.every(weeklySale) &&
+    Array.isArray(value.weeklyDispatches) &&
+    value.weeklyDispatches.every(weeklyDispatch) &&
+    [
+      value.monthlyOutboundBoxes,
+      value.monthlyOutboundUnits,
+      value.localAfterPlannedDispatchUnits,
+      value.monthlyDispatchShortageUnits,
+    ].every(integer) &&
     Array.isArray(value.providers) &&
     value.providers.every(providerPlan) &&
     [
@@ -217,6 +267,11 @@ export function isMarketplaceOverviewResponse(
     Array.isArray(value.planningStock) &&
     value.planningStock.every(planningStock) &&
     record(value.plan) &&
+    integer(value.plan.preparationDays) &&
+    value.plan.preparationDays > 0 &&
+    text(value.plan.preparationThrough) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.plan.preparationThrough) &&
+    timestamp(value.plan.preparationThrough) &&
     timestamp(value.plan.generatedAt) &&
     text(value.plan.dispatchDate) &&
     /^\d{4}-\d{2}-\d{2}$/.test(value.plan.dispatchDate) &&

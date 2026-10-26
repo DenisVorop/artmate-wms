@@ -265,6 +265,8 @@ export class MarketplacePlanAdviceDto {
   action!: "create" | "receiving" | "integrations" | "transit" | "none";
 }
 export class MarketplaceProviderPlanDto {
+  @ApiProperty({ type: Number }) expectedSalesUnits30!: number;
+  @ApiProperty({ type: Boolean }) salesForecastKnown!: boolean;
   @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
     | "wildberries"
     | "ozon";
@@ -281,7 +283,45 @@ export class MarketplaceProviderPlanDto {
   @ApiProperty({ type: String }) confidenceLabel!: string;
   @ApiProperty({ type: Boolean }) scenario!: boolean;
 }
+export class MarketplaceWeeklyProviderDto {
+  @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: Number }) boxes!: number;
+  @ApiProperty({ type: Number }) units!: number;
+}
+export class MarketplaceWeeklyDispatchDto {
+  @ApiProperty({ type: String }) date!: string;
+  @ApiProperty({ type: Number }) boxes!: number;
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiProperty({ type: [MarketplaceWeeklyProviderDto] })
+  providers!: MarketplaceWeeklyProviderDto[];
+}
+export class MarketplaceWeeklySalesProviderDto {
+  @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiProperty({ type: Boolean }) known!: boolean;
+}
+export class MarketplaceWeeklySalesDto {
+  @ApiProperty({ type: String }) from!: string;
+  @ApiProperty({ type: String }) to!: string;
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiProperty({ type: [MarketplaceWeeklySalesProviderDto] })
+  providers!: MarketplaceWeeklySalesProviderDto[];
+}
 export class MarketplacePlanRowDto {
+  @ApiProperty({ type: Number }) expectedSalesUnits30!: number;
+  @ApiProperty({ type: Boolean }) salesForecastKnown!: boolean;
+  @ApiProperty({ type: [MarketplaceWeeklySalesDto] })
+  weeklySales!: MarketplaceWeeklySalesDto[];
+  @ApiProperty({ type: Number }) monthlyOutboundBoxes!: number;
+  @ApiProperty({ type: Number }) monthlyOutboundUnits!: number;
+  @ApiProperty({ type: Number }) monthlyDispatchShortageUnits!: number;
+  @ApiProperty({ type: Number }) localAfterPlannedDispatchUnits!: number;
+  @ApiProperty({ type: [MarketplaceWeeklyDispatchDto] })
+  weeklyDispatches!: MarketplaceWeeklyDispatchDto[];
   @ApiProperty({ type: [MarketplaceProviderPlanDto] })
   providers!: MarketplaceProviderPlanDto[];
   @ApiProperty({ type: Number }) outboundBoxes!: number;
@@ -330,6 +370,8 @@ export class MarketplacePlanRowDto {
   @ApiProperty({ type: String }) proposalHash!: string;
 }
 export class MarketplacePlanDto {
+  @ApiProperty({ type: Number }) preparationDays!: number;
+  @ApiProperty({ type: String }) preparationThrough!: string;
   @ApiProperty({ type: String }) backlogMessage!: string;
   @ApiProperty({ type: String }) dispatchDate!: string;
   @ApiProperty({ type: Number }) leadDays!: number;

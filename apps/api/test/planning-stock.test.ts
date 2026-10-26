@@ -107,10 +107,11 @@ function fixture() {
         sources: [
           {
             provider: "ozon",
+            salesForecastKnown: true,
             methodLabel: "Средний спрос",
             confidenceLabel: "Оценка",
             scenario: false,
-            dailyForecast: Array.from({ length: 24 }, (_, i) => ({
+            dailyForecast: Array.from({ length: 60 }, (_, i) => ({
               date: new Date(Date.parse("2026-10-26") + i * 86400000)
                 .toISOString()
                 .slice(0, 10),
@@ -156,7 +157,7 @@ test("confirmed totals offset tracked units once; new assembly, shipment and dra
   assert.equal(row.readyUnits, 100);
   assert.equal(row.unregisteredUnits, 80);
   assert.equal(row.shippingReadyUnits, 0);
-  assert.equal(row.recommendedUnits, 900);
+  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 100);
   f.w.boxes.push({
     ...structuredClone(f.template),
     id: "new-box",
@@ -164,7 +165,7 @@ test("confirmed totals offset tracked units once; new assembly, shipment and dra
   });
   row = f.row();
   assert.equal(row.readyUnits, 120);
-  assert.equal(row.recommendedUnits, 880);
+  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 120);
   f.w.shipments.push({
     id: "draft",
     code: "DRAFT",
@@ -175,13 +176,13 @@ test("confirmed totals offset tracked units once; new assembly, shipment and dra
   row = f.row();
   assert.equal(row.readyUnits, 100);
   assert.equal(row.shipmentReservedUnits, 20);
-  assert.equal(row.recommendedUnits, 880);
+  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 120);
   f.w.shipments[0].status = "shipped";
   f.w.boxes[0].status = "shipped";
   row = f.row();
   assert.equal(row.readyUnits, 100);
   assert.equal(row.shipmentReservedUnits, 0);
-  assert.equal(row.recommendedUnits, 900);
+  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 100);
   assert.equal(row.shippingReadyUnits, 0);
 });
 test("excluded products disappear; unknown or approximate counts stay explicit review and cannot create tasks", () => {

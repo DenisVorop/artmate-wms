@@ -1,3 +1,7 @@
+import {
+  PREPARATION_DAYS,
+  UNIFIED_PLAN_VERSION,
+} from "../marketplaces/unified-plan";
 import { createHash } from "node:crypto";
 import type { Queryable } from "../database";
 import type { SkuDto } from "../dto";
@@ -11,6 +15,7 @@ export interface ForecastPolicy {
   seasonalityEnabled: boolean;
 }
 export interface ForecastPlanSource {
+  salesForecastKnown?: boolean;
   provider: "wildberries" | "ozon";
   dailyForecast: { date: string; units: number }[];
   methodLabel: string;
@@ -116,6 +121,10 @@ export async function forecastInputKey(
     ).rows[0]?.value ?? "0";
   const stable = {
     version: FORECAST_MODEL_VERSION,
+    planning: {
+      version: UNIFIED_PLAN_VERSION,
+      preparationDays: PREPARATION_DAYS,
+    },
     asOf: forecastAsOf(clock),
     revision,
     settings: {

@@ -1,6 +1,21 @@
 import type { MarketplaceProviderPlanDto } from "./dto";
 import type { ForecastPlanSource } from "../forecasting/forecast-storage";
 const DAY = 86_400_000;
+export const PREPARATION_DAYS = 30;
+export const UNIFIED_PLAN_VERSION = "weekly-month-preparation-v1";
+export function preparationSchedule(today: string, firstDispatchDate: string) {
+  const through = new Date(Date.parse(today) + (PREPARATION_DAYS - 1) * DAY)
+    .toISOString()
+    .slice(0, 10);
+  const dates: string[] = [];
+  for (
+    let date = Date.parse(firstDispatchDate);
+    date <= Date.parse(through);
+    date += 7 * DAY
+  )
+    dates.push(new Date(date).toISOString().slice(0, 10));
+  return { through, dates };
+}
 export function dispatchSchedule(clock: Date, weekday: number) {
   const today = new Date(clock.getTime() + 10_800_000)
     .toISOString()
@@ -33,6 +48,7 @@ export function unifiedStockPlan(input: {
   reservedUnits: number;
   openTaskUnits: number;
   unitsPerBox: number;
+  monthlyOutboundUnits?: number;
 }) {
   const providerNeed = input.providers.reduce(
     (sum, p) => sum + p.dispatchUnits,
@@ -42,9 +58,13 @@ export function unifiedStockPlan(input: {
   // commitments, not an extra copy of the provider demand or inbound supply.
   const newOutboundUnits = Math.max(0, providerNeed - input.reservedUnits);
   const outboundUnits = input.reservedUnits + newOutboundUnits;
+  const monthlyOutboundUnits = Math.max(
+    outboundUnits,
+    input.monthlyOutboundUnits ?? outboundUnits,
+  );
   const assemblyShortageUnits = Math.max(
     0,
-    outboundUnits - input.ownUnits - input.openTaskUnits,
+    monthlyOutboundUnits - input.ownUnits - input.openTaskUnits,
   );
   const recommendedBoxes = Math.ceil(assemblyShortageUnits / input.unitsPerBox);
   const recommendedUnits = recommendedBoxes * input.unitsPerBox;
@@ -55,10 +75,23 @@ export function unifiedStockPlan(input: {
     newOutboundBoxes: Math.ceil(newOutboundUnits / input.unitsPerBox),
     dispatchShortageUnits: Math.max(0, outboundUnits - input.ownUnits),
     localAfterDispatchUnits: Math.max(0, input.ownUnits - outboundUnits),
+    monthlyOutboundUnits,
+    monthlyOutboundBoxes: Math.ceil(monthlyOutboundUnits / input.unitsPerBox),
+    monthlyDispatchShortageUnits: Math.max(
+      0,
+      monthlyOutboundUnits - input.ownUnits,
+    ),
+    localAfterPlannedDispatchUnits: Math.max(
+      0,
+      input.ownUnits - monthlyOutboundUnits,
+    ),
     assemblyShortageUnits,
     localAfterAssemblyUnits: Math.max(
       0,
-      input.ownUnits + input.openTaskUnits + recommendedUnits - outboundUnits,
+      input.ownUnits +
+        input.openTaskUnits +
+        recommendedUnits -
+        monthlyOutboundUnits,
     ),
     recommendedBoxes,
     recommendedUnits,

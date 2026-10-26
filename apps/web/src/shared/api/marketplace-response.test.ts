@@ -58,6 +58,8 @@ const overview = () => ({
   settings: { historyDays: 28, horizonDays: 14, safetyDays: 3, leadDays: 7 },
   planningStock: [],
   plan: {
+    preparationDays: 30,
+    preparationThrough: "2026-11-23",
     generatedAt: now,
     dispatchDate: "2026-10-31",
     leadDays: 7,
@@ -71,6 +73,8 @@ const overview = () => ({
         providers: [
           {
             provider: "wildberries",
+            expectedSalesUnits30: 0,
+            salesForecastKnown: false,
             averageDailyUnits: 0,
             targetUnits: 0,
             marketplaceUnits: null,
@@ -82,6 +86,23 @@ const overview = () => ({
             confidenceLabel: "Низкая",
             scenario: false,
           },
+        ],
+        expectedSalesUnits30: 0,
+        salesForecastKnown: false,
+        weeklySales: [
+          {
+            from: "2026-10-26",
+            to: "2026-11-01",
+            units: 0,
+            providers: [{ provider: "wildberries", units: 0, known: false }],
+          },
+        ],
+        monthlyOutboundBoxes: 0,
+        monthlyOutboundUnits: 0,
+        localAfterPlannedDispatchUnits: 0,
+        monthlyDispatchShortageUnits: 0,
+        weeklyDispatches: [
+          { date: "2026-10-31", boxes: 0, units: 0, providers: [] },
         ],
         outboundBoxes: 0,
         outboundUnits: 0,
@@ -365,4 +386,44 @@ test("unified quantities and provider completeness are required before totals re
   const data = overview();
   Object.assign(data.plan, { dispatchDate: "Saturday" });
   assert.equal(isMarketplaceOverviewResponse(data), false);
+});
+
+test("monthly plan rejects missing weekly coverage or invalid quantities", () => {
+  for (const patch of [
+    { monthlyOutboundBoxes: undefined },
+    { monthlyOutboundUnits: -1 },
+    { localAfterPlannedDispatchUnits: NaN },
+    { weeklyDispatches: undefined },
+    { weeklyDispatches: [{ date: "bad", boxes: 0, units: 0, providers: [] }] },
+  ]) {
+    const value = overview();
+    Object.assign(value.plan.rows[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(value), false);
+  }
+  const value = overview();
+  Object.assign(value.plan, { preparationThrough: undefined });
+  assert.equal(isMarketplaceOverviewResponse(value), false);
+});
+
+test("sales forecasts require per-theme quantities and explicit known flags independently of stock", () => {
+  for (const patch of [
+    { expectedSalesUnits30: NaN },
+    { salesForecastKnown: undefined },
+    { weeklySales: undefined },
+    {
+      weeklySales: [
+        { from: "tomorrow", to: "2026-11-01", units: 2, providers: [] },
+      ],
+    },
+  ]) {
+    const x = overview();
+    Object.assign(x.plan.rows[0]!, patch);
+    assert.equal(isMarketplaceOverviewResponse(x), false);
+  }
+  const x = overview();
+  Object.assign(x.plan.rows[0]!, {
+    expectedSalesUnits30: 15.5,
+    salesForecastKnown: true,
+  });
+  assert.equal(isMarketplaceOverviewResponse(x), true);
 });
