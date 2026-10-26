@@ -135,3 +135,107 @@ test("one provider failure does not suppress the other or leak exception text", 
     console.warn = old;
   }
 });
+
+test("a boundary crossed during a slow import catches up only the latest slot after the old cycle completes", async () => {
+  const initial = Date.UTC(2026, 9, 26, 8, 25),
+    c = clock(initial),
+    oldSlot = Date.UTC(2026, 9, 26, 8, 0);
+  const calls: { provider: string; slot: number }[] = [];
+  let finishOld!: () => void,
+    active = 0,
+    maxActive = 0;
+  const s = MarketplaceScheduler.forTesting(
+    {
+      syncMarketplaceAutomatically: async (provider, slot) => {
+        calls.push({ provider, slot });
+        active++;
+        maxActive = Math.max(maxActive, active);
+        try {
+          if (provider === "ozon" && slot === oldSlot)
+            await new Promise<void>((resolve) => {
+              finishOld = resolve;
+            });
+          return "skipped";
+        } finally {
+          active--;
+        }
+      },
+    },
+    c.runtime,
+  );
+  s.start();
+  await flush();
+  assert.equal(calls.length, 2);
+  c.advance(Date.UTC(2026, 9, 26, 8, 30));
+  await flush();
+  assert.equal(calls.length, 2);
+  c.advance(Date.UTC(2026, 9, 26, 10, 12));
+  await flush();
+  assert.equal(calls.length, 2);
+  finishOld();
+  await flush();
+  assert.deepEqual(calls, [
+    { provider: "wildberries", slot: oldSlot },
+    { provider: "ozon", slot: oldSlot },
+    { provider: "wildberries", slot: Date.UTC(2026, 9, 26, 10, 0) },
+    { provider: "ozon", slot: Date.UTC(2026, 9, 26, 10, 0) },
+  ]);
+  assert.equal(maxActive, 1);
+  await flush();
+  assert.equal(calls.length, 4);
+  assert.equal([...c.timers.values()][0].at, Date.UTC(2026, 9, 26, 10, 30));
+  await s.stop();
+});
+
+test("stop awaits cleanup of a catch-up cycle and prevents its remaining provider or another queued slot", async () => {
+  const oldSlot = Date.UTC(2026, 9, 26, 8, 0),
+    c = clock(Date.UTC(2026, 9, 26, 8, 25));
+  const calls: { provider: string; slot: number }[] = [];
+  let finishOld!: () => void,
+    finishCleanup!: () => void,
+    catchupSignal: AbortSignal | undefined;
+  const s = MarketplaceScheduler.forTesting(
+    {
+      syncMarketplaceAutomatically: async (provider, slot, signal) => {
+        calls.push({ provider, slot });
+        if (provider === "ozon" && slot === oldSlot)
+          await new Promise<void>((resolve) => {
+            finishOld = resolve;
+          });
+        if (slot > oldSlot) {
+          catchupSignal = signal;
+          await new Promise<void>((resolve) => {
+            finishCleanup = resolve;
+          });
+        }
+        return "skipped";
+      },
+    },
+    c.runtime,
+  );
+  s.start();
+  await flush();
+  c.advance(Date.UTC(2026, 9, 26, 8, 30));
+  finishOld();
+  await flush();
+  assert.equal(calls.length, 3);
+  assert.equal(catchupSignal?.aborted, false);
+  c.advance(Date.UTC(2026, 9, 26, 9, 0));
+  await flush();
+  assert.equal(calls.length, 3);
+  let stopped = false;
+  const stopping = s.stop().then(() => {
+    stopped = true;
+  });
+  await flush();
+  assert.equal(catchupSignal?.aborted, true);
+  assert.equal(stopped, false);
+  finishCleanup();
+  await stopping;
+  assert.equal(stopped, true);
+  assert.equal(calls.length, 3);
+  assert.equal(c.timers.size, 0);
+  c.advance(Date.UTC(2026, 9, 26, 9, 30));
+  await flush();
+  assert.equal(calls.length, 3);
+});

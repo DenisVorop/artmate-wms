@@ -20,6 +20,8 @@ export class MarketplaceScheduler implements OnModuleDestroy {
   private timer?: Timer;
   private cycle?: Promise<void>;
   private controller?: AbortController;
+  private activeSlot?: number;
+  private pendingSlot?: number;
   constructor(
     @Inject(MarketplaceService)
     private readonly marketplaces: MarketplaceService,
@@ -52,17 +54,40 @@ export class MarketplaceScheduler implements OnModuleDestroy {
   }
   private _run(): Promise<void> {
     if (this.stopped) return Promise.resolve();
-    if (this.cycle) return this.cycle;
     const slot =
       Math.floor(this.runtime.now() / MARKETPLACE_SYNC_INTERVAL) *
       MARKETPLACE_SYNC_INTERVAL;
+    if (this.cycle) {
+      if (this.activeSlot !== undefined && slot > this.activeSlot)
+        this.pendingSlot = Math.max(this.pendingSlot ?? slot, slot);
+      return this.cycle;
+    }
     const controller = new AbortController();
     this.controller = controller;
-    this.cycle = this._execute(slot, controller.signal).finally(() => {
+    this.activeSlot = slot;
+    // Catch-up belongs to the same promise/controller, so stop awaits every queued cycle.
+    this.cycle = this._drain(slot, controller.signal).finally(() => {
       if (this.controller === controller) this.controller = undefined;
       this.cycle = undefined;
+      this.activeSlot = undefined;
+      this.pendingSlot = undefined;
     });
     return this.cycle;
+  }
+  private async _drain(slot: number, signal: AbortSignal) {
+    while (!this.stopped && !signal.aborted) {
+      await this._execute(slot, signal);
+      if (this.stopped || signal.aborted || this.pendingSlot === undefined)
+        return;
+      this.pendingSlot = undefined;
+      // A suspended process may have crossed many boundaries: run only its latest slot.
+      const current =
+        Math.floor(this.runtime.now() / MARKETPLACE_SYNC_INTERVAL) *
+        MARKETPLACE_SYNC_INTERVAL;
+      if (current <= slot) return;
+      slot = current;
+      this.activeSlot = slot;
+    }
   }
   private async _execute(slot: number, signal: AbortSignal) {
     for (const provider of MARKETPLACE_PROVIDERS) {
@@ -92,6 +117,7 @@ export class MarketplaceScheduler implements OnModuleDestroy {
     this.stopped = true;
     if (this.timer !== undefined) this.runtime.cancel(this.timer);
     this.timer = undefined;
+    this.pendingSlot = undefined;
     this.controller?.abort();
     await this.cycle;
   }
