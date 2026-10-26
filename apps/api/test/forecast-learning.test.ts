@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runForecast } from "../src/forecasting/engine";
 import { demandBaseline } from "../src/forecasting/demand-baseline";
+import { fitAutoregressive } from "../src/forecasting/engine-autoregressive";
 import { newYearScenario } from "../src/forecasting/new-year-scenario";
 import type {
   ForecastPoint,
@@ -187,4 +188,35 @@ test("models reject missing lag history, remain nonnegative and bounded over the
         (p) => Number.isFinite(p.units) && p.units >= 0,
       ),
   );
+});
+
+test("training uses observations older than a year and excludes the future instead of clipping to 365 days", () => {
+  const daily = points(800, () => 10, "2023-01-01");
+  const values = daily.map((p) => ({
+    day: Date.parse(p.date) / 86400000,
+    units: p.units!,
+  }));
+  const changed = values.map((p, i) => ({
+    ...p,
+    units: i < 400 && i % 7 >= 5 ? 40 : p.units,
+  }));
+  const asOf = values.at(-1)!.day;
+  assert.deepEqual(values.slice(-365), changed.slice(-365));
+  const fit = fitAutoregressive(values, asOf, 30, 56),
+    historical = fitAutoregressive(changed, asOf, 30, 56);
+  assert.ok(fit.values && historical.values);
+  assert.ok(
+    fit.values.some((v, i) => Math.abs(v - historical.values![i]) > 0.1),
+    "old known sales must influence learned coefficients",
+  );
+  assert.deepEqual(
+    fitAutoregressive(
+      [...changed, { day: asOf + 1, units: 999999 }],
+      asOf,
+      30,
+      56,
+    ),
+    historical,
+  );
+  assert.ok(historical.values.every((v) => Number.isFinite(v) && v >= 0));
 });

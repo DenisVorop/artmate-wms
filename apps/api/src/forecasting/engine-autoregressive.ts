@@ -77,7 +77,8 @@ export function fitAutoregressive(
   horizon: number,
   baselineHistoryDays: number,
 ): { values: number[] | null; reason: string | null } {
-  const train = values.filter((p) => p.day <= asOf && p.day > asOf - 365);
+  // Every known observation since trading began contributes; future values never enter fitting.
+  const train = values.filter((p) => p.day <= asOf);
   if (train.length < 70)
     return {
       values: null,

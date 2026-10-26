@@ -17,7 +17,7 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v2.1.0";
+export const FORECAST_MODEL_VERSION = "seasonal-v2.1.1";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",
@@ -338,7 +338,7 @@ function fit(
       reason: null,
     };
   }
-  const train = values.filter((p) => p.day > asOf - 730);
+  const train = values.filter((p) => p.day <= asOf);
   const origin = train[0].day;
   const rows = train.map((p) => calendarFeatures(p.day, origin));
   const coefficients = ridgeCoefficients(
