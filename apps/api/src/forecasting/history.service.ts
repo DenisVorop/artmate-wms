@@ -537,15 +537,22 @@ export class ForecastHistoryService {
       )
         return;
       const jobs = await loadHistoryJobs(tx);
-      jobs.sort(
-        (a, b) =>
+      jobs.sort((a, b) => {
+        const maintenancePriority =
           Number(
             !!(a as HistoryJob & { maintenanceDay?: string }).maintenanceDay,
           ) -
           Number(
             !!(b as HistoryJob & { maintenanceDay?: string }).maintenanceDay,
-          ),
-      );
+          );
+        // One page at a time, oldest waiting job first: a large catalog cannot starve the other store.
+        return (
+          maintenancePriority ||
+          a.updatedAt.localeCompare(b.updatedAt) ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id)
+        );
+      });
       for (const j of jobs) {
         if (
           !["queued", "running", "failed"].includes(j.status) ||
