@@ -1,0 +1,355 @@
+.feature {
+  padding: 22px 26px;
+  margin-top: 22px;
+  min-width: 0;
+}
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  list-style: none;
+  cursor: pointer;
+  min-height: 32px;
+}
+.summary::-webkit-details-marker {
+  display: none;
+}
+.summary > span {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.summary strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+.summary small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.summary > svg {
+  transition: transform 0.18s;
+}
+.feature[open] > .summary > svg {
+  transform: rotate(180deg);
+}
+.content {
+  display: grid;
+  gap: 34px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+.content > section {
+  min-width: 0;
+}
+.sectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.sectionHeading h2 {
+  font-size: 17px;
+  font-weight: 500;
+  margin: 0;
+}
+.sectionHeading > span,
+.help {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.help {
+  margin: 10px 0 0;
+  font-weight: 400;
+}
+.historyGrid,
+.sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.historyCard,
+.source {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.historyCard header,
+.source header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.historyCard h3,
+.source h3,
+.forecastSummary h3 {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+}
+.historyCard > p {
+  font-size: 13px;
+  margin: 0;
+  color: var(--text);
+}
+.historyCard > .help {
+  margin: 0;
+}
+.innerDetails {
+  font-size: 12px;
+  line-height: 1.7;
+  min-width: 0;
+}
+.innerDetails > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 0;
+  min-height: 30px;
+}
+.innerDetails[open] > summary {
+  color: var(--text);
+}
+.finance {
+  display: grid;
+  gap: 16px;
+  margin-top: 12px;
+}
+.finance > button {
+  justify-self: start;
+}
+.error,
+.notice {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.error {
+  color: var(--danger);
+}
+.notice {
+  color: var(--accent);
+}
+.skuSelect {
+  max-width: 420px;
+  margin: 20px 0;
+}
+.forecastSummary {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.forecastSummary p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+  max-width: 720px;
+}
+.policy {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(200px, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  margin: 24px 0;
+  padding: 20px 0;
+  border-block: 1px solid var(--border);
+}
+.policy .help {
+  margin: 0;
+}
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.checkbox > input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.checkbox small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 3px;
+}
+.source {
+  gap: 18px;
+}
+.eyebrow {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.sourceTotal {
+  font-size: 12px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.chart {
+  margin: 0;
+  min-width: 0;
+}
+.chart figcaption {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.legendActual:before,
+.legendForecast:before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--muted);
+}
+.legendForecast:before {
+  background: var(--accent);
+}
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 120px;
+  overflow: visible;
+}
+.actualLine,
+.predictedLine {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.actualLine {
+  stroke: var(--muted);
+}
+.predictedLine {
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+}
+.gridLine {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.chartDates {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
+.models {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.models li {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.models li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.models strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.models span,
+.models small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.models span {
+  margin-top: 4px;
+}
+.models small {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .historyGrid,
+  .sources {
+    grid-template-columns: 1fr;
+  }
+  .policy {
+    grid-template-columns: 1fr 1fr;
+  }
+  .policy > button {
+    justify-self: start;
+  }
+}
+@media (max-width: 640px) {
+  .feature {
+    padding: 18px;
+  }
+  .summary > span {
+    gap: 8px;
+  }
+  .summary small {
+    flex-basis: 100%;
+    padding-left: 26px;
+  }
+  .content {
+    gap: 26px;
+  }
+  .historyCard,
+  .source {
+    padding: 16px;
+  }
+  .policy {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .policy input,
+  .finance input,
+  .skuSelect select {
+    font-size: 16px;
+  }
+  .sectionHeading > span {
+    font-size: 11px;
+  }
+  .sourceTotal {
+    font-size: 12px;
+  }
+  .chart figcaption {
+    gap: 12px;
+  }
+}

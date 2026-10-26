@@ -213,3 +213,49 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
   );
   setCsrfToken(null);
 });
+
+test("forecast finance credentials bypass browser replay storage and validate history responses", async () => {
+  setCsrfToken("forecast-csrf");
+  let seen: RequestInit | undefined;
+  const request = createApiFetch({
+    storage: noStorage,
+    fetch: async (_url, options) => {
+      seen = options;
+      return json({ providers: [], jobs: [] });
+    },
+  });
+  await request("/api/forecast/history/finance", {
+    method: "POST",
+    body: JSON.stringify({
+      requestId: "fixture",
+      apiKey: "synthetic finance secret",
+    }),
+  });
+  assert.equal(new Headers(seen?.headers).get("X-WMS-CSRF"), "forecast-csrf");
+  assert.equal(seen?.credentials, "same-origin");
+  const malformed = createApiFetch({
+    storage: noStorage,
+    fetch: async () =>
+      json({ providers: [{ financeConfigured: true }], jobs: [] }),
+  });
+  await assert.rejects(
+    malformed("/api/forecast/history/finance", { method: "POST", body: "{}" }),
+    /некорректный прогноз/,
+  );
+  setCsrfToken(null);
+});
+
+test("forecast late results cannot populate another user's session", async () => {
+  let resolve!: (response: Response) => void;
+  const waiting = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  const request = createApiFetch({ storage: noStorage, fetch: () => waiting });
+  const result = request("/api/forecast/history");
+  advanceAuthEpoch();
+  resolve(json({ providers: [], jobs: [] }));
+  await assert.rejects(
+    result,
+    (error) => error instanceof ApiError && error.status === 409,
+  );
+});

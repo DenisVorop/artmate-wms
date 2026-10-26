@@ -1,0 +1,307 @@
+"use client";
+import { useState } from "react";
+import { ChevronDown, TrendingUp } from "lucide-react";
+import {
+  useForecast,
+  useForecastHistory,
+  type ForecastHistoryJobDto,
+  type ForecastRowDto,
+  type ForecastSourceDto,
+} from "@/entities/forecast";
+import { Badge, Button, Select } from "@/shared/ui";
+import { useForecastActions } from "../model/use-forecast-actions";
+import { shortDate } from "../lib/chart";
+import { ForecastPolicy } from "./forecast-policy";
+import { ForecastChart } from "./forecast-chart";
+import { FinanceConnect } from "./finance-connect";
+import styles from "./forecasting.module.css";
+const name = (provider: string) =>
+  provider === "ozon" ? "Ozon" : "Wildberries";
+const status = (job: ForecastHistoryJobDto | undefined) =>
+  !job
+    ? "Загрузка ещё не запущена"
+    : job.status === "complete"
+      ? "Загрузка завершена"
+      : job.status === "running" || job.status === "queued"
+        ? "История загружается"
+        : job.status === "permission_required"
+          ? "Нужен доступ к истории"
+          : job.status === "paused"
+            ? "Загрузка приостановлена"
+            : "Повторим загрузку автоматически";
+function ModelComparison({ source }: { source: ForecastSourceDto }) {
+  return (
+    <details className={styles.innerDetails}>
+      <summary>Как проверялись модели</summary>
+      <p className={styles.help}>
+        Проверяем прогноз на прошлых периодах. Меньшая ошибка означает более
+        точный результат.
+      </p>
+      <ul className={styles.models}>
+        {source.candidates.map((candidate) => (
+          <li key={candidate.model}>
+            <div>
+              <strong>{candidate.label}</strong>
+              <span>
+                {candidate.eligible && candidate.mae !== null
+                  ? `Средняя ошибка: ${candidate.mae.toFixed(1)} шт. в день`
+                  : (candidate.reason ?? "Пока недостаточно истории")}
+              </span>
+            </div>
+            <small>
+              {candidate.folds > 0
+                ? `${candidate.folds} проверок`
+                : "Ожидаем историю"}
+              {candidate.wape !== null
+                ? ` · Ошибка ${(candidate.wape * 100).toFixed(0)}%`
+                : ""}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+function ForecastSources({ row }: { row: ForecastRowDto }) {
+  return (
+    <div className={styles.sources}>
+      {row.sources.map((source, index) => (
+        <article
+          className={styles.source}
+          key={`${source.provider}:${source.metricLabel}:${index}`}
+        >
+          <header>
+            <div>
+              <span className={styles.eyebrow}>
+                {name(source.provider)} · {source.metricLabel}
+              </span>
+              <h3>{source.modelLabel}</h3>
+            </div>
+            <span className={styles.sourceTotal}>
+              Ожидаем {Math.ceil(source.predictedUnits).toLocaleString("ru-RU")}{" "}
+              шт.
+            </span>
+          </header>
+          <ForecastChart source={source} />
+          <ModelComparison source={source} />
+        </article>
+      ))}
+    </div>
+  );
+}
+function ForecastContent() {
+  const forecast = useForecast(true),
+    history = useForecastHistory(true),
+    actions = useForecastActions(),
+    [selected, setSelected] = useState("");
+  const row =
+      forecast.data?.rows.find((row) => row.skuId === selected) ??
+      forecast.data?.rows[0],
+    busy = !!actions.pending;
+  return (
+    <div className={styles.content}>
+      {actions.error && (
+        <p role="alert" className={styles.error}>
+          {actions.error}
+        </p>
+      )}
+      {actions.notice && (
+        <p role="status" className={styles.notice}>
+          {actions.notice}
+        </p>
+      )}
+      <section aria-label="Загрузка истории продаж">
+        <div className={styles.sectionHeading}>
+          <h2>История продаж</h2>
+          <span>С 29 января 2024 года до вчерашнего дня</span>
+        </div>
+        {history.isPending ? (
+          <p className={styles.help} role="status">
+            Проверяем загрузку истории…
+          </p>
+        ) : history.isError ? (
+          <div className={styles.error}>
+            Не удалось получить состояние истории.{" "}
+            <Button variant="ghost" onClick={() => void history.refetch()}>
+              Повторить
+            </Button>
+          </div>
+        ) : (
+          history.data && (
+            <div className={styles.historyGrid}>
+              {history.data.providers.map((provider) => {
+                const jobs = history.data.jobs.filter(
+                    (job) => job.provider === provider.provider,
+                  ),
+                  job =
+                    jobs.find((job) =>
+                      [
+                        "running",
+                        "queued",
+                        "failed",
+                        "permission_required",
+                        "paused",
+                      ].includes(job.status),
+                    ) ?? jobs.at(-1),
+                  running =
+                    job?.status === "queued" || job?.status === "running";
+                return (
+                  <article
+                    className={styles.historyCard}
+                    key={provider.provider}
+                  >
+                    <header>
+                      <h3>{name(provider.provider)}</h3>
+                      <Badge
+                        tone={
+                          job?.status === "complete"
+                            ? "success"
+                            : running
+                              ? "neutral"
+                              : "warning"
+                        }
+                      >
+                        {status(job)}
+                      </Badge>
+                    </header>
+                    <p>
+                      {provider.from
+                        ? `${shortDate(provider.from)} — ${shortDate(provider.to)}`
+                        : "История ещё не накоплена"}
+                    </p>
+                    <span className={styles.help}>
+                      {provider.knownDays > 0
+                        ? `Проверено ${provider.knownDays} дней. Пустые периоды не подтверждают наличие товара.`
+                        : "После загрузки сравним прогнозы с фактическими продажами."}
+                    </span>
+                    {job?.loadedThrough && job.status !== "complete" && (
+                      <p className={styles.help}>
+                        Обработано до {shortDate(job.loadedThrough)}
+                      </p>
+                    )}
+                    <div>
+                      <Button
+                        variant="secondary"
+                        disabled={busy || running || job?.status === "complete"}
+                        onClick={() => void actions.start(provider.provider)}
+                      >
+                        {running
+                          ? "Загружается в фоне"
+                          : job?.status === "complete"
+                            ? "История загружена"
+                            : job?.status === "paused"
+                              ? "Продолжить загрузку"
+                              : "Загрузить историю"}
+                      </Button>
+                    </div>
+                    {provider.provider === "wildberries" && (
+                      <FinanceConnect
+                        configured={provider.financeConfigured}
+                        pending={busy}
+                        checking={actions.pending === "finance"}
+                        onSave={actions.finance}
+                      />
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )
+        )}
+      </section>
+      <section aria-label="Прогноз по тематике">
+        <div className={styles.sectionHeading}>
+          <h2>Прогноз по тематике</h2>
+          {forecast.data?.computing && (
+            <span role="status">Уточняем прогноз…</span>
+          )}
+        </div>
+        {forecast.isPending ? (
+          <p className={styles.help} role="status">
+            Загружаем прогноз…
+          </p>
+        ) : forecast.isError ? (
+          <div className={styles.error}>
+            Не удалось получить прогноз.{" "}
+            <Button variant="ghost" onClick={() => void forecast.refetch()}>
+              Повторить
+            </Button>
+          </div>
+        ) : (
+          forecast.data && (
+            <>
+              {forecast.data.message && (
+                <p className={styles.help}>{forecast.data.message}</p>
+              )}
+              {row ? (
+                <>
+                  <label className={`field ${styles.skuSelect}`}>
+                    Тематика
+                    <Select
+                      value={row.skuId}
+                      onChange={(event) => setSelected(event.target.value)}
+                    >
+                      {forecast.data.rows.map((row) => (
+                        <option key={row.skuId} value={row.skuId}>
+                          {row.skuName}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                  <div className={styles.forecastSummary}>
+                    <div>
+                      <h3>{row.methodLabel}</h3>
+                      <p>{row.message}</p>
+                    </div>
+                    <Badge
+                      tone={row.seasonalityApplied ? "success" : "neutral"}
+                    >
+                      {row.confidenceLabel}
+                    </Badge>
+                  </div>
+                  <ForecastPolicy
+                    key={`${row.skuId}:${row.minimumBoxes}:${row.seasonalityEnabled}`}
+                    row={row}
+                    pending={busy}
+                    onSave={(values) => actions.policy(row.skuId, values)}
+                  />
+                  {row.sources.length > 0 ? (
+                    <ForecastSources row={row} />
+                  ) : (
+                    <p className={styles.help}>
+                      График и сравнение появятся после накопления истории.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className={styles.help}>
+                  Добавьте тематики и свяжите их с товарами маркетплейсов.
+                </p>
+              )}
+            </>
+          )
+        )}
+      </section>
+    </div>
+  );
+}
+export function ForecastingFeature() {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className={`glass-panel ${styles.feature}`}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className={styles.summary}>
+        <span>
+          <TrendingUp size={18} />
+          <strong>Прогноз и история</strong>
+          <small>Сезонность и минимальный запас</small>
+        </span>
+        <ChevronDown size={18} aria-hidden="true" />
+      </summary>
+      {open && <ForecastContent />}
+    </details>
+  );
+}

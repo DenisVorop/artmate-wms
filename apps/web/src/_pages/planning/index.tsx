@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useSession } from "@/entities/session";
 import { getAuthEpoch, getAuthIdentityScope } from "@/shared/api/auth-memory";
+import { ForecastingFeature } from "@/features/forecasting";
 import { AssemblyPlanningFeature } from "@/features/assembly-planning";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { LoadingState } from "@/shared/ui";
@@ -11,9 +12,10 @@ export function PlanningPage() {
   return (
     <WorkspaceShell>
       {session.isManager ? (
-        <AssemblyPlanningFeature
-          key={`${getAuthIdentityScope()}:${getAuthEpoch()}`}
-        />
+        <div key={`${getAuthIdentityScope()}:${getAuthEpoch()}`}>
+          <AssemblyPlanningFeature />
+          <ForecastingFeature />
+        </div>
       ) : (
         <section className="glass-panel ops-panel">
           <h1 className="page-heading">Раздел доступен руководителю</h1>

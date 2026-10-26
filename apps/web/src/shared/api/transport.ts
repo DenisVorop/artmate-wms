@@ -1,4 +1,9 @@
 import {
+  isForecastOverviewResponse,
+  isForecastHistoryOverviewResponse,
+  isForecastHistorySeriesResponse,
+} from "./forecast-response";
+import {
   isMarketplaceOverviewResponse,
   isMarketplaceTaskResponse,
 } from "./marketplace-response";
@@ -19,6 +24,8 @@ const sessionEndpoint = (url: string) =>
 const authEndpoint = (url: string) => /\/api\/auth(?:\/|\?|$)/.test(url);
 const marketplaceEndpoint = (url: string) =>
   /\/api\/marketplaces(?:\/|\?|$)/.test(url);
+const forecastEndpoint = (url: string) =>
+  /\/api\/forecast(?:\/|\?|$)/.test(url);
 const credentialEndpoint = (url: string) =>
   /\/api\/auth\/(setup|login|change-password)(?:\?|$)/.test(url);
 function errorMessage(data: unknown) {
@@ -62,7 +69,12 @@ export function createApiFetch(ports: Ports) {
     };
     try {
       let result: T;
-      if (write && !authEndpoint(url) && !marketplaceEndpoint(url))
+      if (
+        write &&
+        !authEndpoint(url) &&
+        !marketplaceEndpoint(url) &&
+        !forecastEndpoint(url)
+      )
         result = await fetchReplaySafeCommand<T>(url, init, {
           storage: ports.storage,
           fetch: send,
@@ -102,6 +114,18 @@ export function createApiFetch(ports: Ports) {
       )
         throw new ApiError(
           "Сервер вернул некорректные данные маркетплейсов. Повторите загрузку.",
+          status,
+        );
+      if (
+        forecastEndpoint(url) &&
+        !(/\/api\/forecast\/history\/series(?:\?|$)/.test(url)
+          ? isForecastHistorySeriesResponse(result)
+          : /\/api\/forecast\/history(?:\/|\?|$)/.test(url)
+            ? isForecastHistoryOverviewResponse(result)
+            : isForecastOverviewResponse(result))
+      )
+        throw new ApiError(
+          "Сервер вернул некорректный прогноз. Обновите данные.",
           status,
         );
       if (sessionEndpoint(url) && !isAuthSessionResponse(result))
