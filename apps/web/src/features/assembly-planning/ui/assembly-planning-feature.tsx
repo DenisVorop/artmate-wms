@@ -5,6 +5,7 @@ import { useSession } from "@/entities/session";
 import { useAssemblyPlan } from "@/entities/assembly-plan";
 import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
 import { usePlanningActions } from "../model/use-planning-actions";
+import { displayedPlanningPlan } from "../lib/planning-display";
 import {
   boxesLabel,
   dispatchLabel,
@@ -27,14 +28,14 @@ export function AssemblyPlanningFeature() {
   if (!query.data) return <ErrorState onRetry={() => void query.refetch()} />;
   const { settings, connections, products, planStatus, previousPlan } =
     query.data;
-  const plan = previousPlan ?? query.data.plan;
+  const plan = displayedPlanningPlan(query.data.plan, previousPlan, planStatus);
   const isPrevious = previousPlan !== null;
   const connected = connections.some((item) => item.configured && item.enabled);
-  const groups = planningGroups(plan.rows);
+  const groups = planningGroups(plan?.rows ?? []);
   const active = filter ?? "all";
-  const rows = planningRows(plan.rows, active);
+  const rows = planningRows(plan?.rows ?? [], active);
   const tabs: { id: PlanningFilter; label: string; count: number }[] = [
-    { id: "all", label: "Все товары", count: plan.rows.length },
+    { id: "all", label: "Все товары", count: plan?.rows.length ?? 0 },
     { id: "shipping", label: "К отправке", count: groups.shipping.length },
     { id: "assembly", label: "Нужно собрать", count: groups.assembly.length },
     { id: "review", label: "Нужна проверка", count: groups.review.length },
@@ -46,8 +47,9 @@ export function AssemblyPlanningFeature() {
           <p className="eyebrow">ЗАПАСЫ И ПРОДАЖИ</p>
           <h1 className="page-heading">Поставки и сборка</h1>
           <p>
-            К отгрузке {dispatchLabel(plan.dispatchDate)} · данные обновляются
-            каждые 30 минут.
+            {plan
+              ? `К отгрузке ${dispatchLabel(plan.dispatchDate)} · данные обновляются каждые 30 минут.`
+              : "План рассчитывается в фоне. Данные обновляются каждые 30 минут."}
           </p>
         </div>
         <div className={styles.actions}>
@@ -62,10 +64,10 @@ export function AssemblyPlanningFeature() {
         aria-live="polite"
       >
         {planStatus.message}
-        {planStatus.calculatedAt && (
+        {plan && planStatus.calculatedAt && (
           <> · Расчёт от {planningTimestamp(planStatus.calculatedAt)}</>
         )}
-        {planStatus.salesThrough && (
+        {plan && planStatus.salesThrough && (
           <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
         )}
         {isPrevious && " · Количества и даты относятся к сохранённому расчёту."}
@@ -82,8 +84,9 @@ export function AssemblyPlanningFeature() {
       )}
       {query.isError && (
         <p className={styles.warning} role="alert">
-          Не удалось обновить план. Показан предыдущий расчёт. Повторите
-          обновление.
+          {plan
+            ? "Не удалось обновить план. Показан предыдущий расчёт. Повторите обновление."
+            : "Не удалось обновить план. Повторите обновление — расчёт ещё не готов."}
         </p>
       )}
       <PlanningSettings
@@ -115,6 +118,8 @@ export function AssemblyPlanningFeature() {
             }
           />
         </section>
+      ) : !plan ? (
+        <LoadingState label="Пересчитываем план под текущие настройки…" />
       ) : !plan.rows.length ? (
         <section className="glass-panel">
           <EmptyState

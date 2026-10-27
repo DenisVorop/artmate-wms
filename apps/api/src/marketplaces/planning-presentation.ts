@@ -169,7 +169,7 @@ export async function readPlanningPresentation(
     // Complete last-success snapshots can seed the read model after this feature
     // is installed. Replaced credentials never qualify, even if an old snapshot
     // is still physically retained in storage.
-    if (verifiedSources) {
+    if (verifiedSources && forecast.cacheCurrent !== false) {
       const restored = marketplacePlan(w, m, clock, forecast, {
         savedSnapshots: true,
       });
@@ -205,7 +205,9 @@ export async function readPlanningPresentation(
       calculatedAt: null,
       ...dates,
       message:
-        "Пока нет полного расчёта. Дождитесь загрузки данных или проверьте товары.",
+        forecast.cacheCurrent === false
+          ? "Пересчитываем план под текущие настройки. Результат появится автоматически."
+          : "Пока нет полного расчёта. Дождитесь загрузки данных или проверьте товары.",
     },
   };
 }

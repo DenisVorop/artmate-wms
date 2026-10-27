@@ -370,3 +370,46 @@ test("an incompatible saved plan cannot leak across a failed replacement connect
   assert.equal(result.previousPlan, null);
   assert.equal(result.planStatus.state, "unavailable");
 });
+
+test("settings replacement waits for a matching forecast and never publishes a provisional zero as a saved plan", async () => {
+  const { m, forecast, data, read, writes } = fixture();
+  await read();
+  const original = structuredClone(data.get("marketplace_plan_display"));
+  m.settings.horizonDays = 28;
+  m.settings.safetyDays = 0;
+  m.settings.leadDays = 5;
+  const pending = {
+    ...forecast,
+    key: "new-settings",
+    cacheCurrent: false,
+    goals: {},
+  };
+  const result = await read(now, pending);
+  assert.equal(result.previousPlan, null);
+  assert.equal(result.planStatus.state, "unavailable");
+  assert.match(
+    result.planStatus.message,
+    /Пересчитываем план под текущие настройки/,
+  );
+  assert.equal(writes(), 1);
+  assert.deepEqual(data.get("marketplace_plan_display"), original);
+  const complete = await read(now, { ...pending, cacheCurrent: true });
+  assert.equal(complete.planStatus.state, "current");
+  assert.equal(complete.previousPlan, null);
+  assert.equal(writes(), 2);
+});
+
+test("first pending forecast cannot seed a zero plan; a completed zero demand deficit remains legitimate", async () => {
+  const { w, m, forecast, read, writes } = fixture();
+  m.snapshots[0].stocks[0].availableUnits = 1_000_000;
+  const pending = { ...forecast, cacheCurrent: false, goals: {} };
+  const provisional = marketplacePlan(w, m, now, pending);
+  assert.equal(provisional.rows[0].recommendedBoxes, 0);
+  assert.equal(provisional.rows[0].advice.state, "covered");
+  assert.equal((await read(now, pending)).planStatus.state, "unavailable");
+  assert.equal(writes(), 0);
+  const completed = await read(now, { ...pending, cacheCurrent: true });
+  assert.equal(completed.planStatus.state, "current");
+  assert.equal(completed.previousPlan, null);
+  assert.equal(writes(), 1);
+});
