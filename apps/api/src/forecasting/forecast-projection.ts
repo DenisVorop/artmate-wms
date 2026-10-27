@@ -1,3 +1,8 @@
+import {
+  resolveLaunchForecast,
+  isLaunchForecastSource,
+} from "./launch-forecast";
+import type { MarketplaceResolution } from "../marketplaces/planning-resolutions";
 import { PREPARATION_DAYS } from "../marketplaces/unified-plan";
 import type { SkuDto } from "../dto";
 import type { MarketplaceState } from "../marketplaces/storage";
@@ -41,7 +46,12 @@ export interface ForecastComputeInput {
   /** Sanitized marketplace configuration; encrypted connection values never cross the worker boundary. */
   settings: MarketplaceState["settings"];
   mappings: MarketplaceState["mappings"];
-  connections: { provider: MarketplaceProvider; storeId: string | null }[];
+  connections: {
+    provider: MarketplaceProvider;
+    storeId: string | null;
+    version?: number;
+  }[];
+  resolutions?: MarketplaceResolution[];
   snapshots: MarketplaceSnapshot[];
   series: ForecastHistorySeries[];
 }
@@ -91,12 +101,14 @@ function netSeries(
     }),
   };
 }
-type BaselineInput = Pick<
+export type BaselineInput = Pick<
   ForecastComputeInput,
   "asOf" | "settings" | "mappings" | "snapshots" | "skus" | "policies"
 > & {
   series?: ForecastHistorySeries[];
+  generatedAt?: string;
   connections?: ForecastComputeInput["connections"];
+  resolutions?: MarketplaceResolution[];
 };
 function isNewYear(input: BaselineInput, skuId: string) {
   const sku = input.skus.find((s) => s.id === skuId);
@@ -174,7 +186,7 @@ function baselineSeries(
     points,
   };
 }
-export function baselineForecastSource(
+function rawBaselineForecastSource(
   input: BaselineInput,
   provider: MarketplaceProvider,
   externalId: string,
@@ -236,6 +248,22 @@ export function baselineForecastSource(
               .slice(0, 10),
       ),
   };
+}
+export function baselineForecastSource(
+  input: BaselineInput,
+  provider: MarketplaceProvider,
+  externalId: string,
+  horizonDays: number,
+): Omit<ForecastPlanSource, "provider"> {
+  return resolveLaunchForecast(
+    input,
+    provider,
+    externalId,
+    horizonDays,
+    rawBaselineForecastSource(input, provider, externalId, horizonDays),
+    (donorProvider, donorId, days) =>
+      rawBaselineForecastSource(input, donorProvider, donorId, days),
+  );
 }
 function forecastHorizon(input: Pick<ForecastComputeInput, "settings">) {
   return Math.max(
@@ -364,7 +392,8 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     let demand = 0,
       seasonal = 0,
       learned = 0,
-      scenarios = 0;
+      scenarios = 0,
+      launches = 0;
     const planSources: ForecastPlanSource[] = [];
     goalSources.set(row.skuId, planSources);
     const register = (
@@ -411,6 +440,26 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         (n, p) => n + p.units,
         0,
       );
+      if (isLaunchForecastSource(baselineSource)) {
+        demand += baseline;
+        register(mapping.provider, baselineSource);
+        launches++;
+        confidences.push("low");
+        row.sources.push({
+          provider: mapping.provider,
+          metricLabel: "Сценарий запуска — отдельно от наблюдавшихся продаж",
+          modelLabel: baselineSource.methodLabel,
+          predictedUnits: baseline,
+          historyDays: 0,
+          candidates: [],
+          points: baselineSource.dailyForecast.map((point) => ({
+            date: point.date,
+            actual: null,
+            predicted: baselineSource.salesForecastKnown ? point.units : null,
+          })),
+        });
+        continue;
+      }
       if (!ordered) {
         demand += baseline;
         register(mapping.provider, baselineSource);
@@ -609,13 +658,15 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       policy.minimumBoxes * sku.unitsPerBox,
     );
     row.seasonalityApplied = seasonal > 0;
-    row.methodLabel = learned
-      ? "ML: ближайшие 30 дней; дальше — отдельная оценка"
-      : seasonal
-        ? "Прогноз с сезонностью"
-        : scenarios
-          ? "Сценарий к Новому году"
-          : "Недавний спрос";
+    row.methodLabel = launches
+      ? "Прогноз запуска новинки"
+      : learned
+        ? "ML: ближайшие 30 дней; дальше — отдельная оценка"
+        : seasonal
+          ? "Прогноз с сезонностью"
+          : scenarios
+            ? "Сценарий к Новому году"
+            : "Недавний спрос";
     row.confidenceLabel = confidenceLabel(
       confidences.length && confidences.every((c) => c === "high")
         ? "high"
@@ -627,17 +678,19 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     row.historyFrom = dates[0] ?? null;
     row.historyTo = dates.at(-1) ?? null;
     row.knownDays = dates.length;
-    row.message = learned
-      ? "ML-прогноз количества продаж проверен на ближайшие 30 дней. Более дальний запас оценивается отдельно по сезонности или текущему спросу."
-      : seasonal
-        ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
-        : scenarios
-          ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
-          : !policy.seasonalityEnabled
-            ? "Автопрогноз отключён. Используется недавний спрос."
-            : related.length
-              ? "Сложные модели пока не подтвердили преимущество; учитываем недавний спрос и известные дни после появления товара."
-              : "Свяжите тематику с товарами маркетплейсов.";
+    row.message = launches
+      ? "Запуск на новой площадке оценивается по продажам этого товара на другой площадке и соотношению спроса похожих тематик. Это предварительный сценарий; после накопления собственных продаж прогноз пересчитается."
+      : learned
+        ? "ML-прогноз количества продаж проверен на ближайшие 30 дней. Более дальний запас оценивается отдельно по сезонности или текущему спросу."
+        : seasonal
+          ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
+          : scenarios
+            ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
+            : !policy.seasonalityEnabled
+              ? "Автопрогноз отключён. Используется недавний спрос."
+              : related.length
+                ? "Сложные модели пока не подтвердили преимущество; учитываем недавний спрос и известные дни после появления товара."
+                : "Свяжите тематику с товарами маркетплейсов.";
   }
   overview.ready = true;
   overview.computing = false;

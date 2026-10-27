@@ -283,11 +283,31 @@ function planStatus(value: unknown) {
     text(value.message)
   );
 }
+function resolution(value: unknown) {
+  return (
+    record(value) &&
+    text(value.id) &&
+    ["exclude_supply", "zero_stock", "launch"].includes(String(value.kind)) &&
+    provider(value.provider) &&
+    nullableText(value.externalId) &&
+    nullableText(value.supplyId) &&
+    nullableText(value.skuId) &&
+    typeof value.enabled === "boolean" &&
+    typeof value.active === "boolean" &&
+    text(value.note) &&
+    (value.donorProvider === null || provider(value.donorProvider)) &&
+    timestamp(value.confirmedAt) &&
+    nullableTimestamp(value.expiresAt) &&
+    integer(value.revision)
+  );
+}
 export function isMarketplaceOverviewResponse(
   value: unknown,
 ): value is MarketplaceOverviewDto {
   return (
     record(value) &&
+    Array.isArray(value.resolutions) &&
+    value.resolutions.every(resolution) &&
     Array.isArray(value.connections) &&
     value.connections.every(connection) &&
     Array.isArray(value.products) &&

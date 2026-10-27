@@ -13,6 +13,7 @@ import {
   planningRows,
   type PlanningFilter,
 } from "../lib/planning-view";
+import { PlanningResolutions } from "./planning-resolutions";
 import { PlanningSettings } from "./planning-settings";
 import { PlanningRow } from "./planning-row";
 import styles from "./assembly-planning.module.css";
@@ -91,6 +92,13 @@ export function AssemblyPlanningFeature() {
         pending={actions.pending}
         onSave={async (values) => !!(await actions.save(values))}
       />
+      {connected && (
+        <PlanningResolutions
+          data={query.data}
+          pending={actions.pending}
+          onSave={async (values) => !!(await actions.resolution(values))}
+        />
+      )}
       {!connected || !products.length ? (
         <section className="glass-panel">
           <EmptyState

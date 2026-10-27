@@ -57,6 +57,7 @@ const overview = () => ({
   ],
   settings: { historyDays: 28, horizonDays: 14, safetyDays: 3, leadDays: 7 },
   planningStock: [],
+  resolutions: [],
   previousPlan: null,
   planStatus: {
     state: "current",
@@ -174,6 +175,47 @@ test("accepts explicit unknown transit and safe catalogue overview", () => {
     isMarketplaceTaskResponse({ taskId: "task-id", overview: overview() }),
     true,
   );
+});
+test("manager resolutions require safe typed provenance and explicit active flags", () => {
+  const resolution = {
+    id: "opaque-id",
+    kind: "zero_stock",
+    provider: "wildberries",
+    externalId: "product",
+    supplyId: null,
+    skuId: "sku",
+    enabled: true,
+    active: true,
+    note: "Товара пока нет",
+    donorProvider: null,
+    confirmedAt: now,
+    expiresAt: now,
+    revision: 1,
+  };
+  assert.equal(
+    isMarketplaceOverviewResponse({ ...overview(), resolutions: [resolution] }),
+    true,
+  );
+  assert.equal(
+    isMarketplaceOverviewResponse({ ...overview(), resolutions: undefined }),
+    false,
+  );
+  for (const patch of [
+    { kind: "guess" },
+    { provider: "other" },
+    { active: undefined },
+    { enabled: "true" },
+    { revision: -1 },
+    { expiresAt: "tomorrow" },
+    { donorProvider: "other" },
+  ])
+    assert.equal(
+      isMarketplaceOverviewResponse({
+        ...overview(),
+        resolutions: [{ ...resolution, ...patch }],
+      }),
+      false,
+    );
 });
 test("rejects malformed top-level and incomplete nested values before UI rendering", () => {
   for (const value of [

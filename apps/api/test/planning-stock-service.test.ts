@@ -218,7 +218,7 @@ test("planning confirmations are additive management data with transactional aud
             "SELECT value FROM metadata WHERE key='schema_version'",
           ),
         );
-        assert.equal(version.rows[0].value, "16");
+        assert.equal(version.rows[0].value, "17");
       },
     );
   } finally {

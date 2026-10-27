@@ -1,3 +1,4 @@
+import { activeMarketplaceResolutions } from "../marketplaces/planning-resolutions";
 import {
   PREPARATION_DAYS,
   UNIFIED_PLAN_VERSION,
@@ -129,6 +130,31 @@ export async function forecastInputKey(
     },
     asOf: forecastAsOf(clock),
     revision,
+    resolutions: activeMarketplaceResolutions(m, clock)
+      .map(
+        ({
+          id,
+          revision,
+          kind,
+          provider,
+          externalId,
+          supplyId,
+          skuId,
+          donorProvider,
+          expiresAt,
+        }) => ({
+          id,
+          revision,
+          kind,
+          provider,
+          externalId,
+          supplyId,
+          skuId,
+          donorProvider,
+          expiresAt,
+        }),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id)),
     settings: {
       historyDays: m.settings.historyDays,
       horizonDays: m.settings.horizonDays,

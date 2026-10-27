@@ -46,6 +46,61 @@ export class PlanningStockEntryDto {
   @MaxLength(500)
   note!: string;
 }
+export class SetMarketplaceResolutionDto extends MarketplaceCommandDto {
+  @ApiProperty({
+    type: String,
+    enum: ["exclude_supply", "zero_stock", "launch"],
+  })
+  @IsIn(["exclude_supply", "zero_stock", "launch"])
+  kind!: "exclude_supply" | "zero_stock" | "launch";
+  @ApiProperty({ type: String, enum: MARKETPLACE_PROVIDERS })
+  @IsIn(MARKETPLACE_PROVIDERS)
+  provider!: "wildberries" | "ozon";
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  externalId?: string;
+  @ApiPropertyOptional({ type: String })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  supplyId?: string;
+  @ApiProperty({ type: Boolean }) @IsBoolean() enabled!: boolean;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  note!: string;
+  @ApiPropertyOptional({ type: String, enum: MARKETPLACE_PROVIDERS })
+  @IsOptional()
+  @IsIn(MARKETPLACE_PROVIDERS)
+  donorProvider?: "wildberries" | "ozon";
+}
+export class MarketplaceResolutionDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({
+    type: String,
+    enum: ["exclude_supply", "zero_stock", "launch"],
+  })
+  kind!: "exclude_supply" | "zero_stock" | "launch";
+  @ApiProperty({ type: String, enum: MARKETPLACE_PROVIDERS }) provider!:
+    | "wildberries"
+    | "ozon";
+  @ApiProperty({ type: String, nullable: true }) externalId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) supplyId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) skuId!: string | null;
+  @ApiProperty({ type: Boolean }) enabled!: boolean;
+  @ApiProperty({ type: Boolean }) active!: boolean;
+  @ApiProperty({ type: String }) note!: string;
+  @ApiProperty({ type: String, nullable: true, enum: MARKETPLACE_PROVIDERS })
+  donorProvider!: "wildberries" | "ozon" | null;
+  @ApiProperty({ type: String }) confirmedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) expiresAt!: string | null;
+  @ApiProperty({ type: Number }) revision!: number;
+}
 export class ConfirmPlanningStockDto extends MarketplaceCommandDto {
   @ApiProperty({ type: [PlanningStockEntryDto] })
   @IsArray()
@@ -394,6 +449,8 @@ export class MarketplacePlanStatusDto {
   @ApiProperty({ type: String }) message!: string;
 }
 export class MarketplaceOverviewDto {
+  @ApiProperty({ type: [MarketplaceResolutionDto] })
+  resolutions!: MarketplaceResolutionDto[];
   @ApiProperty({ type: [PlanningStockConfirmationDto] })
   planningStock!: PlanningStockConfirmationDto[];
   @ApiProperty({ type: [MarketplaceConnectionDto] })

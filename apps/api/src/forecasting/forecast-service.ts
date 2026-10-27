@@ -1,3 +1,4 @@
+import { activeMarketplaceResolutions } from "../marketplaces/planning-resolutions";
 import {
   BadRequestException,
   ConflictException,
@@ -77,11 +78,13 @@ export class ForecastService {
       policies,
       settings: m.settings,
       mappings: m.mappings,
+      resolutions: activeMarketplaceResolutions(m, clock),
       connections: m.connections
         .filter((c) => c.enabled)
         .map((c) => ({
           provider: c.provider,
           storeId: c.historyStoreId ?? null,
+          version: c.version,
         })),
       snapshots: m.snapshots.filter((s) =>
         m!.connections.some((c) => c.enabled && c.provider === s.provider),

@@ -1,3 +1,4 @@
+import { applyMarketplaceResolutions } from "./planning-resolutions";
 import type { ForecastPlanContext } from "../forecasting/forecast-storage";
 import { planningBacklog } from "./planning-backlog";
 import { baselineForecastSource } from "../forecasting/forecast-projection";
@@ -29,6 +30,7 @@ export function marketplacePlan(
   forecast?: ForecastPlanContext,
   presentation?: { savedSnapshots: true },
 ): MarketplacePlanDto {
+  m = applyMarketplaceResolutions(m, clock);
   const generatedAt = clock.toISOString(),
     global: string[] = [];
   const enabled = m.connections.filter((c) => c.enabled);
@@ -287,9 +289,18 @@ export function marketplacePlan(
       }
       const sourceInput = {
         asOf: to,
+        generatedAt,
         settings: m.settings,
         snapshots,
         mappings: m.mappings,
+        resolutions: m.resolutions,
+        connections: m.connections
+          .filter((c) => c.enabled)
+          .map((c) => ({
+            provider: c.provider,
+            storeId: c.historyStoreId ?? null,
+            version: c.version,
+          })),
         skus: w.skus,
         policies: w.skus.map((item) => ({
           skuId: item.id,
@@ -359,9 +370,13 @@ export function marketplacePlan(
                   0,
                 ),
               })) ?? [],
-            methodLabel: fallback.some((item) => item.scenario)
-              ? "Сценарий роста к Новому году"
-              : "Текущий спрос",
+            methodLabel: fallback.some((item) =>
+              item.methodLabel.startsWith("Прогноз запуска новинки"),
+            )
+              ? "Прогноз запуска новинки"
+              : fallback.some((item) => item.scenario)
+                ? "Сценарий роста к Новому году"
+                : "Текущий спрос",
             confidenceLabel: "Предварительная оценка",
             scenario: fallback.some((item) => item.scenario),
             salesForecastKnown:

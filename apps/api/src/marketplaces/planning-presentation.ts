@@ -1,3 +1,4 @@
+import { activeMarketplaceResolutions } from "./planning-resolutions";
 import { createHash } from "node:crypto";
 import type { Queryable } from "../database";
 import type { WorkspaceDto } from "../dto";
@@ -36,9 +37,13 @@ export function planningPresentationKey(
   w: WorkspaceDto,
   m: MarketplaceState,
   forecast: ForecastPlanContext,
+  clock = new Date(),
 ) {
   return hash({
-    version: 1,
+    version: 2,
+    resolutions: activeMarketplaceResolutions(m, clock)
+      .map(({ id, revision }) => ({ id, revision }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
     model: FORECAST_MODEL_VERSION,
     planning: UNIFIED_PLAN_VERSION,
     preparationDays: PREPARATION_DAYS,
@@ -109,7 +114,7 @@ export async function readPlanningPresentation(
   forecast: ForecastPlanContext,
   strictPlan: MarketplacePlanDto,
 ): Promise<PlanningPresentation> {
-  const compatibilityKey = planningPresentationKey(w, m, forecast);
+  const compatibilityKey = planningPresentationKey(w, m, forecast, clock);
   const cached = (
     await tx.query<{ payload: SavedPlanningPresentation }>(
       "SELECT payload FROM forecast_results WHERE id=$1",

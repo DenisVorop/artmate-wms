@@ -5,6 +5,7 @@ import type { Queryable } from "../src/database";
 import type { WorkspaceDto } from "../src/dto";
 import { seedWorkspace } from "../src/seed";
 import type { ForecastPlanContext } from "../src/forecasting/forecast-storage";
+import { forecastInputKey } from "../src/forecasting/forecast-storage";
 import { marketplacePlan } from "../src/marketplaces/planning";
 import {
   planningPresentationKey,
@@ -113,6 +114,55 @@ function fixture() {
     );
   return { w, m, forecast, tx, data, read, writes: () => writes };
 }
+
+test("manager facts invalidate display and worker keys on change, cancellation and expiry", async () => {
+  const { w, m, forecast } = fixture();
+  const tx: Queryable = {
+    async query<T>() {
+      return { rows: [{ value: "revision" } as T] };
+    },
+  };
+  const display = () => planningPresentationKey(w, m, forecast, now);
+  const worker = () => forecastInputKey(tx, m, w.skus, [], now);
+  const originalDisplay = display(),
+    originalWorker = await worker();
+  m.resolutions = [
+    {
+      id: "fact",
+      kind: "zero_stock",
+      provider: "ozon",
+      storeId: "trusted-account-a",
+      connectionVersion: 2,
+      externalId: "one",
+      skuId: "sku-cats",
+      enabled: true,
+      note: "Подтверждено",
+      actorAccountId: "manager",
+      revision: 1,
+      confirmedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 1000).toISOString(),
+    },
+  ];
+  assert.notEqual(display(), originalDisplay);
+  assert.notEqual(await worker(), originalWorker);
+  const enabledDisplay = display(),
+    enabledWorker = await worker();
+  m.resolutions[0].revision++;
+  assert.notEqual(display(), enabledDisplay);
+  assert.notEqual(await worker(), enabledWorker);
+  const expired = new Date(now.getTime() + 1000);
+  assert.equal(
+    planningPresentationKey(w, m, forecast, expired),
+    originalDisplay,
+  );
+  assert.equal(
+    await forecastInputKey(tx, m, w.skus, [], expired),
+    originalWorker,
+  );
+  m.resolutions[0].enabled = false;
+  assert.equal(display(), originalDisplay);
+  assert.equal(await worker(), originalWorker);
+});
 
 test("published plan survives automatic/manual running, failure, restart and Moscow day rollover", async () => {
   const { w, m, forecast, data, tx, read, writes } = fixture();

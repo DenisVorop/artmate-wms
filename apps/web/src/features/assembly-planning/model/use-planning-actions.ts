@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { SetMarketplaceResolutionDto } from "@/shared/api/generated/model";
 import * as api from "@/shared/api/generated/client";
 import { getAuthEpoch, getAuthIdentityScope } from "@/shared/api/auth-memory";
 import { workspaceQueryKey } from "@/shared/api/query-keys";
@@ -43,6 +44,7 @@ export function usePlanningActions() {
         queryKey: ["marketplaces", scope, epoch],
       });
       if (!current()) return undefined;
+      void client.invalidateQueries({ queryKey: ["forecast", scope, epoch] });
       void client.invalidateQueries({ queryKey: workspaceQueryKey });
       return result;
     } catch (error) {
@@ -83,6 +85,15 @@ export function usePlanningActions() {
             entries: [stockConfirmationEntry(skuId, values)],
           }),
         "Не удалось сохранить остаток.",
+      ),
+    resolution: (values: Omit<SetMarketplaceResolutionDto, "requestId">) =>
+      run(
+        () =>
+          api.setMarketplaceResolution({
+            requestId: crypto.randomUUID(),
+            ...values,
+          }),
+        "Не удалось сохранить уточнение плана.",
       ),
     create: (
       skuId: string,

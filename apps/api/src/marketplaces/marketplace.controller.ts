@@ -36,6 +36,17 @@ export class MarketplaceController {
   getMarketplaces() {
     return this.service.getMarketplaces();
   }
+  @Post("resolutions")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "setMarketplaceResolution" })
+  @ApiBody({ type: D.SetMarketplaceResolutionDto })
+  @ApiOkResponse({ type: D.MarketplaceOverviewDto })
+  setMarketplaceResolution(
+    @Body(pipe(D.SetMarketplaceResolutionDto))
+    body: D.SetMarketplaceResolutionDto,
+  ) {
+    return this.service.setMarketplaceResolution(body);
+  }
   @Post("planning-stock")
   @HttpCode(200)
   @ApiOperation({ operationId: "confirmPlanningStock" })

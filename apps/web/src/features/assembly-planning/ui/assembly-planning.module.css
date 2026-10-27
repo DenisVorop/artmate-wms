@@ -457,3 +457,29 @@
   font-weight: 500;
   margin: 22px 0 0;
 }
+
+.resolution {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.resolution p {
+  margin: 6px 0;
+}
+.resolutionNote {
+  grid-column: 1 / -1;
+}
+.resolutionNote textarea {
+  min-height: 72px;
+  width: 100%;
+  resize: vertical;
+}
+
+.fields > label,
+.fields select {
+  min-width: 0;
+  max-width: 100%;
+}

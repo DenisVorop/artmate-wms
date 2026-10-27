@@ -94,7 +94,7 @@ test("schema14 archive bootstrap preserves warehouse and credentials across rest
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "16",
+        "17",
       );
       return {
         facts,

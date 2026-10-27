@@ -167,6 +167,7 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
         products: [],
         supplies: [],
         planningStock: [],
+        resolutions: [],
         previousPlan: null,
         planStatus: {
           state: "unavailable",
@@ -201,6 +202,7 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
     "/api/marketplaces/sync",
     "/api/marketplaces/settings",
     "/api/marketplaces/planning-stock",
+    "/api/marketplaces/resolutions",
   ]) {
     await request(url, {
       method: "POST",
@@ -210,7 +212,7 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
       }),
     });
   }
-  assert.equal(seen.length, 4);
+  assert.equal(seen.length, 5);
   for (const { options } of seen) {
     assert.equal(
       new Headers(options.headers).get("X-WMS-CSRF"),

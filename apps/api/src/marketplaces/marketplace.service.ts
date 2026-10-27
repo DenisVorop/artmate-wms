@@ -14,6 +14,14 @@ import {
   trackedFinishedUnits,
   type PlanningStockConfirmation,
 } from "./planning-stock";
+import {
+  activeMarketplaceResolutions,
+  applyMarketplaceResolutions,
+  marketplaceResolutionId,
+  saveMarketplaceResolution,
+  supersedePositiveStockResolutions,
+  type MarketplaceResolution,
+} from "./planning-resolutions";
 import { validateSync } from "class-validator";
 import { WarehouseService } from "../warehouse.service";
 import { Queryable } from "../database";
@@ -143,7 +151,36 @@ export class MarketplaceService {
         forecast,
         plan,
       );
+    const applied = applyMarketplaceResolutions(m, clock),
+      activeResolutionIds = new Set(
+        activeMarketplaceResolutions(m, clock).map((r) => r.id),
+      );
     return {
+      resolutions: (m.resolutions ?? [])
+        .filter((r) => {
+          const connection = m.connections.find(
+            (c) => c.provider === r.provider,
+          );
+          return (
+            connection?.historyStoreId === r.storeId &&
+            connection.version === r.connectionVersion
+          );
+        })
+        .map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          provider: r.provider,
+          externalId: r.externalId ?? null,
+          supplyId: r.supplyId ?? null,
+          skuId: r.skuId ?? null,
+          enabled: r.enabled,
+          active: activeResolutionIds.has(r.id),
+          note: r.note,
+          donorProvider: r.donorProvider ?? null,
+          confirmedAt: r.confirmedAt,
+          expiresAt: r.expiresAt,
+          revision: r.revision,
+        })),
       planningStock: (m.planningStock ?? []).map(
         ({ actorAccountId: _actor, outboundSupplyKeys: _keys, ...entry }) =>
           entry,
@@ -162,7 +199,7 @@ export class MarketplaceService {
           warnings: c?.warnings ?? [],
         };
       }),
-      supplies: m.snapshots.flatMap((snapshot) =>
+      supplies: applied.snapshots.flatMap((snapshot) =>
         (snapshot.supplies ?? []).map((supply) => ({
           ...supply,
           provider: snapshot.provider,
@@ -227,6 +264,209 @@ export class MarketplaceService {
       await this._cache(tx, b.requestId, fp, response);
       return response;
     });
+  }
+  setMarketplaceResolution(body: D.SetMarketplaceResolutionDto) {
+    return this._command(
+      "setMarketplaceResolution",
+      D.SetMarketplaceResolutionDto,
+      body,
+      async (tx, m) => {
+        const actor = await this._manager(tx, true),
+          connection = m.connections.find((c) => c.provider === body.provider),
+          snapshot = m.snapshots.find((s) => s.provider === body.provider),
+          note = body.note.trim();
+        if (!note) throw new BadRequestException("Укажите причину уточнения");
+        if (!body.enabled) {
+          if (!connection?.historyStoreId)
+            throw new ConflictException("Действующий магазин не определён");
+          if (
+            body.kind === "exclude_supply"
+              ? !body.supplyId || !!body.externalId || !!body.donorProvider
+              : !body.externalId || !!body.supplyId
+          )
+            throw new BadRequestException("Выберите существующее уточнение");
+          const id = marketplaceResolutionId({
+            provider: body.provider,
+            storeId: connection.historyStoreId,
+            kind: body.kind,
+            externalId: body.externalId,
+            supplyId: body.supplyId,
+          });
+          const previous = m.resolutions?.find(
+            (entry) =>
+              entry.id === id &&
+              entry.provider === body.provider &&
+              entry.storeId === connection.historyStoreId &&
+              entry.kind === body.kind,
+          );
+          if (
+            !previous ||
+            (body.donorProvider !== undefined &&
+              body.donorProvider !== previous.donorProvider)
+          )
+            throw new BadRequestException(
+              "Уточнение не найдено в действующем магазине",
+            );
+          // Undo an existing decision even if its document, mapping or donor has disappeared.
+          // Keep the original account/version/expiry binding; disabling never creates a new fact.
+          const current: MarketplaceResolution = {
+            ...previous,
+            enabled: false,
+            note,
+            actorAccountId: actor.id,
+            revision: previous.revision + 1,
+          };
+          await saveMarketplaceResolution(tx, current);
+          await tx.query(
+            "INSERT INTO marketplace_resolution_events(id,payload) VALUES($1,$2)",
+            [
+              body.requestId,
+              JSON.stringify({
+                requestId: body.requestId,
+                actorAccountId: actor.id,
+                recordedAt: new Date().toISOString(),
+                previous,
+                current,
+              }),
+            ],
+          );
+          return;
+        }
+        if (
+          !connection?.enabled ||
+          !connection.historyStoreId ||
+          connection.lastSuccessVersion !== connection.version ||
+          !snapshot
+        )
+          throw new ConflictException(
+            "Сначала загрузите данные действующего магазина",
+          );
+        let skuId: string | undefined;
+        if (body.kind === "exclude_supply") {
+          if (
+            body.provider !== "wildberries" ||
+            !body.supplyId ||
+            body.externalId ||
+            body.donorProvider
+          )
+            throw new BadRequestException("Выберите поставку WB");
+          const supply = snapshot.supplies?.find((s) => s.id === body.supplyId);
+          if (!supply || !supply.items.length)
+            throw new BadRequestException(
+              "Поставка не найдена в действующем магазине",
+            );
+        } else {
+          if (
+            !body.externalId ||
+            body.supplyId ||
+            !snapshot.products.some((p) => p.externalId === body.externalId)
+          )
+            throw new BadRequestException(
+              "Выберите товар действующего магазина",
+            );
+          const mapping = m.mappings.find(
+            (map) =>
+              map.provider === body.provider &&
+              map.externalId === body.externalId,
+          );
+          if (!mapping)
+            throw new BadRequestException("Сначала свяжите товар с тематикой");
+          skuId = mapping.skuId;
+          if (body.kind === "zero_stock") {
+            if (body.donorProvider)
+              throw new BadRequestException("Источник прогноза здесь не нужен");
+            if (
+              body.enabled &&
+              snapshot.stocks.some(
+                (stock) =>
+                  stock.externalId === body.externalId &&
+                  stock.availableUnits !== null &&
+                  stock.availableUnits > 0,
+              )
+            )
+              throw new ConflictException(
+                "API уже подтвердил товар на складе. Нулевой остаток не применяется.",
+              );
+          } else {
+            const donor = m.connections.find(
+              (c) => c.provider === body.donorProvider,
+            );
+            if (
+              !body.donorProvider ||
+              body.donorProvider === body.provider ||
+              !donor?.enabled ||
+              !donor.historyStoreId ||
+              donor.lastSuccessVersion !== donor.version ||
+              !m.mappings.some(
+                (map) =>
+                  map.provider === body.donorProvider &&
+                  map.skuId === skuId &&
+                  m.snapshots.some(
+                    (s) =>
+                      s.provider === map.provider &&
+                      s.products.some((p) => p.externalId === map.externalId),
+                  ),
+              )
+            )
+              throw new BadRequestException(
+                "Для прогноза запуска нужен тот же товар на другой площадке",
+              );
+          }
+        }
+        const id = marketplaceResolutionId({
+            provider: body.provider,
+            storeId: connection.historyStoreId,
+            kind: body.kind,
+            externalId: body.externalId,
+            supplyId: body.supplyId,
+          }),
+          previous = m.resolutions?.find((r) => r.id === id) ?? null,
+          current: MarketplaceResolution = {
+            id,
+            kind: body.kind,
+            provider: body.provider,
+            storeId: connection.historyStoreId,
+            connectionVersion: connection.version,
+            externalId: body.externalId,
+            supplyId: body.supplyId,
+            skuId,
+            enabled: body.enabled,
+            note,
+            donorProvider: body.donorProvider,
+            donorStoreId:
+              body.kind === "launch"
+                ? m.connections.find((c) => c.provider === body.donorProvider)
+                    ?.historyStoreId
+                : undefined,
+            donorConnectionVersion:
+              body.kind === "launch"
+                ? m.connections.find((c) => c.provider === body.donorProvider)
+                    ?.version
+                : undefined,
+            confirmedAt: new Date().toISOString(),
+            expiresAt:
+              body.kind === "zero_stock"
+                ? new Date(Date.now() + 7 * 86_400_000).toISOString()
+                : null,
+            actorAccountId: actor.id,
+            revision: (previous?.revision ?? 0) + 1,
+          };
+        await saveMarketplaceResolution(tx, current);
+        await tx.query(
+          "INSERT INTO marketplace_resolution_events(id,payload) VALUES($1,$2)",
+          [
+            body.requestId,
+            JSON.stringify({
+              requestId: body.requestId,
+              actorAccountId: actor.id,
+              recordedAt: current.confirmedAt,
+              previous,
+              current,
+            }),
+          ],
+        );
+      },
+    );
   }
   confirmPlanningStock(body: D.ConfirmPlanningStockDto) {
     const b = plainToInstance(D.ConfirmPlanningStockDto, body);
@@ -784,6 +1024,7 @@ export class MarketplaceService {
       c.lastSuccessAt = new Date().toISOString();
       c.lastSuccessVersion = c.version;
       signal?.throwIfAborted();
+      await supersedePositiveStockResolutions(tx, c, result.snapshot!);
       await put(tx, "marketplace_snapshots", c.provider, result.snapshot);
       await archiveMarketplaceSnapshot(tx, c, result.snapshot!);
       signal?.throwIfAborted();
