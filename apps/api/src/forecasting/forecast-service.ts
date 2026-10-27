@@ -196,7 +196,7 @@ export class ForecastService {
         )
         .digest("hex");
       const other = await tx.query(
-        "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1",
+        "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM automation_commands WHERE request_id=$1",
         [body.requestId],
       );
       if (other.rows.length)

@@ -1,4 +1,5 @@
 import type { WorkspaceDto } from "./generated/model";
+import { isAssemblyPressure } from "./work-automation-response";
 
 const legacyArrays = [
   "skus",
@@ -20,7 +21,23 @@ function hasArrays(value: unknown, keys: string[]) {
 }
 /** Historical idempotent responses can have the previous workspace schema. */
 export function isWorkspaceCommandResponse(value: unknown): boolean {
-  return hasArrays(value, legacyArrays);
+  return hasArrays(value, legacyArrays) && validAutomationFields(value);
+}
+function validAutomationFields(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const data = value as Record<string, unknown>;
+  return (
+    (data.assemblyPressure === undefined ||
+      isAssemblyPressure(data.assemblyPressure)) &&
+    Array.isArray(data.tasks) &&
+    data.tasks.every((task) => {
+      if (!task || typeof task !== "object") return false;
+      const purpose = (task as Record<string, unknown>).autoPurpose;
+      return (
+        purpose === undefined || purpose === "urgent" || purpose === "backlog"
+      );
+    })
+  );
 }
 export function isCurrentWorkspace(value: unknown): value is WorkspaceDto {
   if (
@@ -35,6 +52,7 @@ export function isCurrentWorkspace(value: unknown): value is WorkspaceDto {
     ])
   )
     return false;
+  if (!validAutomationFields(value)) return false;
   const revision = (value as Record<string, unknown>).revision;
   if (
     typeof revision !== "number" ||

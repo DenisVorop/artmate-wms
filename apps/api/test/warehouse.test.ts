@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { WarehouseService } from "../src/warehouse.service";
 import { WorkspaceDto } from "../src/dto";
+import { assemblyPressure } from "../src/work-automation/assembly-pressure";
 const req = () => ({ requestId: randomUUID() });
 let warehouse: WarehouseService;
 function inventory(s: WorkspaceDto, skuId: string) {
@@ -2998,7 +2999,7 @@ test("assignment preserves reservations and QR, permits off-shift planning, and 
   assert.equal(s.tasks.find((x) => x.id === unassign.id)!.employeeId, null);
 });
 
-test("last barcode rolls back on the one full mixed accumulator and each cycle requires fresh source and box", async () => {
+test("new box admission rolls back on the one full mixed accumulator and completed scans replay safely", async () => {
   await parkFreeQueue();
   const { p, skuId } = await assemblyStock("AUTO-PACK-CAPACITY"),
     actor = await assemblyActor("Исполнитель Вместимости");
@@ -3009,9 +3010,12 @@ test("last barcode rolls back on the one full mixed accumulator and each cycle r
   const location = state.locations.find(
     (l) => l.id === accumulator.locationId,
   )!;
+  // Earlier scenarios retain paused WIP: its promised slots remain occupied.
+  const occupied =
+    accumulator.quantity + assemblyPressure(state).committedBoxes;
   await warehouse.updateLocation(location.id, {
     ...req(),
-    maxBoxes: accumulator.quantity + 1,
+    maxBoxes: occupied + 1,
   });
   const t = await assemblyTask(skuId, 2, actor.id);
   await warehouse.claimTask(t.id, { ...req(), employeeId: actor.id });
@@ -3037,39 +3041,45 @@ test("last barcode rolls back on the one full mixed accumulator and each cycle r
   const current = state.tasks.find((x) => x.id === t.id)!;
   assert.equal(current.sourcePalletId, null);
   assert.equal(current.boxCodeConfirmed, false);
+  const prior = await warehouse.snapshot();
+  const admission = {
+    ...req(),
+    employeeId: actor.id,
+    kind: "box" as const,
+    value: current.openBoxCode,
+  };
   await assert.rejects(
-    actorScan(t, actor.id, "box", current.openBoxCode),
-    /исходную паллету/,
+    warehouse.scanTask(t.id, admission),
+    /вместимость|заполнена/,
   );
+  assert.deepEqual(await warehouse.snapshot(), prior);
+  // A second free address cannot create a parallel accumulator to bypass admission.
+  await assemblyLocation("UNUSED-PARALLEL-ASSEMBLY", "assembly");
+  const beforeSecondAttempt = await warehouse.snapshot();
+  await assert.rejects(
+    warehouse.scanTask(t.id, admission),
+    /вместимость|заполнена/,
+  );
+  assert.deepEqual(await warehouse.snapshot(), beforeSecondAttempt);
+  await warehouse.updateLocation(location.id, {
+    ...req(),
+    maxBoxes: occupied + 2,
+  });
+  // Failed admission did not confirm the box or bypass a fresh source scan.
+  await assert.rejects(warehouse.scanTask(t.id, admission), /исходную паллету/);
   await actorScan(t, actor.id, "source", p.code);
   await assert.rejects(
     actorScan(t, actor.id, "box", t.openBoxCode),
     /текущего короба/,
   );
-  await actorScan(t, actor.id, "box", current.openBoxCode);
+  await warehouse.scanTask(t.id, admission);
   await actorScan(t, actor.id, "barcode", "AUTO-PACK-CAPACITY");
-  const prior = await warehouse.snapshot(),
-    final = {
-      ...req(),
-      employeeId: actor.id,
-      kind: "barcode" as const,
-      value: "AUTO-PACK-CAPACITY",
-    };
-  await assert.rejects(
-    warehouse.scanTask(t.id, final),
-    /вместимость|заполнена/,
-  );
-  assert.deepEqual(await warehouse.snapshot(), prior);
-  // A second free assembly address must not cause creation of another parallel accumulator.
-  await assemblyLocation("UNUSED-PARALLEL-ASSEMBLY", "assembly");
-  await assert.rejects(
-    warehouse.scanTask(t.id, final),
-    /вместимость|заполнена/,
-  );
-  await warehouse.updateLocation(location.id, {
+  const final = {
     ...req(),
-    maxBoxes: accumulator.quantity + 2,
-  });
+    employeeId: actor.id,
+    kind: "barcode" as const,
+    value: "AUTO-PACK-CAPACITY",
+  };
   state = await warehouse.scanTask(t.id, final);
   assert.equal(state.balance.totalUnits, prior.balance.totalUnits);
   assert.equal(
@@ -3082,6 +3092,9 @@ test("last barcode rolls back on the one full mixed accumulator and each cycle r
     accumulator.id,
   );
   assert.equal(state.tasks.find((x) => x.id === t.id)!.status, "completed");
+  const persisted = await warehouse.snapshot();
+  assert.deepEqual(await warehouse.scanTask(t.id, final), state);
+  assert.deepEqual(await warehouse.snapshot(), persisted);
   await warehouse.updateLocation(location.id, {
     ...req(),
     maxBoxes: location.maxBoxes,
@@ -3800,30 +3813,45 @@ test("empty mixed accumulator keeps its fixed physical base, reuses across new t
     },
   });
   const task = await assemblyTask(next.skuId, 1, nextActor.id);
-  await warehouse.claimTask(task.id, { ...req(), employeeId: nextActor.id });
-  await actorScan(task, nextActor.id, "source", next.p.code);
-  await actorScan(task, nextActor.id, "box", task.openBoxCode);
   const before = await warehouse.snapshot(),
-    final = {
-      ...req(),
-      employeeId: nextActor.id,
-      kind: "barcode" as const,
-      value: "NEW-ACCUMULATOR",
-    };
+    claim = { ...req(), employeeId: nextActor.id };
+  // An oversized replacement base is rejected before taking or scanning stock.
   await assert.rejects(
-    warehouse.scanTask(task.id, final),
-    /место типа «Сборка»/,
+    warehouse.claimTask(task.id, claim),
+    /ширине|глубине|место типа «Сборка»/,
   );
   assert.deepEqual(await warehouse.snapshot(), before);
-  await warehouse.updateLocation(source.id, {
+  // Retirement can select another free assembly address as the canonical one.
+  const currentAssembly = before.locations.find(
+    (location) => location.id === assemblyPressure(before).locationId,
+  )!;
+  await warehouse.updateLocation(currentAssembly.id, {
     ...req(),
-    availableWidthMm: 2200,
+    availableWidthMm: Math.max(currentAssembly.availableWidthMm, 2200),
+    availableDepthMm: Math.max(currentAssembly.availableDepthMm, 800),
+    maxHeightMm: Math.max(currentAssembly.maxHeightMm, 2200),
+    maxBoxes: Math.max(
+      currentAssembly.maxBoxes,
+      assemblyPressure(before).committedBoxes + 1,
+    ),
   });
+  await warehouse.claimTask(task.id, claim);
+  await actorScan(task, nextActor.id, "source", next.p.code);
+  await actorScan(task, nextActor.id, "box", task.openBoxCode);
+  const final = {
+    ...req(),
+    employeeId: nextActor.id,
+    kind: "barcode" as const,
+    value: "NEW-ACCUMULATOR",
+  };
   s = await warehouse.scanTask(task.id, final);
+  assert.equal(s.balance.totalUnits, before.balance.totalUnits);
+  assert.deepEqual(await warehouse.scanTask(task.id, final), s);
   const replacement = s.pallets.find(
     (p) => p.kind === "assembly" && p.status === "stored",
   )!;
   assert.notEqual(replacement.id, original.id);
+  assert.equal(replacement.locationId, currentAssembly.id);
   assert.equal(replacement.widthMm, 2000);
   assert.equal(replacement.skuId, null);
 });

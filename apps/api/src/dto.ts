@@ -318,6 +318,8 @@ export class BoxDto {
   status!: string;
 }
 export class TaskDto {
+  @ApiPropertyOptional({ type: String, enum: ["urgent", "backlog"] })
+  autoPurpose?: "urgent" | "backlog";
   @ApiProperty({ type: String, nullable: true }) createdAt!: string | null;
   @ApiProperty({ type: Boolean }) boxCodeConfirmed!: boolean;
   @ApiProperty({ type: String }) id!: string;
@@ -495,7 +497,22 @@ export class AddressHoldDto {
   @ApiProperty({ type: String, enum: ["movement", "putaway", "return"] })
   kind!: "movement" | "putaway" | "return";
 }
+export class AssemblyPressureDto {
+  @ApiProperty({
+    type: String,
+    enum: ["normal", "near_full", "full", "unavailable"],
+  })
+  level!: "normal" | "near_full" | "full" | "unavailable";
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: Number }) boxes!: number;
+  @ApiProperty({ type: Number }) committedBoxes!: number;
+  @ApiProperty({ type: Number, nullable: true }) capacityBoxes!: number | null;
+  @ApiProperty({ type: String }) message!: string;
+}
 export class WorkspaceDto {
+  @ApiPropertyOptional({ type: AssemblyPressureDto })
+  assemblyPressure?: AssemblyPressureDto;
   @ApiPropertyOptional({ type: [AddressHoldDto] })
   addressHolds?: AddressHoldDto[];
   @ApiProperty({ type: [PutawayTaskDto] }) putawayTasks!: PutawayTaskDto[];

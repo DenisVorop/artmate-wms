@@ -329,7 +329,7 @@ test("schema13 adds only registry tables and preserves warehouse, auth, ledger, 
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "17",
+        "18",
       );
     });
   } finally {
@@ -527,7 +527,7 @@ test("HTTP blank-label endpoints enforce manager permissions, CSRF, strict DTO a
   }
 });
 
-test("preprinted mixed FIFO box rolls back final capacity failure including registry, ledger and workforce, then closes once on retry", async () => {
+test("preprinted labels stay free after early capacity rejection; a confirmed mixed FIFO box rolls back final failure and closes once after recovery", async () => {
   const previous = process.env.WMS_DATA_DIR;
   process.env.WMS_DATA_DIR = "memory://";
   let w: WarehouseService | undefined;
@@ -563,11 +563,45 @@ test("preprinted mixed FIFO box rolls back final capacity failure including regi
     )!;
     await w.updateLocation(accumulator.locationId!, { ...req(), maxBoxes: 1 });
     await source(w, t);
+    const beforeAdmission = await w.snapshot();
+    const labelRows = () =>
+      w!.authTransaction(
+        async (tx) =>
+          (await tx.query("SELECT * FROM preprinted_box_labels ORDER BY id"))
+            .rows,
+      );
+    const labelsBeforeAdmission = await labelRows();
+    await assert.rejects(
+      as("one", () => scan(w!, t, "box", labels[1].code)),
+      /вместимость|заполнена/,
+    );
+    assert.deepEqual(await w.snapshot(), beforeAdmission);
+    assert.deepEqual(await labelRows(), labelsBeforeAdmission);
+    const stillFree = await as("manager", () =>
+      service.getBoxLabelBatchLabels(batch.id, { status: "free" }),
+    );
+    assert.equal(stillFree.total, 1);
+    assert.equal(stillFree.items[0].code, labels[1].code);
+    // A slot must exist before binding a new label. Later capacity shrink is
+    // separate: an already confirmed open box retains its permanent binding.
+    await w.updateLocation(accumulator.locationId!, { ...req(), maxBoxes: 2 });
     await as("one", () => scan(w!, t, "box", labels[1].code));
     for (let i = 0; i < 19; i++) {
       await source(w, t);
       await as("one", () => scan(w!, t, "barcode", barcode));
     }
+    await w.updateTaskStatus(t.id, {
+      ...req(),
+      employeeId: t.employeeId!,
+      status: "paused",
+    });
+    await w.updateLocation(accumulator.locationId!, { ...req(), maxBoxes: 1 });
+    await as("one", () =>
+      w!.claimTask(t.id, {
+        ...req(),
+        employeeId: t.employeeId!,
+      }),
+    );
     const before = await w.snapshot(),
       current = before.tasks.find((x) => x.id === t.id)!;
     assert.equal(current.scannedUnits, 19);

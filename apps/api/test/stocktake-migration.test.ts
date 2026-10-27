@@ -84,7 +84,7 @@ test("schema11 is additive, preserves warehouse IDs/revision/all prior SQL histo
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "17",
+        "18",
       );
       return (
         await tx.query(

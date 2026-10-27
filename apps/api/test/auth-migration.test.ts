@@ -64,7 +64,7 @@ test("schema9 adds empty auth storage while preserving all warehouse entities re
           "SELECT value FROM metadata WHERE key='schema_version'",
         )
       ).rows[0].value,
-      "17",
+      "18",
     );
     for (const table of [
       "auth_accounts",

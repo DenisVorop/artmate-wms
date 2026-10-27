@@ -1,3 +1,6 @@
+import { WorkAutomationController } from "./work-automation/controller";
+import { WorkAutomationService } from "./work-automation/service";
+import { WorkAutomationScheduler } from "./work-automation/scheduler";
 import "reflect-metadata";
 import { ForecastController } from "./forecasting/forecast-controller";
 import { ForecastService } from "./forecasting/forecast-service";
@@ -1242,6 +1245,7 @@ class JsonExceptionFilter implements ExceptionFilter {
 }
 @Module({
   controllers: [
+    WorkAutomationController,
     WarehouseController,
     BoxLabelController,
     AuthController,
@@ -1253,6 +1257,8 @@ class JsonExceptionFilter implements ExceptionFilter {
     ForecastController,
   ],
   providers: [
+    WorkAutomationService,
+    WorkAutomationScheduler,
     WarehouseService,
     BoxLabelService,
     AuthService,

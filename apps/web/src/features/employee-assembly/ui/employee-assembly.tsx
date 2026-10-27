@@ -11,6 +11,7 @@ import {
   selectEmployeeAssembly,
 } from "../lib/employee-assembly";
 import { useEmployeeAssembly } from "../model/use-employee-assembly";
+import { assemblyWaitsForSpace } from "../lib/assembly-capacity";
 import styles from "./employee-assembly.module.css";
 
 export function EmployeeAssembly({
@@ -42,6 +43,7 @@ export function EmployeeAssembly({
     (location) => location.id === pallet?.locationId,
   );
   const own = !!task && task.employeeId === user?.employeeId;
+  const capacityBlocked = assemblyWaitsForSpace(data.assemblyPressure, task);
   const assemblyAvailable = data.locations.some(
     (location) =>
       !location.archived && !location.blocked && location.kind === "assembly",
@@ -74,12 +76,30 @@ export function EmployeeAssembly({
   const scanProps = {
     contextKey: context,
     pending: operations.pending,
-    disabled: !working || !own || !!configurationProblem,
+    disabled: !working || !own || !!configurationProblem || capacityBlocked,
     error: operations.error,
     onProblem,
   };
   return (
     <section className={styles.feature} aria-label="Моя сборка">
+      {data.assemblyPressure &&
+        ["near_full", "full"].includes(data.assemblyPressure.level) && (
+          <div className={`glass-panel ${styles.action}`} role="status">
+            <strong>
+              {data.assemblyPressure.boxes > 0
+                ? "Освободите место на сборочной паллете"
+                : "Дождитесь свободного места"}
+            </strong>
+            <p>{data.assemblyPressure.message}</p>
+            <p>
+              {task && (task.boxCodeConfirmed || task.scannedUnits > 0)
+                ? "Закончите текущий короб, затем сканируйте QR зоны размещения."
+                : data.assemblyPressure.boxes > 0
+                  ? "Сканируйте QR зоны размещения, затем любой готовый короб."
+                  : "Дождитесь свободного места или сканируйте QR другой рабочей зоны."}
+            </p>
+          </div>
+        )}
       {operations.notice && (
         <p className={styles.success} role="status">
           {operations.notice}
@@ -169,7 +189,11 @@ export function EmployeeAssembly({
               )}
               <Button
                 className={styles.mainButton}
-                disabled={operations.pending || !!configurationProblem}
+                disabled={
+                  operations.pending ||
+                  !!configurationProblem ||
+                  capacityBlocked
+                }
                 aria-busy={operations.pending}
                 onClick={() => void operations.claim(task)}
               >

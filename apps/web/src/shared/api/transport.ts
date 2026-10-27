@@ -12,6 +12,7 @@ import {
   isMarketplaceTaskResponse,
 } from "./marketplace-response";
 import { isBoxLabelBatchResponse } from "./box-label-response";
+import { isWorkAutomationResponse } from "./work-automation-response";
 import { isStocktakeCommandResponse } from "./stocktake-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
 import {
@@ -89,6 +90,9 @@ export function createApiFetch(ports: Ports) {
           ...(/\/api\/stocktakes(?:\/|\?|$)/.test(url)
             ? { isResponseConfirmed: isStocktakeCommandResponse }
             : {}),
+          ...(/\/api\/work-automation\/settings(?:\?|$)/.test(url)
+            ? { isResponseConfirmed: isWorkAutomationResponse }
+            : {}),
         });
       else {
         const response = await send(url, init);
@@ -139,6 +143,14 @@ export function createApiFetch(ports: Ports) {
       if (sessionEndpoint(url) && !isAuthSessionResponse(result))
         throw new ApiError(
           "Сервер вернул некорректное состояние входа. Повторите проверку доступа.",
+          status,
+        );
+      if (
+        /\/api\/work-automation(?:\/|\?|$)/.test(url) &&
+        !isWorkAutomationResponse(result)
+      )
+        throw new ApiError(
+          "Не удалось прочитать состояние автоматических заданий. Повторите загрузку.",
           status,
         );
       if (!sessionEndpoint(url) && epoch !== getAuthEpoch())

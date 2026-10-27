@@ -40,7 +40,18 @@ export type WorkQueueJob = {
   updatedAt: string | null;
   /** Existing screen. Only stocktakes currently support an exact document link. */
   href: string;
+  autoPurpose?: "urgent" | "backlog";
+  urgentPutaway?: boolean;
 };
+export function assemblyNeedsClearing(
+  pressure: WorkspaceDto["assemblyPressure"],
+) {
+  return (
+    !!pressure &&
+    pressure.boxes > 0 &&
+    (pressure.level === "near_full" || pressure.level === "full")
+  );
+}
 export const workQueueKindLabels: Record<WorkQueueKind, string> = {
   assembly: "Сборка",
   receiving: "Приёмка",
@@ -102,12 +113,13 @@ export function buildWorkQueue(
       statusLabel?: string;
       assignmentKnown?: boolean;
       employeeName?: string | null;
+      title?: string;
     },
   ) => {
     jobs.push({
       ...job,
       id: `${job.kind}:${job.referenceId}${job.palletId ? `:${job.palletId}` : ""}`,
-      title: workQueueKindLabels[job.kind],
+      title: job.title ?? workQueueKindLabels[job.kind],
       assignmentKnown: job.assignmentKnown ?? true,
       employeeName:
         job.employeeName ??
@@ -139,6 +151,7 @@ export function buildWorkQueue(
       createdAt: task.createdAt,
       updatedAt: null,
       href: "/assembly",
+      autoPurpose: task.autoPurpose,
     });
   }
   for (const receipt of workspace.receipts) {
@@ -182,6 +195,10 @@ export function buildWorkQueue(
     }
   }
   for (const task of workspace.putawayTasks) {
+    const urgentPutaway =
+      task.status !== "completed" &&
+      assemblyNeedsClearing(workspace.assemblyPressure) &&
+      task.fromLocationId === workspace.assemblyPressure?.locationId;
     add({
       referenceId: task.id,
       kind: "putaway",
@@ -209,6 +226,8 @@ export function buildWorkQueue(
       updatedAt:
         task.completedAt ?? task.takenAt ?? task.claimedAt ?? task.createdAt,
       href: "/putaway",
+      urgentPutaway,
+      title: urgentPutaway ? "Разобрать сборочную паллету" : undefined,
     });
   }
   for (const movement of workspace.movements) {
@@ -294,6 +313,9 @@ export function buildWorkQueue(
   return jobs.sort(
     (a, b) =>
       stateOrder[a.state] - stateOrder[b.state] ||
+      (a.state === "queued" && b.state === "queued"
+        ? Number(!!b.urgentPutaway) - Number(!!a.urgentPutaway)
+        : 0) ||
       (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
       a.id.localeCompare(b.id),
   );
@@ -348,4 +370,48 @@ export function filterWorkQueue(
         .includes(search)
     );
   });
+}
+
+/** Presentation groups retain in-progress personal work, then urgent real box
+ * tasks. Assigned queued assembly must not hide available pallet-clearing work. */
+export function employeeWorkQueueGroups(
+  jobs: WorkQueueJob[],
+  employeeId: string,
+) {
+  const visible = jobs.filter(
+    (job) => !job.employeeId || job.employeeId === employeeId,
+  );
+  const own = visible.filter((job) => job.employeeId === employeeId);
+  const available = visible.filter(
+    (job) => !job.employeeId && job.assignmentKnown,
+  );
+  const waiting = visible.filter(
+    (job) => !job.employeeId && !job.assignmentKnown,
+  );
+  const clearing = visible.filter(
+    (job) => job.urgentPutaway && job.state === "queued" && job.assignmentKnown,
+  );
+  if (!clearing.length)
+    return [
+      { title: "Мои задания", jobs: own },
+      { title: "Свободные задания", jobs: available },
+      { title: "Ожидают размещения", jobs: waiting },
+    ];
+  const protectedWork = own.filter((job) => job.state !== "queued");
+  const urgentIds = new Set(clearing.map((job) => job.id));
+  return [
+    { title: "Мои задания", jobs: protectedWork },
+    { title: "Разобрать сборочную паллету", jobs: clearing },
+    {
+      title: protectedWork.length ? "Назначено вам" : "Мои задания",
+      jobs: own.filter(
+        (job) => job.state === "queued" && !urgentIds.has(job.id),
+      ),
+    },
+    {
+      title: "Свободные задания",
+      jobs: available.filter((job) => !urgentIds.has(job.id)),
+    },
+    { title: "Ожидают размещения", jobs: waiting },
+  ];
 }

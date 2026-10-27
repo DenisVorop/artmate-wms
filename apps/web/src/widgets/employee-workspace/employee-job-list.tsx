@@ -6,6 +6,8 @@ import {
   workQueueKindLabels,
   useWorkQueueStocktakes,
   type WorkQueueKind,
+  assemblyNeedsClearing,
+  employeeWorkQueueGroups,
 } from "@/entities/work-queue";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { Button } from "@/shared/ui";
@@ -30,11 +32,7 @@ export function EmployeeJobList({
   const jobs = filterWorkQueue(buildWorkQueue(data, stocktakes.items), {
     kind,
   }).filter((job) => !job.employeeId || job.employeeId === employeeId);
-  const own = jobs.filter((job) => job.employeeId === employeeId);
-  const available = jobs.filter(
-    (job) => !job.employeeId && job.assignmentKnown,
-  );
-  const waiting = jobs.filter((job) => !job.employeeId && !job.assignmentKnown);
+  const groups = employeeWorkQueueGroups(jobs, employeeId);
   return (
     <section className={styles.jobList} aria-labelledby="employee-jobs-title">
       <div className={styles.jobHeading}>
@@ -43,6 +41,13 @@ export function EmployeeJobList({
         </h1>
         <p>Ваша работа и общая очередь склада.</p>
       </div>
+      {assemblyNeedsClearing(data.assemblyPressure) && (
+        <div className={styles.warning} role="status">
+          <strong>Освободите место на сборочной паллете</strong>
+          <p>{data.assemblyPressure!.message}</p>
+          <p>Сканируйте QR зоны размещения, затем любой готовый короб.</p>
+        </div>
+      )}
       <label className={styles.jobFilter}>
         Вид работы
         <select
@@ -81,14 +86,8 @@ export function EmployeeJobList({
             : "Заданий этого вида пока нет. Выберите другой вид работы."}
         </p>
       )}
-      {(
-        [
-          ["Мои задания", own],
-          ["Свободные задания", available],
-          ["Ожидают размещения", waiting],
-        ] as const
-      ).map(
-        ([title, entries]) =>
+      {groups.map(
+        ({ title, jobs: entries }) =>
           entries.length > 0 && (
             <section key={title} className={styles.jobGroup} aria-label={title}>
               <h3>

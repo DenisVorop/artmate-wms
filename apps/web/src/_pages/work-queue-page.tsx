@@ -15,6 +15,7 @@ import {
 } from "@/entities/work-queue";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { EmployeeWorkspace } from "@/widgets/employee-workspace";
+import { WorkAutomation } from "@/features/work-automation";
 import {
   Badge,
   Button,
@@ -68,6 +69,7 @@ function ManagerWorkQueue() {
           <ClipboardList size={15} /> Обновляется автоматически
         </Badge>
       </div>
+      <WorkAutomation />
       <div
         className={styles.summary}
         aria-label="Состояние загруженных текущих заданий"
@@ -225,6 +227,9 @@ function ManagerWorkQueue() {
                   >
                     {job.statusLabel}
                   </Badge>
+                  {job.autoPurpose && (
+                    <Badge tone="neutral">Автоматически</Badge>
+                  )}
                   <span className={styles.owner}>
                     {job.employeeName ?? "Без исполнителя"}
                   </span>

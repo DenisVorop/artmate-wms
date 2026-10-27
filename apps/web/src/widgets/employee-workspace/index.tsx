@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Package, Ellipsis, X } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
+import { assemblyNeedsClearing } from "@/entities/work-queue";
 import { EmployeeAssembly } from "@/features/employee-assembly";
 import {
   EmployeePutaway,
@@ -152,11 +153,25 @@ function EmployeeWorkspaceBody({
     key: liveZone
       ? `${liveZone.zone.id}:${liveZone.assignment.jobId}:${liveZone.assignment.palletId}`
       : "manual",
+    fullAssembly:
+      requestedMode === "assembly" &&
+      data?.assemblyPressure?.level === "full" &&
+      !data.tasks.some(
+        (task) =>
+          task.employeeId === user?.employeeId &&
+          ["active", "paused"].includes(task.status) &&
+          (task.boxCodeConfirmed || task.scannedUnits > 0),
+      ),
   };
   const displayed = useRef(nextDisplay);
   if (!blocked || displayed.current.userId !== user?.id)
     displayed.current = nextDisplay;
-  const { mode, zone: currentZone, key } = displayed.current;
+  const {
+    mode,
+    zone: currentZone,
+    key,
+    fullAssembly: assemblyFull,
+  } = displayed.current;
 
   useEffect(() => {
     if (!blocked) return;
@@ -197,7 +212,12 @@ function EmployeeWorkspaceBody({
       !currentZone.assignment.jobKind &&
       currentZone.zone.kind !== "putaway") ||
     (mode === "putaway" && !currentZone && !priority?.carrying);
-  const zoneEntry = showZoneScan || zoneIdle;
+  // Keep the existing zone QR input reachable when a new assembly box cannot
+  // start. This only changes the prompt; claiming/changing zones stays a scan.
+  const zoneEntry = showZoneScan || zoneIdle || assemblyFull;
+  const suggestPutaway =
+    assemblyFull ||
+    (!priority && assemblyNeedsClearing(data?.assemblyPressure));
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) return zones.intercept(value);
     if (zoneEntry) {
@@ -509,13 +529,23 @@ function EmployeeWorkspaceBody({
                       aria-label="Выбор рабочей зоны"
                     >
                       <h2>
-                        {zoneIdle && currentZone
-                          ? "В этой зоне пока нет работы"
-                          : "Где начнём работу?"}
+                        {suggestPutaway
+                          ? data?.assemblyPressure?.boxes
+                            ? "Освободите место на сборочной паллете"
+                            : "Дождитесь свободного места"
+                          : zoneIdle && currentZone
+                            ? "В этой зоне пока нет работы"
+                            : "Где начнём работу?"}
                       </h2>
                       <p>
-                        {currentZone?.assignment.message ||
-                          "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
+                        {suggestPutaway && data?.assemblyPressure
+                          ? `${data.assemblyPressure!.message} ${
+                              data.assemblyPressure!.boxes > 0
+                                ? "Сканируйте QR зоны размещения, затем любой готовый короб."
+                                : "Дождитесь свободного места или сканируйте QR другой рабочей зоны."
+                            }`
+                          : currentZone?.assignment.message ||
+                            "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
                       </p>
                       <EmployeeScan
                         contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}`}

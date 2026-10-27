@@ -7,7 +7,12 @@ import type {
   LocationDto,
   StocktakeSummaryDto,
 } from "@/shared/api/generated/model";
-import { buildWorkQueue, filterWorkQueue } from "./work-queue";
+import {
+  buildWorkQueue,
+  filterWorkQueue,
+  assemblyNeedsClearing,
+  employeeWorkQueueGroups,
+} from "./work-queue";
 const workspace = (patch: Partial<WorkspaceDto> = {}): WorkspaceDto => ({
   revision: 1,
   warehouse: {
@@ -377,4 +382,101 @@ test("Архив инвентаризаций и отменённых перем
     filterWorkQueue(jobs, { state: "review", kind: "stocktake" })[0]?.href,
     "/stocktakes?stocktakeId=count",
   );
+});
+
+test("срочное освобождение сборочной паллеты выше новой сборки, но не прерывает текущую работу", () => {
+  const putaway = {
+    id: "put-one",
+    code: "PUT-1",
+    skuId: "sku",
+    boxId: "box-one",
+    status: "queued" as const,
+    employeeId: null,
+    fromPalletId: "shared",
+    fromLocationId: "assembly",
+    toLocationId: "A-1",
+    createdAt: "2026-02-01",
+    claimedAt: null,
+    takenAt: null,
+    completedAt: null,
+  };
+  const data = workspace({
+    tasks: [
+      task({ id: "queued", autoPurpose: "backlog" }),
+      task({ id: "active", status: "active", employeeId: "worker" }),
+      task({ id: "paused", status: "paused", employeeId: "other" }),
+    ],
+    putawayTasks: [
+      putaway,
+      { ...putaway, id: "put-two", code: "PUT-2", boxId: "box-two" },
+    ],
+    assemblyPressure: {
+      level: "near_full",
+      locationId: "assembly",
+      palletId: "shared",
+      boxes: 2,
+      committedBoxes: 14,
+      capacityBoxes: 18,
+      message: "Нужно освободить место.",
+    },
+  });
+  const before = structuredClone(data);
+  for (const options of [{}, { manager: true }]) {
+    const jobs = buildWorkQueue(data, [], options);
+    assert.deepEqual(
+      jobs.map((job) => job.referenceId),
+      ["active", "paused", "put-one", "put-two", "queued"],
+    );
+    assert.equal(
+      jobs.find((job) => job.referenceId === "queued")?.autoPurpose,
+      "backlog",
+    );
+    const clearing = jobs.filter((job) => job.urgentPutaway);
+    assert.deepEqual(
+      clearing.map((job) => job.id),
+      ["putaway:put-one", "putaway:put-two"],
+    );
+    assert.ok(
+      clearing.every(
+        (job) =>
+          job.quantityLabel === "1 короб" &&
+          job.title === "Разобрать сборочную паллету",
+      ),
+    );
+  }
+  assert.deepEqual(data, before);
+  const assigned = structuredClone(data);
+  assigned.tasks[0].employeeId = "worker";
+  const groups = employeeWorkQueueGroups(buildWorkQueue(assigned), "worker");
+  assert.deepEqual(
+    groups.flatMap((group) => group.jobs.map((job) => job.referenceId)),
+    ["active", "put-one", "put-two", "queued"],
+  );
+  assert.equal(
+    groups.find((group) => group.title === "Разобрать сборочную паллету")?.jobs
+      .length,
+    2,
+  );
+  const normal = buildWorkQueue({
+    ...data,
+    assemblyPressure: { ...data.assemblyPressure!, level: "normal" },
+  });
+  assert.equal(normal.find((job) => job.state === "queued")?.kind, "assembly");
+  assert.equal(
+    assemblyNeedsClearing({
+      ...data.assemblyPressure!,
+      level: "full",
+      boxes: 0,
+      committedBoxes: 18,
+    }),
+    false,
+  );
+  const elsewhere = buildWorkQueue({
+    ...data,
+    assemblyPressure: {
+      ...data.assemblyPressure!,
+      locationId: "another-assembly",
+    },
+  });
+  assert.ok(elsewhere.every((job) => !job.urgentPutaway));
 });

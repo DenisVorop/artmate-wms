@@ -524,7 +524,7 @@ test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full 
           "SELECT value FROM metadata WHERE key='schema_version'",
         )
       ).rows[0].value,
-      "17",
+      "18",
     );
     await inspect.close();
   } finally {

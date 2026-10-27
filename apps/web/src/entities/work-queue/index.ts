@@ -3,6 +3,8 @@ export {
   filterWorkQueue,
   workQueueKindLabels,
   workQueueStateLabels,
+  assemblyNeedsClearing,
+  employeeWorkQueueGroups,
 } from "./lib/work-queue";
 export type {
   WorkQueueJob,

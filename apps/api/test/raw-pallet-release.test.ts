@@ -249,9 +249,13 @@ test("failed last-unit packing rolls back raw retirement, both holds, ledger, ve
   let s = await scan(t, "barcode", stock.sku.barcode);
   const first = s.boxes.find((b) => b.code === t.openBoxCode)!;
   const accumulator = s.pallets.find((p) => p.id === first.palletId)!;
-  await w.updateLocation(accumulator.locationId!, { ...req(), maxBoxes: 1 });
+  // Confirm the second box while admission is possible, then reproduce an
+  // already confirmed open box resumed after the physical capacity shrank.
   await open(t, stock.pallet);
   await scan(t, "barcode", stock.sku.barcode);
+  await w.updateTaskStatus(t.id, { ...req(), employeeId, status: "paused" });
+  await w.updateLocation(accumulator.locationId!, { ...req(), maxBoxes: 1 });
+  await w.claimTask(t.id, { ...req(), employeeId });
   const before = await w.snapshot();
   const auditBefore = await persisted();
   const final = {

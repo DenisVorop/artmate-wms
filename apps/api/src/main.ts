@@ -1,3 +1,4 @@
+import { WorkAutomationScheduler } from "./work-automation/scheduler";
 import { ForecastScheduler } from "./forecasting/forecast-scheduler";
 import { SwaggerModule } from "@nestjs/swagger";
 import { createApp, buildOpenApi } from "./app";
@@ -13,11 +14,13 @@ async function main() {
   const scheduler = app.get(MarketplaceScheduler);
   const historyScheduler = app.get(ForecastHistoryScheduler);
   const forecastScheduler = app.get(ForecastScheduler);
+  const workAutomation = app.get(WorkAutomationScheduler);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     try {
+      await workAutomation.stop();
       await forecastScheduler.stop();
       await historyScheduler.stop();
       await scheduler.stop();
@@ -32,6 +35,7 @@ async function main() {
   scheduler.start();
   historyScheduler.start();
   forecastScheduler.start();
+  workAutomation.start();
   console.log(
     `Artmate WMS API http://localhost:${process.env.API_PORT ?? 4080}/api/docs`,
   );

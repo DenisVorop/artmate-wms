@@ -1,3 +1,9 @@
+import { initializeWorkAutomationStorage } from "./work-automation/storage";
+import {
+  assemblyPressure,
+  assemblyAcceptanceError,
+} from "./work-automation/assembly-pressure";
+import type { AutomaticTaskIntent } from "./work-automation/types";
 import { initializeForecastStorage } from "./forecasting/forecast-storage";
 import {
   Injectable,
@@ -314,6 +320,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         await tx.query(
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "17"],
+        );
+      await initializeWorkAutomationStorage(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 18)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "18"],
         );
     });
   }
@@ -672,7 +684,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         if (
           (
             await tx.query(
-              "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1",
+              "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM automation_commands WHERE request_id=$1",
               [body.requestId],
             )
           ).rows.length
@@ -1389,6 +1401,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     });
   }
   private _deriveBalance(s: D.WorkspaceDto) {
+    if (s.warehouse) {
+      s.warehouse.workZones ??= [];
+      s.warehouse.zoneWork ??= [];
+      s.assemblyPressure = assemblyPressure(s);
+    }
     const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
     const rawUnits = sum(
       s.pallets
@@ -1742,18 +1759,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     await this._commitState(tx, before, state, "createTask", body);
     return taskId;
   }
-  private _createAssemblyTask(s: D.WorkspaceDto, b: D.CreateTaskDto): string {
-    if (
-      !Number.isInteger(b.boxesTarget) ||
-      b.boxesTarget < 1 ||
-      b.boxesTarget > 1000
-    )
-      fail("Количество коробов должно быть целым от 1 до 1000");
-    const sku = find(s.skus, b.skuId, "Тематика");
-    const employee = b.employeeId
-      ? find(s.employees, b.employeeId, "Сотрудник")
-      : null;
-    const needed = b.boxesTarget * sku.unitsPerBox;
+  private _assemblyReservations(
+    s: D.WorkspaceDto,
+    sku: D.SkuDto,
+    boxesTarget: number,
+  ): D.ReservationDto[] {
+    const needed = boxesTarget * sku.unitsPerBox;
     let remaining = needed;
     const reservations: D.ReservationDto[] = [];
     for (const pallet of this._rawFifo(s, sku.id)) {
@@ -1775,6 +1786,100 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fail(
         `Недостаточно свободных раскрасок: нужно ${needed}, доступно ${needed - remaining}`,
       );
+    return reservations;
+  }
+  async applyAutomaticTasks(
+    tx: Queryable,
+    state: D.WorkspaceDto,
+    intents: AutomaticTaskIntent[],
+  ): Promise<void> {
+    if (requestAuth.getStore()?.http)
+      throw new ForbiddenException(
+        "Автоматические задания создаются только планировщиком",
+      );
+    const before = structuredClone(state);
+    const changed = new Map<string, D.TaskDto>();
+    for (const intent of intents) {
+      if (intent.kind === "create") continue;
+      if (changed.has(intent.taskId))
+        fail("Повторное изменение автоматического задания");
+      const task = find(state.tasks, intent.taskId, "Задание");
+      if (
+        !task.autoPurpose ||
+        task.status !== "queued" ||
+        task.employeeId !== null ||
+        task.boxesCompleted !== 0 ||
+        task.scannedUnits !== 0 ||
+        task.boxCodeConfirmed ||
+        task.sourcePalletId !== null ||
+        task.openBoxContents.length
+      )
+        fail(
+          "Можно пересчитать только неначатое свободное автоматическое задание",
+        );
+      changed.set(task.id, task);
+    }
+    // Release every changed reservation before reallocating FIFO within the same lock.
+    state.tasks = state.tasks.filter((task) => !changed.has(task.id));
+    for (const intent of intents) {
+      if (intent.kind === "withdraw") {
+        activity(
+          state,
+          "Автоматическое задание снято",
+          `${changed.get(intent.taskId)!.code} · ${intent.reason}`,
+          "automation",
+        );
+        continue;
+      }
+      if (
+        !Number.isInteger(intent.boxesTarget) ||
+        intent.boxesTarget < 1 ||
+        intent.boxesTarget > 10
+      )
+        fail("Автоматическое задание должно содержать от 1 до 10 коробов");
+      if (intent.kind === "resize") {
+        const task = changed.get(intent.taskId)!;
+        task.reservations = this._assemblyReservations(
+          state,
+          find(state.skus, task.skuId, "Тематика"),
+          intent.boxesTarget,
+        );
+        task.boxesTarget = intent.boxesTarget;
+        task.autoPurpose = intent.purpose;
+        state.tasks.push(task);
+        activity(
+          state,
+          "Автоматическое задание пересчитано",
+          `${task.code} · ${task.boxesTarget} коробов`,
+          "automation",
+        );
+      } else {
+        const id = this._createAssemblyTask(state, {
+          requestId: randomUUID(),
+          skuId: intent.skuId,
+          boxesTarget: intent.boxesTarget,
+        });
+        find(state.tasks, id, "Задание").autoPurpose = intent.purpose;
+      }
+    }
+    this._enqueueMissingPutaways(state);
+    if (JSON.stringify(before) !== JSON.stringify(state))
+      await this._commitState(tx, before, state, "automaticTasks", {
+        requestId: randomUUID(),
+      });
+  }
+  private _createAssemblyTask(s: D.WorkspaceDto, b: D.CreateTaskDto): string {
+    if (
+      !Number.isInteger(b.boxesTarget) ||
+      b.boxesTarget < 1 ||
+      b.boxesTarget > 1000
+    )
+      fail("Количество коробов должно быть целым от 1 до 1000");
+    const sku = find(s.skus, b.skuId, "Тематика");
+    const employee = b.employeeId
+      ? find(s.employees, b.employeeId, "Сотрудник")
+      : null;
+    const reservations = this._assemblyReservations(s, sku, b.boxesTarget);
     const taskId = randomUUID();
     s.tasks.push({
       id: taskId,
@@ -1856,6 +1961,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fail("У сотрудника уже есть активное задание");
     const problem = this._taskSourcesError(s, task);
     if (problem) fail(problem);
+    if (!task.boxCodeConfirmed && task.scannedUnits === 0) {
+      const capacityError = assemblyAcceptanceError(s, task.skuId, task.id);
+      if (capacityError) fail(capacityError);
+    }
     task.employeeId = employeeId;
     task.status = "active";
     activity(s, "Сборка начата", `${task.code} · ${employee.name}`, "task");
@@ -1901,6 +2010,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       const task = find(s.tasks, id, "Задание");
       this._taskActor(s, task, b.employeeId);
       if (b.kind === "box") {
+        if (!task.boxCodeConfirmed) {
+          const capacityError = assemblyAcceptanceError(s, task.skuId, task.id);
+          if (capacityError) fail(capacityError);
+        }
         await confirmBoxLabel(tx, task, b.value);
         if (task.boxCodeConfirmed) return;
         if (task.scannedUnits > 0)
@@ -2108,10 +2221,16 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         (a, b) =>
           Number(b.employeeId === employeeId) -
             Number(a.employeeId === employeeId) ||
+          Number(a.autoPurpose === "backlog") -
+            Number(b.autoPurpose === "backlog") ||
           (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
           a.id.localeCompare(b.id),
       );
-    const next = candidates.find((t) => !this._taskSourcesError(s, t));
+    const next = candidates.find(
+      (t) =>
+        !this._taskSourcesError(s, t) &&
+        !assemblyAcceptanceError(s, t.skuId, t.id),
+    );
     if (!next) return;
     next.sourcePalletId = null;
     next.boxCodeConfirmed = false;
@@ -3420,6 +3539,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             Number(b.status === "active") - Number(a.status === "active") ||
             Number(b.scannedUnits > 0 || b.boxCodeConfirmed) -
               Number(a.scannedUnits > 0 || a.boxCodeConfirmed) ||
+            Number(a.autoPurpose === "backlog") -
+              Number(b.autoPurpose === "backlog") ||
             (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
             a.id.localeCompare(b.id),
         )[0];
@@ -3428,6 +3549,13 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         if (automatic && own.status === "paused" && sourceError) {
           idle(`Следующее своё задание пока недоступно: ${sourceError}`);
           return;
+        }
+        if (!own.boxCodeConfirmed && own.scannedUnits === 0) {
+          const capacityError = assemblyAcceptanceError(s, own.skuId, own.id);
+          if (capacityError) {
+            idle(capacityError);
+            return;
+          }
         }
         if (own.status !== "active") this._claimTask(s, own, employeeId);
         assign("assembly", own.id, null, "Продолжите своё задание сборки");
@@ -3445,16 +3573,24 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           (a, b) =>
             Number(b.employeeId === employeeId) -
               Number(a.employeeId === employeeId) ||
+            Number(a.autoPurpose === "backlog") -
+              Number(b.autoPurpose === "backlog") ||
             (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
             a.id.localeCompare(b.id),
         );
-      const t = candidates.find((t) => !this._taskSourcesError(s, t));
+      const t = candidates.find(
+        (t) =>
+          !this._taskSourcesError(s, t) &&
+          !assemblyAcceptanceError(s, t.skuId, t.id),
+      );
       if (t) {
         this._claimTask(s, t, employeeId);
         assign("assembly", t.id, null, "Задание сборки взято в работу");
       } else
         idle(
-          "Нет доступных заданий сборки. Руководитель может создать новое задание",
+          ["full", "unavailable"].includes(assemblyPressure(s).level)
+            ? assemblyPressure(s).message
+            : "Нет доступной сборки. Ожидаем новое задание",
         );
     } else if (zone.kind === "receiving") {
       const current = s.warehouse.zoneWork.find(

@@ -1,3 +1,4 @@
+import { ForecastService } from "../src/forecasting/forecast-service";
 import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -194,13 +195,18 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     const reloaded = await as("manager", () => service.getMarketplaces());
     assert.equal(reloaded.supplies[0].items[0].skuId, "sku-cats");
-    const beforeRefresh = await as("manager", () =>
+    await as("manager", () =>
       service.setMarketplaceTransit({
         ...req(),
         skuId: "sku-cats",
         inTransitUnits: 0,
       }),
     );
+    // A saved display requires an actually published forecast, never a pending fallback.
+    await new ForecastService(w).runForecastComputation();
+    const beforeRefresh = await as("manager", () => service.getMarketplaces());
+    const published = beforeRefresh.previousPlan ?? beforeRefresh.plan;
+    assert.equal(beforeRefresh.planStatus.state, "current");
     mode = "partial";
     const partial = await as("manager", () =>
       service.syncMarketplace({ ...req(), provider: "wildberries" }),
@@ -214,18 +220,13 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     assert.equal(failed.connections[0].syncStatus, "failed");
     assert.equal(failed.products.length, 1);
-    const savedRow = beforeRefresh.previousPlan!.rows.find(
-      (r) => r.skuId === "sku-cats",
-    )!;
+    const savedRow = published.rows.find((r) => r.skuId === "sku-cats")!;
     for (const result of [partial, failed]) {
       assert.ok(
         result.previousPlan,
         "a failed refresh keeps the persisted display projection",
       );
-      assert.equal(
-        result.previousPlan.generatedAt,
-        beforeRefresh.previousPlan!.generatedAt,
-      );
+      assert.equal(result.previousPlan.generatedAt, published.generatedAt);
       const previous = result.previousPlan.rows.find(
         (r) => r.skuId === "sku-cats",
       )!;
