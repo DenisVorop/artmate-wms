@@ -353,3 +353,201 @@
     gap: 12px;
   }
 }
+
+.chartControls {
+  min-width: 0;
+  margin: 0 0 22px;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.chartControls legend {
+  padding: 0 12px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.chartControlFields {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) repeat(2, minmax(140px, 1fr));
+  gap: 16px;
+  max-width: 760px;
+}
+.chartControlFields input,
+.chartControlFields select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  color-scheme: dark;
+}
+.chartTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 30px;
+  margin-bottom: 18px;
+}
+.chartTotals > span {
+  display: grid;
+  gap: 5px;
+}
+.chartTotals small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.chartTotals strong {
+  font-size: 21px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.forecastTotal {
+  color: var(--accent);
+}
+.chartGrid {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 6px;
+}
+.chartYAxis {
+  position: relative;
+  height: 220px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 10px;
+}
+.chartYAxis > span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+}
+.chartPlot {
+  position: relative;
+  min-width: 0;
+  height: 220px;
+}
+.chartPlot svg {
+  height: 220px;
+  min-height: 0;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.chartPlot svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.forecastArea {
+  fill: var(--accent);
+  fill-opacity: 0.055;
+}
+.forecastBoundary {
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+  stroke-dasharray: 3 5;
+  vector-effect: non-scaling-stroke;
+}
+.chartCrosshair {
+  stroke: var(--text);
+  stroke-opacity: 0.6;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+.actualPoint,
+.forecastPoint {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.actualPoint {
+  background: var(--text);
+}
+.forecastPoint {
+  background: var(--accent);
+}
+.chartTooltip {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  display: grid;
+  gap: 10px;
+  width: min(220px, calc(100% - 16px));
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: 0 8px 30px oklch(0 0 0 / 0.25);
+  font-size: 12px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.chartTooltip > strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.chartTooltip > span {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+.chartTooltip > span > span {
+  color: var(--muted);
+}
+.chartTooltip b {
+  font-weight: 500;
+}
+.chartDates {
+  margin-left: 42px;
+}
+.chartNote {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+.chartEmpty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .chartControlFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .chartControlFields > label:first-child {
+    grid-column: 1 / -1;
+  }
+  .chartControlFields input,
+  .chartControlFields select {
+    font-size: 16px;
+  }
+  .chartTotals {
+    gap: 16px;
+    justify-content: space-between;
+  }
+  .chartTotals strong {
+    font-size: 19px;
+  }
+  .chartGrid {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 4px;
+  }
+  .chartDates {
+    margin-left: 34px;
+    font-size: 10px;
+  }
+}

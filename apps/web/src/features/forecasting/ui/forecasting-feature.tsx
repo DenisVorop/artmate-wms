@@ -8,9 +8,11 @@ import {
   type ForecastRowDto,
   type ForecastSourceDto,
 } from "@/entities/forecast";
-import { Badge, Button, Select } from "@/shared/ui";
+import { Badge, Button, Input, Select } from "@/shared/ui";
 import { useForecastActions } from "../model/use-forecast-actions";
 import { shortDate } from "../lib/chart";
+import { useChartWindow } from "../lib/use-chart-window";
+import type { ChartPeriod } from "../lib/chart-period";
 import { ForecastPolicy } from "./forecast-policy";
 import { ForecastChart } from "./forecast-chart";
 import { FinanceConnect } from "./finance-connect";
@@ -63,30 +65,89 @@ function ModelComparison({ source }: { source: ForecastSourceDto }) {
   );
 }
 function ForecastSources({ row }: { row: ForecastRowDto }) {
+  const window = useChartWindow(row.sources);
   return (
-    <div className={styles.sources}>
-      {row.sources.map((source, index) => (
-        <article
-          className={styles.source}
-          key={`${source.provider}:${source.metricLabel}:${index}`}
-        >
-          <header>
-            <div>
-              <span className={styles.eyebrow}>
-                {name(source.provider)} · {source.metricLabel}
-              </span>
-              <h3>{source.modelLabel}</h3>
-            </div>
-            <span className={styles.sourceTotal}>
-              Ожидаем {Math.ceil(source.predictedUnits).toLocaleString("ru-RU")}{" "}
-              шт.
-            </span>
-          </header>
-          <ForecastChart source={source} />
-          <ModelComparison source={source} />
-        </article>
-      ))}
-    </div>
+    <>
+      <fieldset
+        className={styles.chartControls}
+        disabled={!window.bounds.first}
+      >
+        <legend>Период графиков</legend>
+        <div className={styles.chartControlFields}>
+          <label className="field">
+            Показать
+            <Select
+              aria-label="Период графиков"
+              value={window.period}
+              onChange={(event) =>
+                window.selectPeriod(event.target.value as ChartPeriod)
+              }
+            >
+              <option value="month">Месяц и прогноз</option>
+              <option value="quarter">3 месяца и прогноз</option>
+              <option value="year">Год и прогноз</option>
+              <option value="all">Весь период</option>
+              <option value="custom">Выбрать даты</option>
+            </Select>
+          </label>
+          <label className="field">
+            С
+            <Input
+              type="date"
+              aria-label="Начало периода графиков"
+              value={window.range.from}
+              min={window.bounds.first}
+              max={window.bounds.last}
+              onChange={(event) =>
+                window.changeDate("from", event.target.value)
+              }
+            />
+          </label>
+          <label className="field">
+            По
+            <Input
+              type="date"
+              aria-label="Конец периода графиков"
+              value={window.range.to}
+              min={window.bounds.first}
+              max={window.bounds.last}
+              onChange={(event) => window.changeDate("to", event.target.value)}
+            />
+          </label>
+        </div>
+        <p className={styles.help}>
+          Период меняет только графики. «Месяц», «3 месяца» и «Год» включают
+          ближайшие 30 дней прогноза.
+        </p>
+      </fieldset>
+      {!window.valid ? (
+        <p className={styles.error} role="status">
+          {window.bounds.first
+            ? "Выберите начало и конец периода в пределах доступных дат. Начало не должно быть позже окончания."
+            : "Пока нет данных для графика."}
+        </p>
+      ) : (
+        <div className={styles.sources}>
+          {row.sources.map((source, index) => (
+            <article
+              className={styles.source}
+              key={`${source.provider}:${source.metricLabel}:${index}`}
+            >
+              <header>
+                <div>
+                  <span className={styles.eyebrow}>
+                    {name(source.provider)} · {source.metricLabel}
+                  </span>
+                  <h3>{source.modelLabel}</h3>
+                </div>
+              </header>
+              <ForecastChart source={source} range={window.range} />
+              <ModelComparison source={source} />
+            </article>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 function ForecastContent() {
