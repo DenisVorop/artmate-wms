@@ -175,7 +175,8 @@ export async function recordWorkforce(
     );
   };
   for (const box of state.boxes)
-    if (!before.boxes.has(box.id))
+    if (!before.boxes.has(box.id) && !box.openingStocktakeId) {
+      if (!box.packedAt) throw new Error("Неизвестная дата завершения сборки");
       await write(
         "box_packed",
         box.id,
@@ -185,6 +186,7 @@ export async function recordWorkforce(
         box.units,
         before.boxOwners.get(box.code) ?? null,
       );
+    }
   for (const receipt of state.receipts)
     for (const row of receipt.pallets)
       if (row.placedAt && !before.receiptPlaced.get(row.palletId)) {

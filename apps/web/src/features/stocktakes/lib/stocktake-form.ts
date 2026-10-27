@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const stocktakeCreateSchema = z
   .object({
+    mode: z.enum(["recount", "opening"]).default("recount"),
     scope: z.enum(["room", "section", "locations"]),
     scopeId: z.string(),
     locationIds: z.array(z.string()),
@@ -21,6 +22,7 @@ export const stocktakeCreateSchema = z
       });
   });
 export type StocktakeCreateValues = z.infer<typeof stocktakeCreateSchema>;
+export type StocktakeCreateInput = z.input<typeof stocktakeCreateSchema>;
 export const stocktakeReasonSchema = z.object({
   reason: z
     .string()

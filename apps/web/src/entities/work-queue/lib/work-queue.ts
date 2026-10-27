@@ -289,6 +289,8 @@ export function buildWorkQueue(
     add({
       referenceId: document.id,
       kind: "stocktake",
+      title:
+        document.mode === "opening" ? "Первичная инвентаризация" : undefined,
       code: document.code,
       objectLabel: document.code,
       skuId: null,

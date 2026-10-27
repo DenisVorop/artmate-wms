@@ -1,13 +1,17 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { ChevronDown, RefreshCw } from "lucide-react";
 import type {
   StocktakeDto,
   StocktakeRowDto,
   CountStocktakeLocationDto,
+  WorkspaceDto,
 } from "@/shared/api/generated/model";
 import { Badge, Button } from "@/shared/ui";
 import { stocktakeDate } from "../lib/stocktake-view";
+import { OpeningLocationForm } from "./opening-location-form";
+import { OpeningCountSummary } from "./opening-count-summary";
 import { CountLocationForm } from "./count-location-form";
 import styles from "./stocktakes.module.css";
 
@@ -24,7 +28,9 @@ export function StocktakeRow({
   dirty,
   compact = false,
   preserveDraft = false,
+  data,
 }: {
+  data?: Pick<WorkspaceDto, "skus" | "locations">;
   compact?: boolean;
   preserveDraft?: boolean;
   doc: StocktakeDto;
@@ -161,36 +167,79 @@ export function StocktakeRow({
           {row.count && !compact && (
             <div className={styles.counted}>
               <strong>Сохранённый факт</strong>
+              {row.count.openingPallet && (
+                <OpeningCountSummary
+                  pallet={row.count.openingPallet}
+                  skus={data?.skus ?? []}
+                />
+              )}
               {row.count.rawPallets.map((pallet) => (
                 <p key={pallet.palletCode}>
                   {pallet.palletCode}: {pallet.quantity} шт.
                 </p>
               ))}
-              <p>
-                Найденные короба:{" "}
-                {row.count.boxCodes.length
-                  ? row.count.boxCodes.join(" · ")
-                  : "нет"}
-              </p>
-              {!row.count.rawPallets.length && !row.count.boxCodes.length && (
-                <p>Ячейка осмотрена, товар не найден.</p>
+              {doc.mode !== "opening" && (
+                <p>
+                  Найденные короба:{" "}
+                  {row.count.boxCodes.length
+                    ? row.count.boxCodes.join(" · ")
+                    : "нет"}
+                </p>
               )}
+              {!row.count.openingPallet &&
+                !row.count.rawPallets.length &&
+                !row.count.boxCodes.length && (
+                  <p>Ячейка осмотрена, товар не найден.</p>
+                )}
             </div>
           )}
-          {((own && doc.status === "counting") || preserveDraft) && (
-            <CountLocationForm
-              key={formKey}
-              compact={compact}
-              row={row}
-              revision={doc.revision}
-              pending={pending}
-              blocked={blocked}
-              error={error}
-              onSave={(values, revision) => onCount(row, values, revision)}
-              onDirty={onDirty}
-              onReset={() => setFormKey((value) => value + 1)}
-            />
-          )}
+          {((own && doc.status === "counting") || preserveDraft) &&
+            (doc.mode === "opening" ? (
+              data ? (
+                <OpeningLocationForm
+                  data={data}
+                  key={formKey}
+                  compact={compact}
+                  row={row}
+                  revision={doc.revision}
+                  pending={pending}
+                  blocked={blocked}
+                  error={error}
+                  onSave={(values, revision) => onCount(row, values, revision)}
+                  onDirty={onDirty}
+                  onReset={() => setFormKey((value) => value + 1)}
+                />
+              ) : (
+                <p role="status">Загружаем каталог товаров…</p>
+              )
+            ) : (
+              <CountLocationForm
+                key={formKey}
+                compact={compact}
+                row={row}
+                revision={doc.revision}
+                pending={pending}
+                blocked={blocked}
+                error={error}
+                onSave={(values, revision) => onCount(row, values, revision)}
+                onDirty={onDirty}
+                onReset={() => setFormKey((value) => value + 1)}
+              />
+            ))}
+          {doc.mode === "opening" &&
+            doc.status === "approved" &&
+            row.openingResult &&
+            (row.openingResult.palletId ||
+              row.openingResult.boxIds.length > 0) && (
+              <Link
+                className="button button--secondary"
+                target="_blank"
+                rel="noopener noreferrer"
+                href={`/labels/opening?stocktakeId=${encodeURIComponent(doc.id)}&locationId=${encodeURIComponent(row.locationId)}`}
+              >
+                Печать этикеток этого адреса
+              </Link>
+            )}
           {!archived && doc.canRefresh && (
             <>
               <Button
@@ -256,16 +305,30 @@ export function StocktakeRow({
                     {item.message}
                     {item.previousRow?.count && (
                       <div>
+                        {item.previousRow.count.openingPallet && (
+                          <OpeningCountSummary
+                            pallet={item.previousRow.count.openingPallet}
+                            skus={data?.skus ?? []}
+                          />
+                        )}
                         {item.previousRow.count.rawPallets
                           .map(
                             (pallet) =>
                               `${pallet.palletCode}: ${pallet.quantity} шт.`,
                           )
                           .join(" · ")}
-                        ; короба:{" "}
-                        {item.previousRow.count.boxCodes.join(" · ") ||
-                          "не найдены"}
-                        .
+                        {doc.mode !== "opening" && (
+                          <>
+                            ; короба:{" "}
+                            {item.previousRow.count.boxCodes.join(" · ") ||
+                              "не найдены"}
+                            .
+                          </>
+                        )}
+                        {doc.mode === "opening" &&
+                          item.previousRow.count.openingPallet === null && (
+                            <p>Ячейка осмотрена, товар не найден.</p>
+                          )}
                       </div>
                     )}
                   </li>

@@ -47,6 +47,8 @@ export function useStocktakeCommands() {
               workspaceQueryKey,
               stockLedgerQueryKey,
               workforceQueryKey,
+              ["marketplaces"],
+              ["work-automation"],
             ].map((queryKey) => client.invalidateQueries({ queryKey })),
           );
         },
@@ -78,9 +80,13 @@ export function useStocktakeCommands() {
     pending,
     error,
     clearError: () => setError(null),
-    create: (locationIds: string[]) =>
+    create: (locationIds: string[], mode: "recount" | "opening" = "recount") =>
       run("create", () =>
-        api.createStocktake({ requestId: crypto.randomUUID(), locationIds }),
+        api.createStocktake({
+          requestId: crypto.randomUUID(),
+          locationIds,
+          mode,
+        }),
       ),
     claim: (doc: StocktakeDto) =>
       run("claim", () => api.claimStocktake(doc.id, command(doc))),
@@ -103,9 +109,19 @@ export function useStocktakeCommands() {
       ),
     submit: (doc: StocktakeDto) =>
       run("submit", () => api.submitStocktake(doc.id, command(doc))),
-    approve: (doc: StocktakeDto, reason: string) =>
+    approve: (
+      doc: StocktakeDto,
+      reason: string,
+      openingCompleteSkuIds?: string[],
+    ) =>
       run("approve", () =>
-        api.approveStocktake(doc.id, { ...command(doc), reason }),
+        api.approveStocktake(doc.id, {
+          ...command(doc),
+          reason,
+          ...(doc.mode === "opening" && openingCompleteSkuIds !== undefined
+            ? { openingCompleteSkuIds }
+            : {}),
+        }),
       ),
     cancel: (doc: StocktakeDto, reason: string) =>
       run("cancel", () =>

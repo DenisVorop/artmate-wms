@@ -9,6 +9,7 @@ import {
   locationInsideSpace,
   resolveStocktakeScope,
   stocktakeLocations,
+  openingStocktakeLocations,
 } from "./stocktake-scope";
 
 const location = (
@@ -62,6 +63,25 @@ const section: RackSectionDto = {
   width: 1.3,
   depth: 0.9,
 };
+test("opening scope removes obvious WMS stock, blocked places and address holds while recount retains them", () => {
+  const locations = [
+    location("free"),
+    location("occupied"),
+    location("held"),
+    location("blocked", { blocked: true }),
+    location("archived", { archived: true }),
+  ];
+  const result = openingStocktakeLocations({
+    locations,
+    pallets: [{ locationId: "occupied" }] as never,
+    addressHolds: [{ locationId: "held", kind: "putaway" }],
+  });
+  assert.deepEqual(
+    result.map((row) => row.id),
+    ["free"],
+  );
+  assert.equal(stocktakeLocations(locations).length, 4);
+});
 test("room scope includes whole rotated footprints and excludes partial overlaps", () => {
   assert.equal(
     locationInsideSpace(location("turn", { x: 2, rotation: 90 }), room),

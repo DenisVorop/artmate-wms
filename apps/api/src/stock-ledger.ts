@@ -162,6 +162,8 @@ export function ledgerEvent(
     );
   } else if (op === "approveStocktake") {
     kind = "adjustment";
+  } else if (op === "approveOpeningStocktake") {
+    kind = "opening_balance";
   } else if (op === "placeReceiptPallet") {
     kind = "receipt_placement";
     referenceType = "receipt";

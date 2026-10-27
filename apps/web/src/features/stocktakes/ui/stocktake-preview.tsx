@@ -10,6 +10,8 @@ const changeTitle = (kind: string) =>
   (
     ({
       raw_count: "Количество сырья",
+      opening_raw: "Первичный остаток сырья",
+      opening_finished: "Первичный остаток готовых коробов",
       box_writeoff: "Списание короба",
       raw_pallet_relocation: "Перенос паллеты",
       box_relocation: "Перенос короба",
@@ -39,7 +41,13 @@ export function StocktakePreview({
       <div className={styles.sectionHeading}>
         <div>
           <h2>
-            {applied ? "Применённые изменения" : "Расхождения и изменения"}
+            {doc.mode === "opening"
+              ? applied
+                ? "Внесённые первичные остатки"
+                : "Первичные остатки к утверждению"
+              : applied
+                ? "Применённые изменения"
+                : "Расхождения и изменения"}
           </h2>
           <p>
             {applied
@@ -51,7 +59,11 @@ export function StocktakePreview({
         </div>
         {presentation.unitsDelta !== null && (
           <div className={styles.subtle}>
-            Изменение остатка:{" "}
+            {doc.mode === "opening"
+              ? applied
+                ? "Внесено на баланс:"
+                : "Первичный остаток:"
+              : "Изменение остатка:"}{" "}
             <strong
               className={
                 presentation.unitsDelta < 0
@@ -61,7 +73,10 @@ export function StocktakePreview({
                     : undefined
               }
             >
-              {signed(presentation.unitsDelta)} шт.
+              {doc.mode === "opening"
+                ? number(presentation.unitsDelta)
+                : signed(presentation.unitsDelta)}{" "}
+              шт.
             </strong>
           </div>
         )}
@@ -98,14 +113,17 @@ export function StocktakePreview({
                 color: "var(--muted)",
               }}
             >
-              Изменений: {presentation.changes.length}. Внутренние переносы
-              сохраняют количество и партии.
+              {doc.mode === "opening"
+                ? `Адресов с товаром: ${presentation.changes.length}. Количество внесено по датам поступления.`
+                : `Изменений: ${presentation.changes.length}. Внутренние переносы сохраняют количество и партии.`}
             </caption>
             <thead>
               <tr>
                 <th scope="col">Товар / действие</th>
                 <th scope="col">Адрес</th>
-                <th scope="col">Учёт → факт</th>
+                <th scope="col">
+                  {doc.mode === "opening" ? "Первичный остаток" : "Учёт → факт"}
+                </th>
                 <th scope="col">Остаток, шт.</th>
               </tr>
             </thead>
@@ -117,15 +135,27 @@ export function StocktakePreview({
                     <small>{changeTitle(change.kind)}</small>
                   </td>
                   <td>
-                    {address(change.fromLocationId)}
-                    {change.toLocationId &&
+                    {doc.mode === "opening"
+                      ? address(change.toLocationId)
+                      : address(change.fromLocationId)}
+                    {doc.mode !== "opening" &&
+                      change.toLocationId &&
                       change.toLocationId !== change.fromLocationId && (
                         <> → {address(change.toLocationId)}</>
                       )}
                   </td>
                   <td>
-                    {number(change.expectedQuantity)} →{" "}
-                    {number(change.countedQuantity)}
+                    {doc.mode === "opening" ? (
+                      <>
+                        {number(change.countedQuantity)}{" "}
+                        {change.kind === "opening_finished" ? "коробов" : "шт."}
+                      </>
+                    ) : (
+                      <>
+                        {number(change.expectedQuantity)} →{" "}
+                        {number(change.countedQuantity)}
+                      </>
+                    )}
                   </td>
                   <td
                     className={
@@ -136,7 +166,9 @@ export function StocktakePreview({
                           : undefined
                     }
                   >
-                    {signed(change.unitsDelta)}
+                    {doc.mode === "opening"
+                      ? number(change.unitsDelta)
+                      : signed(change.unitsDelta)}
                   </td>
                 </tr>
               ))}
@@ -145,14 +177,23 @@ export function StocktakePreview({
         </div>
       ) : (
         <p className={styles.panel}>
-          Количественных расхождений и переносов нет.
+          {doc.mode === "opening"
+            ? "На осмотренных адресах товар не найден."
+            : "Количественных расхождений и переносов нет."}
         </p>
       )}
       {!applied && (
         <p className={styles.footerNote} style={{ padding: "0 20px 20px" }}>
-          Недостача сырья относится к известной партии; пустой поддон остаётся
-          на складе. Отсутствующие готовые короба списываются целиком.
-          Неизвестные коды требуют проверки и блокируют утверждение.
+          {doc.mode === "opening" ? (
+            "Это первичный ввод существующего товара. После утверждения появятся паллеты, короба, партии по датам поступления и этикетки."
+          ) : (
+            <>
+              Недостача сырья относится к известной партии; пустой поддон
+              остаётся на складе. Отсутствующие готовые короба списываются
+              целиком. Неизвестные коды требуют проверки и блокируют
+              утверждение.
+            </>
+          )}
         </p>
       )}
     </section>

@@ -93,8 +93,8 @@ export function StocktakesFeature({
           pending={busy}
           error={commands.error}
           onClose={() => ui.setCreating(false)}
-          onSave={async (ids) => {
-            const result = await commands.create(ids);
+          onSave={async (ids, mode) => {
+            const result = await commands.create(ids, mode);
             if (!result) return false;
             ui.setSelectedId(result.id);
             ui.showArchive(false);
@@ -219,6 +219,7 @@ export function StocktakesFeature({
               <StocktakeDocument
                 key={doc.id}
                 doc={doc}
+                data={workspace.data}
                 isManager={isManager}
                 ownEmployeeId={user?.employeeId ?? ""}
                 working={working}
@@ -266,10 +267,11 @@ export function StocktakesFeature({
                   );
                   return true;
                 }}
-                onApprove={async (reason, revision) => {
+                onApprove={async (reason, revision, openingCompleteSkuIds) => {
                   const result = await commands.approve(
                     { ...doc, revision },
                     reason,
+                    openingCompleteSkuIds,
                   );
                   if (!result) return false;
                   ui.showArchive(true);

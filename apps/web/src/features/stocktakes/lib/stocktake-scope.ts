@@ -2,6 +2,7 @@ import type {
   LocationDto,
   RackSectionDto,
   WarehouseSpaceDto,
+  WorkspaceDto,
 } from "@/shared/api/generated/model";
 
 type Footprint = Pick<LocationDto, "x" | "y" | "width" | "depth" | "rotation">;
@@ -29,6 +30,22 @@ export function stocktakeLocations(locations: LocationDto[]): LocationDto[] {
         (location.kind === "rack" || location.kind === "floor"),
     )
     .sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));
+}
+/** Only the obvious occupied/blocked addresses are removed here. Server guards
+ * still verify live reservations and operations when creating the document. */
+export function openingStocktakeLocations(
+  data: Pick<WorkspaceDto, "locations" | "pallets" | "addressHolds">,
+) {
+  const occupied = new Set(
+    data.pallets.flatMap((pallet) =>
+      pallet.locationId ? [pallet.locationId] : [],
+    ),
+  );
+  const held = new Set(data.addressHolds?.map((hold) => hold.locationId) ?? []);
+  return stocktakeLocations(data.locations).filter(
+    (location) =>
+      !location.blocked && !occupied.has(location.id) && !held.has(location.id),
+  );
 }
 
 export function resolveStocktakeScope(

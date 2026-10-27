@@ -7,6 +7,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
+import { validateSync } from "class-validator";
+import { plainToInstance } from "class-transformer";
+import {
+  openingStocktakePlan,
+  openingLocationIssues,
+} from "./opening-stocktake";
 import { WarehouseService } from "./warehouse.service";
 import { Queryable } from "./database";
 import { requireAuth } from "./auth-policy";
@@ -96,10 +102,14 @@ export class StocktakeService {
     }));
     const preview =
       doc.finalPreview ??
-      stocktakePlan(s, rows, versions, doc.revision).preview;
+      (doc.mode === "opening"
+        ? openingStocktakePlan(s, rows, versions, doc.revision, doc)
+        : stocktakePlan(s, rows, versions, doc.revision)
+      ).preview;
     const { finalPreview, ...stored } = doc;
     return {
       ...stored,
+      mode: doc.mode ?? "recount",
       locationsTotal: rows.length,
       locationsCounted: rows.filter((r) => r.count !== null).length,
       staleLocations: viewRows.filter((r) => r.stale).length,
@@ -295,6 +305,10 @@ export class StocktakeService {
   }
   async createStocktake(b: D.CreateStocktakeDto) {
     return this._command("createStocktake", null, b, async (tx, a, s) => {
+      if (b.mode !== undefined && !["recount", "opening"].includes(b.mode))
+        throw new BadRequestException(
+          "Выберите сверку или первичный ввод остатков",
+        );
       if (new Set(b.locationIds).size !== b.locationIds.length)
         throw new BadRequestException("Адреса не должны повторяться");
       for (const id of b.locationIds) {
@@ -309,6 +323,20 @@ export class StocktakeService {
             "Выберите действующие адреса хранения: стеллаж или пол",
           );
       }
+      if (b.mode === "opening") {
+        for (const locationId of b.locationIds) {
+          const reasons = openingLocationIssues(s, locationId);
+          if (reasons.length) throw new BadRequestException(reasons.join("; "));
+        }
+        const overlapping = await tx.query<{ location_id: string }>(
+          "SELECT r.location_id FROM stocktake_rows r JOIN stocktakes d ON d.id=r.document_id WHERE d.payload->>'mode'='opening' AND d.payload->>'status' NOT IN ('approved','cancelled') AND r.location_id=ANY($1::text[])",
+          [b.locationIds],
+        );
+        if (overlapping.rows.length)
+          throw new ConflictException(
+            "Этот адрес уже входит в незавершённый документ первичного ввода",
+          );
+      }
       const versions = await cellVersions(tx),
         count = await tx.query<{ n: string }>(
           "SELECT COUNT(*) AS n FROM stocktakes",
@@ -317,6 +345,7 @@ export class StocktakeService {
       const d: Document = {
         id,
         code: `INV-${String(Number(count.rows[0].n) + 1).padStart(4, "0")}`,
+        mode: b.mode ?? "recount",
         status: "queued",
         revision: 1,
         createdAt: new Date().toISOString(),
@@ -387,6 +416,65 @@ export class StocktakeService {
           throw new ConflictException(
             "Адрес изменился. Обновите исходные данные ячейки и пересчитайте её",
           );
+        let count: D.StocktakeCountDto;
+        if (doc.mode === "opening") {
+          if (
+            !Object.prototype.hasOwnProperty.call(b, "openingPallet") ||
+            b.openingPallet === undefined
+          )
+            throw new BadRequestException(
+              "Укажите паллету или явно подтвердите пустое место",
+            );
+          if (b.rawPallets.length || b.boxCodes.length)
+            throw new BadRequestException(
+              "Для первичного ввода нельзя указывать уже учтённые паллеты и короба",
+            );
+          if (
+            b.openingPallet !== null &&
+            validateSync(
+              plainToInstance(D.OpeningPalletCountDto, b.openingPallet),
+              { whitelist: true, forbidNonWhitelisted: true },
+            ).length
+          )
+            throw new BadRequestException(
+              "Проверьте состав и размеры паллеты первичного ввода",
+            );
+          count = {
+            rawPallets: [],
+            boxCodes: [],
+            openingPallet: structuredClone(b.openingPallet),
+          };
+          const candidate = {
+            ...row,
+            count,
+            countVersion: versions.get(locationId) ?? 0,
+          };
+          const trial = openingStocktakePlan(
+            s,
+            rows.map((entry) => (entry === row ? candidate : entry)),
+            versions,
+            doc.revision,
+            doc,
+          );
+          const issues = trial.preview.issues.filter(
+            (issue) =>
+              issue.locationIds.includes(locationId) ||
+              issue.code === "BOX_LIMIT",
+          );
+          if (issues.length)
+            throw new BadRequestException(
+              issues.map((issue) => issue.message).join("; "),
+            );
+        } else {
+          if (b.openingPallet !== undefined)
+            throw new BadRequestException(
+              "Первичный остаток можно вводить только в документе первичного ввода",
+            );
+          count = {
+            rawPallets: structuredClone(b.rawPallets),
+            boxCodes: [...b.boxCodes],
+          };
+        }
         await this._history(
           tx,
           doc,
@@ -395,10 +483,7 @@ export class StocktakeService {
           "Результат подсчёта сохранён",
           row,
         );
-        row.count = {
-          rawPallets: structuredClone(b.rawPallets),
-          boxCodes: [...b.boxCodes],
-        };
+        row.count = count;
         row.countVersion = versions.get(locationId) ?? 0;
         row.countedAt = new Date().toISOString();
         row.countedByEmployeeId = a.employee_id;
@@ -424,6 +509,10 @@ export class StocktakeService {
           index = rows.findIndex((r) => r.locationId === locationId);
         if (index < 0)
           throw new NotFoundException("Адрес не входит в документ");
+        if (doc.mode === "opening") {
+          const reasons = openingLocationIssues(s, locationId);
+          if (reasons.length) throw new ConflictException(reasons.join("; "));
+        }
         await this._history(
           tx,
           doc,
@@ -475,12 +564,55 @@ export class StocktakeService {
       const { doc, rows } = data!;
       if (doc.status !== "review")
         throw new ConflictException("Сначала передайте документ на проверку");
-      const plan = stocktakePlan(s, rows, await cellVersions(tx), doc.revision);
+      if (doc.mode !== "opening" && b.openingCompleteSkuIds !== undefined)
+        throw new BadRequestException(
+          "Подтвердить полный готовый запас можно только при первичном вводе",
+        );
+      if (b.openingCompleteSkuIds !== undefined) {
+        if (
+          !Array.isArray(b.openingCompleteSkuIds) ||
+          b.openingCompleteSkuIds.length > 200 ||
+          b.openingCompleteSkuIds.some((skuId) => typeof skuId !== "string")
+        )
+          throw new BadRequestException(
+            "Проверьте список полностью учтённых тематик",
+          );
+        const finished = new Set(
+          rows.flatMap((row) =>
+            row.count?.openingPallet?.kind === "finished"
+              ? [row.count.openingPallet.skuId]
+              : [],
+          ),
+        );
+        if (
+          new Set(b.openingCompleteSkuIds).size !==
+            b.openingCompleteSkuIds.length ||
+          b.openingCompleteSkuIds.some((skuId) => !finished.has(skuId))
+        )
+          throw new BadRequestException(
+            "Подтверждайте полный готовый запас только для тематик готовых коробов в этом документе",
+          );
+      }
+      const plan =
+        doc.mode === "opening"
+          ? openingStocktakePlan(
+              s,
+              rows,
+              await cellVersions(tx),
+              doc.revision,
+              doc,
+            )
+          : stocktakePlan(s, rows, await cellVersions(tx), doc.revision);
       if (!plan.state || !plan.preview.canApprove)
         throw new ConflictException(
           plan.preview.issues.map((i) => i.message).join("; "),
         );
-      await this.warehouse.commitStocktake(tx, s, plan.state, b, doc);
+      if (doc.mode === "opening") {
+        await this.warehouse.commitOpeningStocktake(tx, s, plan.state, b, doc);
+        const results = (plan as ReturnType<typeof openingStocktakePlan>)
+          .results;
+        for (const row of rows) row.openingResult = results[row.locationId];
+      } else await this.warehouse.commitStocktake(tx, s, plan.state, b, doc);
       Object.assign(s, plan.state);
       doc.status = "approved";
       doc.approvedAt = new Date().toISOString();
@@ -499,9 +631,21 @@ export class StocktakeService {
   async cancelStocktake(id: string, b: D.ReasonStocktakeDto) {
     return this._command("cancelStocktake", id, b, async (tx, a, s, data) => {
       const { doc, rows } = data!;
+      if (b.openingCompleteSkuIds !== undefined)
+        throw new BadRequestException(
+          "Подтверждение полного запаса доступно только при утверждении первичного ввода",
+        );
       doc.finalPreview = {
-        ...stocktakePlan(s, rows, await cellVersions(tx), doc.revision + 1)
-          .preview,
+        ...(doc.mode === "opening"
+          ? openingStocktakePlan(
+              s,
+              rows,
+              await cellVersions(tx),
+              doc.revision + 1,
+              doc,
+            )
+          : stocktakePlan(s, rows, await cellVersions(tx), doc.revision + 1)
+        ).preview,
         canApprove: false,
       };
       doc.status = "cancelled";

@@ -1,10 +1,14 @@
 "use client";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { openingCompletionSchema } from "../lib/opening-count-form";
 import Link from "next/link";
 import type {
   StocktakeDto,
   StocktakeRowDto,
   CountStocktakeLocationDto,
+  WorkspaceDto,
 } from "@/shared/api/generated/model";
 import { useStocktakePreview } from "@/entities/stocktake";
 import { Badge, Button, LoadingState, ErrorState } from "@/shared/ui";
@@ -20,6 +24,7 @@ import styles from "./stocktakes.module.css";
 
 export function StocktakeDocument({
   doc,
+  data,
   isManager,
   ownEmployeeId,
   working,
@@ -35,6 +40,7 @@ export function StocktakeDocument({
   onCancel,
 }: {
   doc: StocktakeDto;
+  data?: Pick<WorkspaceDto, "skus" | "locations">;
   isManager: boolean;
   ownEmployeeId: string;
   working: boolean;
@@ -50,12 +56,30 @@ export function StocktakeDocument({
   ) => Promise<StocktakeDto | null>;
   onRefresh: (row: StocktakeRowDto, revision: number) => Promise<boolean>;
   onSubmit: () => Promise<boolean>;
-  onApprove: (reason: string, revision: number) => Promise<boolean>;
+  onApprove: (
+    reason: string,
+    revision: number,
+    openingCompleteSkuIds?: string[],
+  ) => Promise<boolean>;
   onCancel: (reason: string, revision: number) => Promise<boolean>;
 }) {
   const [reasonAction, setReasonAction] = useState<"approve" | "cancel" | null>(
     null,
   );
+  const completionForm = useForm<{ completeSkuIds: string[] }>({
+    resolver: zodResolver(openingCompletionSchema),
+    defaultValues: { completeSkuIds: [] },
+  });
+  const completeSkuIds = completionForm.watch("completeSkuIds");
+  const finishedSkuIds = [
+    ...new Set(
+      doc.rows.flatMap((row) =>
+        row.count?.openingPallet?.kind === "finished"
+          ? [row.count.openingPallet.skuId]
+          : [],
+      ),
+    ),
+  ];
   const [reviewRevision, setReviewRevision] = useState(doc.revision);
   const archived = doc.status === "approved" || doc.status === "cancelled";
   const previewQuery = useStocktakePreview(
@@ -73,6 +97,7 @@ export function StocktakeDocument({
   const own = doc.employeeId === ownEmployeeId;
   const openReason = (action: "approve" | "cancel") => {
     setReviewRevision(doc.revision);
+    completionForm.reset({ completeSkuIds: [] });
     setReasonAction(action);
   };
   const reasonDisabled =
@@ -92,7 +117,10 @@ export function StocktakeDocument({
       <section className="glass-panel">
         <header className={styles.detailHeader}>
           <div>
-            <h2>{doc.code}</h2>
+            <h2>
+              {doc.mode === "opening" ? "Первичная инвентаризация · " : ""}
+              {doc.code}
+            </h2>
             <div className={styles.detailMeta}>
               <Badge
                 tone={
@@ -265,17 +293,50 @@ export function StocktakeDocument({
           disabledReason={reasonDisabled}
           onSave={(reason) =>
             reasonAction === "approve"
-              ? onApprove(reason, reviewRevision)
+              ? onApprove(
+                  reason,
+                  reviewRevision,
+                  doc.mode === "opening" ? completeSkuIds : undefined,
+                )
               : onCancel(reason, reviewRevision)
           }
           onClose={() => setReasonAction(null)}
         >
+          {reasonAction === "approve" &&
+            doc.mode === "opening" &&
+            finishedSkuIds.length > 0 && (
+              <details className={styles.notice}>
+                <summary>Завершение ввода по тематикам</summary>
+                <p>
+                  Отметьте только те тематики, весь готовый запас которых уже
+                  внесён в WMS. Прежняя общая оценка будет заменена фактическим
+                  учётом. Для остальных тематик неразмещённый остаток
+                  сохранится.
+                </p>
+                {finishedSkuIds.map((skuId) => (
+                  <label className={styles.check} key={skuId}>
+                    <input
+                      type="checkbox"
+                      disabled={busy || reviewRevision !== doc.revision}
+                      value={skuId}
+                      {...completionForm.register("completeSkuIds")}
+                    />
+                    Весь готовый запас{" "}
+                    {data?.skus.find((s) => s.id === skuId)?.name ?? skuId} уже
+                    внесён в WMS
+                  </label>
+                ))}
+              </details>
+            )}
           {reviewRevision !== doc.revision && (
             <Button
               size="sm"
               variant="secondary"
               disabled={busy || !previewReady}
-              onClick={() => setReviewRevision(doc.revision)}
+              onClick={() => {
+                setReviewRevision(doc.revision);
+                completionForm.reset({ completeSkuIds: [] });
+              }}
             >
               Изменения проверены · учесть новую версию
             </Button>
@@ -294,6 +355,7 @@ export function StocktakeDocument({
             <StocktakeRow
               key={row.locationId}
               doc={doc}
+              data={data}
               row={row}
               own={own}
               working={working}

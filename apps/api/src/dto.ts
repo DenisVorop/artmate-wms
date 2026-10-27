@@ -270,12 +270,14 @@ export class LocationDto extends PlanArchiveDto {
   @ApiProperty({ type: Boolean }) blocked!: boolean;
 }
 export class LotDto {
+  @ApiPropertyOptional({ type: String }) openingStocktakeId?: string;
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) skuId!: string;
   @ApiProperty({ type: String }) receivedAt!: string;
   @ApiProperty({ type: String }) name!: string;
 }
 export class PalletDto {
+  @ApiPropertyOptional({ type: String }) openingStocktakeId?: string;
   @ApiProperty({ type: Number }) widthMm!: number;
   @ApiProperty({ type: Number }) depthMm!: number;
   @ApiProperty({ type: Number, nullable: true }) weightKg!: number | null;
@@ -301,6 +303,8 @@ export class PalletDto {
   @ApiProperty({ type: Number }) heightMm!: number;
 }
 export class BoxDto {
+  @ApiPropertyOptional({ type: String }) openingStocktakeId?: string;
+  @ApiPropertyOptional({ type: String }) registeredAt?: string;
   @ApiProperty({ type: PackagingProfileDto })
   packagingSnapshot!: PackagingProfileDto;
   @ApiProperty({ type: String }) id!: string;
@@ -308,7 +312,7 @@ export class BoxDto {
   @ApiProperty({ type: String }) skuId!: string;
   @ApiProperty({ type: Number }) units!: number;
   @ApiProperty({ type: [LotContentDto] }) lotContents!: LotContentDto[];
-  @ApiProperty({ type: String }) packedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) packedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
   @ApiProperty({
@@ -1802,7 +1806,72 @@ export class StocktakeRawCountDto {
   @Max(100000000)
   quantity!: number;
 }
+export class OpeningStocktakeBatchDto {
+  @ApiProperty({
+    type: String,
+    description: "Фактическая дата поступления на склад",
+  })
+  @IsISO8601({ strict: true })
+  @MaxLength(40)
+  receivedAt!: string;
+  @ApiProperty({ type: Number, minimum: 1, maximum: 100000000 })
+  @IsInt()
+  @Min(1)
+  @Max(100000000)
+  quantity!: number;
+}
+export class OpeningPalletCountDto {
+  @ApiProperty({ type: String, enum: ["raw", "finished"] })
+  @IsIn(["raw", "finished"])
+  kind!: "raw" | "finished";
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  skuId!: string;
+  @ApiProperty({
+    type: [OpeningStocktakeBatchDto],
+    minItems: 1,
+    maxItems: 2000,
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(2000)
+  @ValidateNested({ each: true })
+  @Type(() => OpeningStocktakeBatchDto)
+  batches!: OpeningStocktakeBatchDto[];
+  @ApiPropertyOptional({ type: Number })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  unitsPerBox?: number;
+  @ApiPropertyOptional({
+    type: Number,
+    description: "Полная высота сырьевой паллеты с поддоном",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsInt()
+  @Min(150)
+  @Max(10000)
+  heightMm?: number;
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber()
+  @Min(0.001)
+  @Max(100000)
+  weightKg?: number | null;
+}
+export class OpeningStocktakeResultDto {
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: [String] }) boxIds!: string[];
+}
 export class StocktakeCountDto {
+  @ApiPropertyOptional({ type: OpeningPalletCountDto, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @ValidateNested()
+  @Type(() => OpeningPalletCountDto)
+  openingPallet?: OpeningPalletCountDto | null;
   @ApiProperty({ type: [StocktakeRawCountDto] })
   @IsArray()
   @ArrayMaxSize(200)
@@ -1818,6 +1887,8 @@ export class StocktakeCountDto {
   boxCodes!: string[];
 }
 export class StocktakeRowSnapshotDto {
+  @ApiPropertyOptional({ type: OpeningStocktakeResultDto, nullable: true })
+  openingResult?: OpeningStocktakeResultDto | null;
   @ApiProperty({ type: String }) locationId!: string;
   @ApiProperty({ type: String }) locationCode!: string;
   @ApiProperty({ type: String }) locationName!: string;
@@ -1852,6 +1923,8 @@ export class StocktakeChangeDto {
       "box_writeoff",
       "raw_pallet_relocation",
       "box_relocation",
+      "opening_raw",
+      "opening_finished",
     ],
   })
   kind!: string;
@@ -1895,6 +1968,8 @@ export class StocktakeHistoryDto {
   previousRow!: StocktakeRowSnapshotDto | null;
 }
 export class StocktakeSummaryDto {
+  @ApiPropertyOptional({ type: String, enum: ["recount", "opening"] })
+  mode?: "recount" | "opening";
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String, enum: STOCKTAKE_STATUSES }) status!: string;
@@ -1953,6 +2028,14 @@ export class StocktakeListQueryDto {
   status?: string;
 }
 export class CreateStocktakeDto extends CommandDto {
+  @ApiPropertyOptional({
+    type: String,
+    enum: ["recount", "opening"],
+    default: "recount",
+  })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["recount", "opening"])
+  mode?: "recount" | "opening";
   @ApiProperty({ type: [String], maxItems: 200 })
   @IsArray()
   @ArrayMinSize(1)
@@ -1970,6 +2053,11 @@ export class StocktakeCommandDto extends CommandDto {
   expectedRevision!: number;
 }
 export class CountStocktakeLocationDto extends StocktakeCommandDto {
+  @ApiPropertyOptional({ type: OpeningPalletCountDto, nullable: true })
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @ValidateNested()
+  @Type(() => OpeningPalletCountDto)
+  openingPallet?: OpeningPalletCountDto | null;
   @ApiProperty({ type: String })
   @IsString()
   @MinLength(1)
@@ -1990,6 +2078,14 @@ export class CountStocktakeLocationDto extends StocktakeCommandDto {
   boxCodes!: string[];
 }
 export class ReasonStocktakeDto extends StocktakeCommandDto {
+  @ApiPropertyOptional({ type: [String], maxItems: 200 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(150, { each: true })
+  openingCompleteSkuIds?: string[];
   @ApiProperty({ type: String, minLength: 5, maxLength: 500 })
   @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
   @IsString()

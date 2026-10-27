@@ -6,6 +6,7 @@ import {
   LoadingState,
   RollLabelFormatSelect,
   rollPaperClass,
+  RollLabel,
 } from "@/shared/ui";
 import { rollLabelFormats } from "@/shared/lib/label-paper";
 import { useLabel, type LabelType } from "../model/use-label";
@@ -136,43 +137,14 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
         Дождитесь загрузки QR перед печатью.
       </p>
       <div className={styles.preview}>
-        <article
-          className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 24 ? styles.mediumLabel : ""} ${label.title.length > 50 ? styles.longLabel : ""} ${label.title.length > 130 || label.code.length > 40 ? styles.denseLabel : ""}`}
-          data-format={print.format}
-          aria-label={`${labelNames[type]} ${label.code}, ${label.title}`}
-        >
-          <header className={styles.labelHeading}>
-            <strong className={label.code.length > 28 ? styles.longCode : ""}>
-              {label.code}
-            </strong>
-            <span>Artmate · {labelNames[type]}</span>
-          </header>
-          <div className={styles.labelBody}>
-            {/* An SVG image cannot execute scripts in this document. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              key={print.key}
-              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(label.svg)}`}
-              width={144}
-              height={144}
-              alt={`QR ${label.code}`}
-              onLoad={print.markLoaded}
-              onError={print.markFailed}
-            />
-            <h2
-              className={
-                label.title.length > 70
-                  ? styles.longTitle
-                  : label.title.length > 24
-                    ? styles.mediumTitle
-                    : ""
-              }
-            >
-              {label.title}
-            </h2>
-          </div>
-          <p className={styles.payload}>{label.payload}</p>
-        </article>
+        <RollLabel
+          label={label}
+          format={print.format}
+          imageKey={print.key}
+          caption={labelNames[type]}
+          onLoad={print.markLoaded}
+          onError={print.markFailed}
+        />
       </div>
     </div>
   );

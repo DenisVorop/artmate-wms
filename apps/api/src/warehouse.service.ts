@@ -1,3 +1,4 @@
+import { reconcileOpeningStock } from "./marketplaces/opening-stock-reconciliation";
 import { initializeWorkAutomationStorage } from "./work-automation/storage";
 import {
   assemblyPressure,
@@ -25,7 +26,7 @@ import {
   shiftHistory,
   workHistory,
 } from "./workforce";
-import { authorizeWarehouse } from "./auth-policy";
+import { authorizeWarehouse, requireAuth } from "./auth-policy";
 import {
   initializeStocktakes,
   cellFingerprints,
@@ -352,6 +353,60 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       "approveStocktake",
       body,
       document,
+    );
+  }
+  async commitOpeningStocktake(
+    tx: Queryable,
+    before: D.WorkspaceDto,
+    state: D.WorkspaceDto,
+    body: D.ReasonStocktakeDto,
+    document: { id: string; code: string },
+  ) {
+    const actor = await requireAuth(tx, true);
+    if (actor.role !== "manager")
+      throw new ForbiddenException("Нужны права руководителя");
+    // Initial registration is additive: never rewrite known warehouse objects.
+    for (const table of tables) {
+      for (const old of before[table]) {
+        const next = state[table].find((item) => item.id === old.id);
+        if (!next || JSON.stringify(next) !== JSON.stringify(old))
+          fail(
+            "Первичный ввод не должен изменять уже учтённый товар или задания",
+          );
+      }
+      if (
+        !["lots", "pallets", "boxes"].includes(table) &&
+        state[table].length !== before[table].length
+      )
+        fail("Первичный ввод не создаёт складские задания или приёмки");
+    }
+    for (const table of ["lots", "pallets", "boxes"] as const) {
+      const known = new Set(before[table].map((item) => item.id));
+      for (const item of state[table].filter((item) => !known.has(item.id)))
+        if (item.openingStocktakeId !== document.id)
+          fail("Неизвестное происхождение начального остатка");
+    }
+    activity(
+      state,
+      "Начальные остатки введены",
+      `${document.code}: ${body.reason.trim()}`,
+      "opening_balance",
+    );
+    await this._commitState(
+      tx,
+      before,
+      state,
+      "approveOpeningStocktake",
+      body,
+      { ...document, opening: true },
+    );
+    await reconcileOpeningStock(
+      tx,
+      before,
+      state,
+      document,
+      actor,
+      body.openingCompleteSkuIds ?? [],
     );
   }
   private _enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -723,7 +778,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     state: D.WorkspaceDto,
     operation: string,
     body: D.CommandDto,
-    stocktake?: { id: string; code: string },
+    stocktake?: { id: string; code: string; opening?: boolean },
   ) {
     this._assertZoneIntegrity(state);
     this._assertIntegrity(state);
@@ -760,7 +815,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           : undefined,
       );
       if (stocktake) {
-        event.kind = "adjustment";
+        event.kind = stocktake.opening ? "opening_balance" : "adjustment";
         event.referenceType = "stocktake";
         event.referenceId = stocktake.id;
         event.referenceCode = stocktake.code;
@@ -2297,7 +2352,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fromPalletId: box.palletId,
       fromLocationId: box.locationId,
       toLocationId: null,
-      createdAt: box.packedAt,
+      createdAt: box.packedAt ?? box.registeredAt ?? now(),
       claimedAt: null,
       takenAt: null,
       completedAt: null,
@@ -2656,7 +2711,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         return (
           ad[0].localeCompare(bd[0]) ||
           (ad.at(-1) ?? "").localeCompare(bd.at(-1) ?? "") ||
-          a.packedAt.localeCompare(b.packedAt) ||
+          (a.packedAt ?? a.registeredAt ?? "").localeCompare(
+            b.packedAt ?? b.registeredAt ?? "",
+          ) ||
           a.code.localeCompare(b.code)
         );
       });

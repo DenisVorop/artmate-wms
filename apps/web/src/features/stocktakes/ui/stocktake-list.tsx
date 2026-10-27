@@ -75,6 +75,7 @@ export function StocktakeList({
           >
             <div className={styles.documentTop}>
               <strong>{item.code}</strong>
+              {item.mode === "opening" && <small>Первичный ввод</small>}
               <Badge
                 tone={
                   item.status === "approved"

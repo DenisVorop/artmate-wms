@@ -201,3 +201,5 @@ export {
   useEmployeeScanActivity,
 } from "./employee-scan-activity";
 export { RollLabelFormatSelect, rollPaperClass } from "./roll-label-format";
+
+export { RollLabel } from "./roll-label";

@@ -178,6 +178,21 @@ export class WorkAutomationService {
       // Missing placement work is recovered independently of forecast readiness.
       await this.warehouse.applyAutomaticTasks(tx, state, []);
       signal?.throwIfAborted();
+      const opening = await tx.query(
+        "SELECT id FROM stocktakes WHERE payload->>'mode'='opening' AND payload->>'status' NOT IN ('approved','cancelled') LIMIT 1",
+      );
+      if (opening.rows.length) {
+        await saveAutomationSetting(tx, "runtime", {
+          lastCheckedAt: checkedAt,
+          message:
+            "Идёт первичная инвентаризация. Сначала завершите ввод начальных остатков.",
+          blockers: [
+            "Утвердите или отмените открытые документы первичного ввода.",
+          ],
+        });
+        signal?.throwIfAborted();
+        return state.revision !== previousRevision ? "updated" : "skipped";
+      }
       const origins = await automationOrigins(tx);
       const effective = automaticPlanningWorkspace(state, origins);
       const marketplace = await loadMarketplaces(tx);

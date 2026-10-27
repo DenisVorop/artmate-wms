@@ -1,0 +1,141 @@
+.label {
+  width: var(--roll-width);
+  height: var(--roll-height);
+  padding: 4mm 5mm;
+  overflow: hidden;
+  box-sizing: border-box;
+  color: oklch(0.16 0 0);
+  background: white;
+  border: 1px solid oklch(0.88 0.01 160);
+  border-radius: 4px;
+  font-family: Arial, sans-serif;
+}
+.labelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+  margin-bottom: 2mm;
+}
+.labelHeading strong {
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+.labelHeading span {
+  font-size: 7pt;
+  line-height: 1.25;
+  color: oklch(0.4 0 0);
+}
+.labelBody {
+  display: grid;
+  grid-template-columns: 38mm minmax(0, 1fr);
+  align-items: center;
+  gap: 4mm;
+}
+.labelBody img {
+  display: block;
+  width: 38mm;
+  height: 38mm;
+  background: white;
+}
+.labelBody h2 {
+  margin: 0;
+  font-size: 10pt;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.payload {
+  margin: 2mm 0 0;
+  font-family: Consolas, monospace;
+  font-size: 5.5pt;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.label[data-format="75x120"] {
+  padding: 3mm;
+}
+.label[data-format="75x120"] .labelHeading strong {
+  font-size: 20pt;
+}
+.label[data-format="75x120"] .labelHeading strong.longCode {
+  font-size: 10pt;
+}
+.label[data-format="75x120"] .labelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3mm;
+  align-items: center;
+  text-align: center;
+}
+.label[data-format="75x120"] .labelBody img {
+  width: 64mm;
+  height: 64mm;
+  padding: 2mm;
+  box-sizing: border-box;
+}
+.label[data-format="75x120"] .labelBody h2 {
+  font-size: 24pt;
+  line-height: 1.1;
+}
+.label.mediumLabel[data-format="75x120"] .labelBody img {
+  width: 58mm;
+  height: 58mm;
+}
+.label[data-format="75x120"] .labelBody h2.mediumTitle {
+  font-size: 18pt;
+}
+.label.longLabel[data-format="75x120"] .labelBody img {
+  width: 52mm;
+  height: 52mm;
+}
+.label[data-format="75x120"] .labelBody h2.longTitle {
+  font-size: 12pt;
+}
+.label.longLabel[data-format="75x120"] .labelBody h2.mediumTitle {
+  font-size: 12pt;
+}
+/* Keep maximum custom names and codes complete, with larger QR than before. */
+.label.denseLabel[data-format="75x120"] .labelBody img {
+  width: 44mm;
+  height: 44mm;
+}
+.label.denseLabel[data-format="75x120"] .labelHeading strong.longCode {
+  font-size: 9pt;
+}
+.label.denseLabel[data-format="75x120"] .labelBody h2.longTitle {
+  font-size: 10pt;
+}
+.label.denseLabel[data-format="100x70"] .labelHeading strong {
+  font-size: 8pt;
+}
+.label.denseLabel[data-format="100x70"] .labelBody {
+  grid-template-columns: 32mm minmax(0, 1fr);
+}
+.label.denseLabel[data-format="100x70"] .labelBody img {
+  width: 32mm;
+  height: 32mm;
+}
+.label.denseLabel[data-format="100x70"] .labelBody h2.longTitle {
+  font-size: 7pt;
+}
+
+@media print {
+  .label {
+    width: var(--roll-width);
+    height: var(--roll-height);
+    border: 0;
+    border-radius: 0;
+    margin: 0;
+    break-inside: avoid;
+    break-after: page;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .label:last-child {
+    break-after: auto;
+  }
+}

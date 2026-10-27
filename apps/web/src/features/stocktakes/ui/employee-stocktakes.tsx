@@ -105,7 +105,11 @@ export function EmployeeStocktakes({
         >
           <ArrowLeft size={16} />К работе
         </Button>
-        <h2>Пересчёт ячеек</h2>
+        <h2>
+          {doc?.mode === "opening"
+            ? "Первичная инвентаризация"
+            : "Пересчёт ячеек"}
+        </h2>
       </header>
       {destination && (
         <div className={styles.confirm} role="alert">
@@ -376,6 +380,7 @@ export function EmployeeStocktakes({
                     compact
                     preserveDraft={ui.dirtyRows.has(row.locationId)}
                     doc={doc}
+                    data={workspace.data}
                     row={row}
                     own={!!selected}
                     working={!!working}

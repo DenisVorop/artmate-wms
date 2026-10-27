@@ -1,0 +1,80 @@
+.page {
+  max-width: 1100px;
+  margin: auto;
+  padding: 24px;
+}
+.header {
+  padding: 24px;
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.header h1 {
+  font-size: 26px;
+  margin: 12px 0;
+}
+.header p {
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 600px;
+  line-height: 1.6;
+}
+.header a {
+  color: var(--accent);
+}
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.pagination {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.printNotice {
+  display: none;
+}
+.screenOnly {
+  margin-bottom: 20px;
+}
+@media (max-width: 650px) {
+  .page {
+    padding: 14px;
+  }
+  .header {
+    padding: 16px;
+  }
+  .labels {
+    overflow-x: auto;
+    display: block;
+  }
+  .labels > article {
+    margin-bottom: 18px;
+  }
+}
+@media print {
+  .header,
+  .screenOnly {
+    display: none !important;
+  }
+  .page,
+  .labels {
+    display: block;
+    margin: 0;
+    padding: 0;
+    max-width: none;
+    overflow: visible;
+  }
+  .page[data-print-ready="false"] .labels {
+    display: none !important;
+  }
+  .page[data-print-ready="false"] .printNotice {
+    display: block;
+    color: black;
+  }
+}

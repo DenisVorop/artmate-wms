@@ -81,7 +81,7 @@ const task: PutawayTaskDto = {
   fromPalletId: "common",
   fromLocationId: "assembly",
   toLocationId: null,
-  createdAt: box.packedAt,
+  createdAt: '2026-10-23T00:00:00Z',
   claimedAt: null,
   takenAt: null,
   completedAt: null,
@@ -147,7 +147,7 @@ test("Паллета в запланированном или начатом п�
     kind: "lower",
     status: "planned",
     keepSourceReserved: true,
-    createdAt: box.packedAt,
+    createdAt: '2026-10-23T00:00:00Z',
     takenAt: null,
     completedAt: null,
   });

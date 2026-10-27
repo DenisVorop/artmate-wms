@@ -7,11 +7,13 @@ import { Button, Input, Select } from "@/shared/ui";
 import {
   resolveStocktakeScope,
   stocktakeLocations,
+  openingStocktakeLocations,
 } from "../lib/stocktake-scope";
 import {
   stocktakeCreateSchema,
   validateScopeSize,
   type StocktakeCreateValues,
+  type StocktakeCreateInput,
 } from "../lib/stocktake-form";
 import styles from "./stocktakes.module.css";
 
@@ -25,23 +27,31 @@ export function CreateStocktake({
   data: WorkspaceDto;
   pending: boolean;
   error: string | null;
-  onSave: (ids: string[]) => Promise<boolean>;
+  onSave: (ids: string[], mode: "recount" | "opening") => Promise<boolean>;
   onClose: () => void;
 }) {
   const id = useId();
   const [snapshot, setSnapshot] = useState(data);
   const [search, setSearch] = useState("");
-  const form = useForm<StocktakeCreateValues>({
+  const form = useForm<StocktakeCreateInput, unknown, StocktakeCreateValues>({
     resolver: zodResolver(stocktakeCreateSchema),
-    defaultValues: { scope: "room", scopeId: "", locationIds: [] },
+    defaultValues: {
+      mode: "recount",
+      scope: "room",
+      scopeId: "",
+      locationIds: [],
+    },
   });
   const values = form.watch();
-  const locations = stocktakeLocations(snapshot.locations);
+  const locations =
+    values.mode === "opening"
+      ? openingStocktakeLocations(snapshot)
+      : stocktakeLocations(snapshot.locations);
   const selected = resolveStocktakeScope(
     values.scope,
     values.scopeId,
     values.locationIds,
-    snapshot.locations,
+    locations,
     snapshot.sections,
     snapshot.warehouse.spaces,
   );
@@ -50,7 +60,9 @@ export function CreateStocktake({
       values.scope,
       values.scopeId,
       values.locationIds,
-      snapshot.locations,
+      values.mode === "opening"
+        ? openingStocktakeLocations(snapshot)
+        : snapshot.locations,
       snapshot.sections,
       snapshot.warehouse.spaces,
     );
@@ -59,7 +71,13 @@ export function CreateStocktake({
       form.setError("root", { message: problem });
       return;
     }
-    if (await onSave(resolved.map((location) => location.id))) onClose();
+    if (
+      await onSave(
+        resolved.map((location) => location.id),
+        values.mode,
+      )
+    )
+      onClose();
   });
   return (
     <section
@@ -71,10 +89,15 @@ export function CreateStocktake({
         style={{ padding: 0, marginBottom: 18 }}
       >
         <div>
-          <h2>Новая инвентаризация</h2>
+          <h2>
+            {values.mode === "opening"
+              ? "Первичная инвентаризация"
+              : "Новая инвентаризация"}
+          </h2>
           <p>
-            Выберите адреса, которые нужно пересчитать. Остатки изменятся только
-            после утверждения результатов.
+            {values.mode === "opening"
+              ? "Внесите товар, который уже физически есть на складе, но ещё не учтён в WMS. Адреса должны быть пустыми по данным системы. Остатки и QR появятся после утверждения."
+              : "Выберите адреса, которые нужно пересчитать. Остатки изменятся только после утверждения результатов."}
           </p>
         </div>
         <Button variant="ghost" size="sm" disabled={pending} onClick={onClose}>
@@ -82,6 +105,26 @@ export function CreateStocktake({
         </Button>
       </div>
       <form className={styles.form} onSubmit={submit}>
+        <fieldset className={styles.radioGroup} disabled={pending}>
+          <legend>Что сделать</legend>
+          {(
+            [
+              ["recount", "Сверка остатков"],
+              ["opening", "Первичный ввод"],
+            ] as const
+          ).map(([value, label]) => (
+            <label className={styles.radio} key={value}>
+              <input type="radio" value={value} {...form.register("mode")} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {values.mode === "opening" && (
+          <p className={styles.notice}>
+            Уже учтённые, заблокированные и зарезервированные места исключены.
+            Для них используйте обычную сверку остатков.
+          </p>
+        )}
         <fieldset className={styles.radioGroup} disabled={pending}>
           <legend>Область подсчёта</legend>
           {(

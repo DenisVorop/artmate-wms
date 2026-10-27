@@ -114,7 +114,7 @@ function source(): Parameters<typeof captureAdjustmentSnapshot>[0] {
       },
     ],
     lots: [
-      { id: "lot", skuId: "sku", receivedAt: box.packedAt, name: "Первая" },
+      { id: "lot", skuId: "sku", receivedAt: '2026-10-24T00:00:00Z', name: "Первая" },
     ],
   };
 }
@@ -128,7 +128,7 @@ const movement: MovementDto = {
   keepSourceReserved: false,
   status: "planned",
   employeeId: "worker",
-  createdAt: box.packedAt,
+  createdAt: '2026-10-24T00:00:00Z',
   takenAt: null,
   completedAt: null,
 };
@@ -142,8 +142,8 @@ const putaway: PutawayTaskDto = {
   fromPalletId: "assembly",
   fromLocationId: "assembly",
   toLocationId: "location",
-  createdAt: box.packedAt,
-  claimedAt: box.packedAt,
+  createdAt: '2026-10-24T00:00:00Z',
+  claimedAt: '2026-10-24T00:00:00Z',
   takenAt: null,
   completedAt: null,
 };
