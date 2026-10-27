@@ -1,3 +1,5 @@
+import { initializeForecastJournalStorage } from "./journal-storage";
+import type { ForecastFeedbackReport } from "./journal-feedback";
 import { activeMarketplaceResolutions } from "../marketplaces/planning-resolutions";
 import {
   PREPARATION_DAYS,
@@ -16,6 +18,10 @@ export interface ForecastPolicy {
   seasonalityEnabled: boolean;
 }
 export interface ForecastPlanSource {
+  /** Stable selected algorithm and configuration identity; display labels are not model keys. */
+  modelIdentity?: string;
+  /** Raw quantities preserved for prospective error calibration. */
+  journalBaseForecast?: { date: string; units: number }[];
   salesForecastKnown?: boolean;
   provider: "wildberries" | "ozon";
   dailyForecast: { date: string; units: number }[];
@@ -40,6 +46,7 @@ export interface ForecastPlanContext {
   seasonalityEnabled?: Record<string, boolean>;
 }
 export interface ForecastCache {
+  journalFeedback?: ForecastFeedbackReport[];
   key: string;
   generatedAt: string;
   overview: ForecastOverviewDto;
@@ -62,6 +69,7 @@ export function forecastAsOf(clock = new Date()) {
     .slice(0, 10);
 }
 export async function initializeForecastStorage(tx: Queryable) {
+  await initializeForecastJournalStorage(tx);
   for (const table of ["forecast_policies", "forecast_results"])
     await tx.query(
       `CREATE TABLE IF NOT EXISTS ${table}(id TEXT PRIMARY KEY,payload JSONB NOT NULL)`,

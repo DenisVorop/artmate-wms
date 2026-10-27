@@ -12,6 +12,7 @@ import {
   readForecastPlanContext,
 } from "../src/forecasting/forecast-storage";
 import { loadMarketplaces } from "../src/marketplaces/storage";
+import type { ForecastJournalRun } from "../src/forecasting/journal-types";
 function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((r) => {
@@ -70,6 +71,15 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
       w.authTransaction(async (tx) =>
         readForecastPlanContext(tx, await loadMarketplaces(tx), now()),
       );
+    const journal = () =>
+      w.authTransaction(
+        async (tx) =>
+          (
+            await tx.query<{ id: string; payload: ForecastJournalRun }>(
+              "SELECT id,payload FROM forecast_journal ORDER BY id",
+            )
+          ).rows,
+      );
     const invalidate = () =>
       w.authTransaction(async (tx) => {
         await tx.query(
@@ -81,6 +91,15 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
       "reads require manager and never compute; worker/background has no fake HTTP authority",
       async () => {
         await assert.rejects(service.getForecastOverview(), /Войдите/);
+        await assert.rejects(service.getForecastJournal(), /Войдите/);
+        await assert.rejects(
+          asEmployee(() => service.getForecastJournal()),
+          /руководителя/,
+        );
+        await assert.rejects(
+          asEmployee(() => service.getForecastJournalRun("0".repeat(64))),
+          /руководителя/,
+        );
         await assert.rejects(
           asEmployee(() => service.getForecastOverview()),
           /руководителя/,
@@ -88,6 +107,15 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
         const initial = await asManager(() => service.getForecastOverview());
         assert.equal(initial.ready, false);
         assert.equal(calls, 0);
+        assert.deepEqual(await asManager(() => service.getForecastJournal()), {
+          runs: [],
+          nextCursor: null,
+        });
+        assert.equal(
+          (await journal()).length,
+          0,
+          "reads do not archive predictions",
+        );
         await assert.rejects(
           asManager(() => service.runForecastComputation()),
           /HTTP/,
@@ -100,7 +128,16 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
         const warehouseBefore = await w.snapshot();
         assert.equal(await service.runForecastComputation(), "updated");
         assert.equal(calls, 1);
+        const published = await journal();
+        assert.equal(published.length, 1);
+        assert.equal(published[0].id, published[0].payload.id);
+        assert.equal(published[0].payload.publishedAt, now().toISOString());
         assert.equal(await service.runForecastComputation(), "skipped");
+        assert.deepEqual(
+          await journal(),
+          published,
+          "cache reuse cannot duplicate or rewrite a forecast",
+        );
         assert.equal(calls, 1);
         assert.equal(
           (await asManager(() => service.getForecastOverview())).ready,
@@ -117,6 +154,30 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
           false,
         );
         assert.equal(await service.runForecastComputation(), "updated");
+        const revised = await journal();
+        assert.equal(
+          revised.length,
+          2,
+          "each new successful input revision is archived",
+        );
+        assert.deepEqual(
+          revised.find((r) => r.id === published[0].id),
+          published[0],
+          "new forecasts leave the original vintage immutable",
+        );
+        const restarted = ForecastService.forTesting(
+          w,
+          async () => {
+            throw new Error("must reuse durable cache");
+          },
+          now,
+        );
+        assert.equal(await restarted.runForecastComputation(), "skipped");
+        assert.deepEqual(
+          await journal(),
+          revised,
+          "a new service instance reuses durable publication identity",
+        );
         assert.deepEqual(await w.snapshot(), warehouseBefore);
       },
     );
@@ -190,12 +251,18 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
           },
           now,
         );
+        const before = await journal();
         const running = slow.runForecastComputation();
         await started.promise;
         assert.equal(await service.runForecastComputation(), "skipped");
         await invalidate();
         release.resolve();
         assert.equal(await running, "superseded");
+        assert.deepEqual(
+          await journal(),
+          before,
+          "superseded workers never become historical forecasts",
+        );
         assert.equal((await context()).goals[sku.id], undefined);
         assert.equal(await service.runForecastComputation(), "updated");
       },
@@ -204,6 +271,7 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
       "shutdown discards a noncooperative late worker and releases only its own lease",
       async () => {
         await invalidate();
+        const before = await journal();
         const prior = await w.authTransaction((tx) => forecastCache(tx));
         const started = deferred<void>(),
           release = deferred<void>(),
@@ -223,6 +291,11 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
         release.resolve();
         assert.equal(await running, "skipped");
         assert.deepEqual(
+          await journal(),
+          before,
+          "a cancelled worker cannot publish a forecast vintage",
+        );
+        assert.deepEqual(
           await w.authTransaction((tx) => forecastCache(tx)),
           prior,
         );
@@ -233,6 +306,7 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
       "failed worker retains the last cache, reports a safe retry message and releases the lease",
       async () => {
         await invalidate();
+        const before = await journal();
         const prior = await w.authTransaction((tx) => forecastCache(tx));
         const failing = ForecastService.forTesting(
           w,
@@ -242,6 +316,11 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
           now,
         );
         assert.equal(await failing.runForecastComputation(), "failed");
+        assert.deepEqual(
+          await journal(),
+          before,
+          "worker failure cannot enter the prediction history",
+        );
         assert.deepEqual(
           await w.authTransaction((tx) => forecastCache(tx)),
           prior,
@@ -255,6 +334,40 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
           false,
         );
         assert.equal(await service.runForecastComputation(), "updated");
+      },
+    );
+    await t.test(
+      "a failed journal append rolls back current publication atomically",
+      async () => {
+        await invalidate();
+        const before = await journal();
+        const prior = await w.authTransaction((tx) => forecastCache(tx));
+        const warehouseBefore = await w.snapshot();
+        const transaction = w.authTransaction.bind(w);
+        w.authTransaction = (operation) =>
+          transaction((tx) =>
+            operation({
+              query: async (sql, params) => {
+                if (/INSERT INTO forecast_journal\b/.test(sql))
+                  throw new Error("journal persistence unavailable");
+                return tx.query(sql, params);
+              },
+            }),
+          );
+        try {
+          assert.equal(await service.runForecastComputation(), "failed");
+        } finally {
+          w.authTransaction = transaction;
+        }
+        assert.deepEqual(
+          await w.authTransaction((tx) => forecastCache(tx)),
+          prior,
+          "current cache and its historical vintage publish in the same transaction",
+        );
+        assert.deepEqual(await journal(), before);
+        assert.deepEqual(await w.snapshot(), warehouseBefore);
+        assert.equal(await service.runForecastComputation(), "updated");
+        assert.equal((await journal()).length, before.length + 1);
       },
     );
     await t.test(
@@ -274,6 +387,10 @@ test("forecast cache, authority, idempotency, revision guards and graceful cance
         );
         await assert.rejects(
           asManager(() => service.updateForecastPolicy(body)),
+          /руководителя/,
+        );
+        await assert.rejects(
+          asManager(() => service.getForecastJournal()),
           /руководителя/,
         );
       },

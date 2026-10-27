@@ -9,6 +9,8 @@ export const warehouseOperations = new Set([
   "startForecastHistory",
   "connectForecastFinance",
   "getForecastOverview",
+  "getForecastJournal",
+  "getForecastJournalRun",
   "updateForecastPolicy",
   "getMarketplaces",
   "confirmPlanningStock",

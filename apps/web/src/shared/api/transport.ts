@@ -1,4 +1,8 @@
 import {
+  isForecastJournalListResponse,
+  isForecastJournalDetailResponse,
+} from "./forecast-journal-response";
+import {
   isForecastOverviewResponse,
   isForecastHistoryOverviewResponse,
   isForecastHistorySeriesResponse,
@@ -118,11 +122,15 @@ export function createApiFetch(ports: Ports) {
         );
       if (
         forecastEndpoint(url) &&
-        !(/\/api\/forecast\/history\/series(?:\?|$)/.test(url)
-          ? isForecastHistorySeriesResponse(result)
-          : /\/api\/forecast\/history(?:\/|\?|$)/.test(url)
-            ? isForecastHistoryOverviewResponse(result)
-            : isForecastOverviewResponse(result))
+        !(/\/api\/forecast\/journal\/[^/?]+(?:\?|$)/.test(url)
+          ? isForecastJournalDetailResponse(result)
+          : /\/api\/forecast\/journal(?:\?|$)/.test(url)
+            ? isForecastJournalListResponse(result)
+            : /\/api\/forecast\/history\/series(?:\?|$)/.test(url)
+              ? isForecastHistorySeriesResponse(result)
+              : /\/api\/forecast\/history(?:\/|\?|$)/.test(url)
+                ? isForecastHistoryOverviewResponse(result)
+                : isForecastOverviewResponse(result))
       )
         throw new ApiError(
           "Сервер вернул некорректный прогноз. Обновите данные.",

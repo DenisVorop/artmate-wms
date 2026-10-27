@@ -18,7 +18,7 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v3.0.1";
+export const FORECAST_MODEL_VERSION = "seasonal-v3.1.0";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",

@@ -2,6 +2,7 @@ import {
   resolveLaunchForecast,
   isLaunchForecastSource,
 } from "./launch-forecast";
+import { createHash } from "node:crypto";
 import type { MarketplaceResolution } from "../marketplaces/planning-resolutions";
 import { PREPARATION_DAYS } from "../marketplaces/unified-plan";
 import type { SkuDto } from "../dto";
@@ -39,6 +40,16 @@ import type {
   ForecastRowDto,
   ForecastSourceDto,
 } from "./forecast-dto";
+import {
+  forecastJournalScopes,
+  type ForecastJournalRun,
+} from "./journal-types";
+import {
+  buildForecastFeedback,
+  forecastFeedbackForSource,
+  forecastFeedbackFactor,
+  type ForecastFeedbackReport,
+} from "./journal-feedback";
 
 export interface ForecastComputeInput {
   key: string;
@@ -57,6 +68,8 @@ export interface ForecastComputeInput {
   resolutions?: MarketplaceResolution[];
   snapshots: MarketplaceSnapshot[];
   series: ForecastHistorySeries[];
+  /** Sanitized immutable prior predictions; calibration runs inside the CPU worker. */
+  journalRuns?: ForecastJournalRun[];
 }
 const MODEL_LABELS: Record<ForecastModel, string> = {
   mean: "Средний спрос",
@@ -71,6 +84,35 @@ const confidenceLabel = (value: ForecastResult["confidence"]) =>
     : value === "medium"
       ? "Умеренная уверенность"
       : "Предварительная оценка";
+const modelHash = (value: unknown) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/** Selection identity deliberately excludes fitted coefficients and translated UI copy. */
+export function forecastPlanModelIdentity(
+  input: ForecastComputeInput,
+  mapping: ForecastComputeInput["mappings"][number],
+  policy: ForecastPolicy,
+  selection: unknown,
+) {
+  return modelHash({
+    version: FORECAST_MODEL_VERSION,
+    mapping: {
+      provider: mapping.provider,
+      externalId: mapping.externalId,
+      skuId: mapping.skuId,
+      unitsPerItem: mapping.unitsPerItem,
+    },
+    seasonalityEnabled: policy.seasonalityEnabled,
+    settings: {
+      historyDays: input.settings.historyDays,
+      horizonDays: input.settings.horizonDays,
+      safetyDays: input.settings.safetyDays,
+      leadDays: input.settings.leadDays,
+      dispatchWeekday: input.settings.dispatchWeekday ?? 6,
+    },
+    horizon: forecastHorizon(input),
+    selection,
+  });
+}
 function sourceKey(
   s: Pick<ForecastHistorySeries, "provider" | "storeId" | "externalId">,
 ) {
@@ -398,16 +440,25 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       scenarios = 0,
       launches = 0;
     const planSources: ForecastPlanSource[] = [];
+    const modelComponents = new Map<MarketplaceProvider, string[]>();
     goalSources.set(row.skuId, planSources);
     const register = (
       provider: MarketplaceProvider,
       source: Omit<ForecastPlanSource, "provider">,
+      componentIdentity: string,
     ) => {
+      const components = [
+        ...(modelComponents.get(provider) ?? []),
+        componentIdentity,
+      ].sort();
+      modelComponents.set(provider, components);
+      const modelIdentity = modelHash(components);
       const prior = planSources.find((s) => s.provider === provider);
       if (!prior) {
-        planSources.push({ provider, ...source });
+        planSources.push({ provider, ...source, modelIdentity });
         return;
       }
+      prior.modelIdentity = modelIdentity;
       const byDate = new Map(prior.dailyForecast.map((p) => [p.date, p.units]));
       for (const p of source.dailyForecast)
         byDate.set(p.date, (byDate.get(p.date) ?? 0) + p.units);
@@ -445,7 +496,14 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       );
       if (isLaunchForecastSource(baselineSource)) {
         demand += baseline;
-        register(mapping.provider, baselineSource);
+        register(
+          mapping.provider,
+          baselineSource,
+          forecastPlanModelIdentity(input, mapping, policy, {
+            kind: "launch",
+            scenario: true,
+          }),
+        );
         launches++;
         confidences.push("low");
         row.sources.push({
@@ -465,7 +523,15 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       }
       if (!ordered) {
         demand += baseline;
-        register(mapping.provider, baselineSource);
+        register(
+          mapping.provider,
+          baselineSource,
+          forecastPlanModelIdentity(input, mapping, policy, {
+            kind: "baseline",
+            scenario: baselineSource.scenario,
+            known: baselineSource.salesForecastKnown === true,
+          }),
+        );
         if (baselineSource.scenario) scenarios++;
         confidences.push("low");
         continue;
@@ -602,24 +668,43 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             : directSeasonal
               ? MODEL_LABELS[result.selectedModel]
               : baselineSource.methodLabel;
-      register(mapping.provider, {
-        dailyForecast,
-        methodLabel,
-        confidenceLabel: useFinancialMonthlyMl
-          ? "Умеренная уверенность"
-          : useMonthlyForecast
-            ? confidenceLabel(hybrid.monthly.confidence)
-            : useCalibrated
-              ? "Умеренная уверенность"
-              : useSeasonal
-                ? confidenceLabel(result.confidence)
-                : baselineSource.confidenceLabel,
-        scenario,
-        salesForecastKnown:
-          useMonthlyForecast ||
-          useSeasonal ||
-          baselineSource.salesForecastKnown === true,
-      });
+      register(
+        mapping.provider,
+        {
+          dailyForecast,
+          methodLabel,
+          confidenceLabel: useFinancialMonthlyMl
+            ? "Умеренная уверенность"
+            : useMonthlyForecast
+              ? confidenceLabel(hybrid.monthly.confidence)
+              : useCalibrated
+                ? "Умеренная уверенность"
+                : useSeasonal
+                  ? confidenceLabel(result.confidence)
+                  : baselineSource.confidenceLabel,
+          scenario,
+          salesForecastKnown:
+            useMonthlyForecast ||
+            useSeasonal ||
+            baselineSource.salesForecastKnown === true,
+        },
+        forecastPlanModelIdentity(input, mapping, policy, {
+          kind: "operational",
+          scenario,
+          monthly: useFinancialMonthlyMl
+            ? "financial_calendar_ml"
+            : useMonthlyForecast
+              ? hybrid.monthly.selectedModel
+              : null,
+          tail: useCalibrated
+            ? calibrated!.candidate.model
+            : directSeasonal
+              ? result.selectedModel
+              : baselineSource.scenario
+                ? "new_year_scenario"
+                : "recent_demand",
+        }),
+      );
       confidences.push(
         useFinancialMonthlyMl
           ? "medium"
@@ -825,6 +910,84 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       },
     ]),
   );
+  const scopes = forecastJournalScopes(input);
+  const availableFeedback = buildForecastFeedback(
+    input.journalRuns ?? [],
+    active,
+    input.asOf,
+    FORECAST_MODEL_VERSION,
+    scopes.map((scope) => scope.scopeKey),
+  );
+  const journalFeedback: ForecastFeedbackReport[] = [];
+  for (const scope of scopes) {
+    const goal = goals[scope.skuId];
+    const planSource = goal?.sources?.find(
+      (source) => source.provider === scope.provider,
+    );
+    if (!planSource || planSource.salesForecastKnown !== true) continue;
+    // Capture the untouched curve before any correction. The next fit must never
+    // learn another multiplier from an already multiplied denominator.
+    planSource.journalBaseForecast = planSource.dailyForecast.map((point) => ({
+      ...point,
+    }));
+    if (planSource.scenario) continue;
+    const feedback = forecastFeedbackForSource(availableFeedback, {
+      scopeKey: scope.scopeKey,
+      skuId: scope.skuId,
+      provider: scope.provider,
+      modelVersion: FORECAST_MODEL_VERSION,
+      modelLabel: planSource.methodLabel,
+      modelIdentity: planSource.modelIdentity!,
+    });
+    journalFeedback.push(...feedback);
+    if (!feedback.some((report) => report.status === "active")) continue;
+    planSource.dailyForecast = planSource.dailyForecast.map((point) => ({
+      ...point,
+      units:
+        point.units *
+        forecastFeedbackFactor(feedback, point.date, input.generatedAt),
+    }));
+    const row = overview.rows.find((item) => item.skuId === scope.skuId)!;
+    for (const chart of row.sources.filter(
+      (source) =>
+        source.provider === scope.provider &&
+        source.metricLabel === "Заказы за вычетом отмен",
+    )) {
+      chart.points = chart.points.map((point) =>
+        point.predicted === null
+          ? point
+          : {
+              ...point,
+              predicted:
+                point.predicted *
+                forecastFeedbackFactor(feedback, point.date, input.generatedAt),
+            },
+      );
+      chart.predictedUnits = chart.points.reduce(
+        (sum, point) => sum + (point.predicted ?? 0),
+        0,
+      );
+    }
+  }
+  for (const row of overview.rows) {
+    const goal = goals[row.skuId];
+    const sku = input.skus.find((item) => item.id === row.skuId)!;
+    goal.targetUnits = Math.max(
+      row.minimumBoxes * sku.unitsPerBox,
+      Math.ceil(
+        (goal.sources ?? []).reduce(
+          (sum, source) =>
+            sum +
+            source.dailyForecast.reduce(
+              (subtotal, point) => subtotal + point.units,
+              0,
+            ),
+          0,
+        ),
+      ),
+    );
+    row.targetUnits = goal.targetUnits;
+  }
   return {
     key: input.key,
     generatedAt: input.generatedAt,
@@ -832,5 +995,6 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     goals,
     modelVersion: FORECAST_MODEL_VERSION,
     fingerprints,
+    journalFeedback,
   };
 }

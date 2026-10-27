@@ -1,3 +1,12 @@
+import { captureForecastJournal, forecastJournalScopes } from "./journal-types";
+import {
+  appendForecastJournal,
+  listForecastJournal,
+  readForecastJournal,
+  readForecastJournalFeedback,
+} from "./journal-storage";
+import { compareForecastJournal } from "./journal-comparison";
+import type { ForecastJournalQueryDto } from "./journal-dto";
 import { activeMarketplaceResolutions } from "../marketplaces/planning-resolutions";
 import {
   BadRequestException,
@@ -5,6 +14,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { validateSync } from "class-validator";
@@ -120,6 +130,33 @@ export class ForecastService {
       return this._overview(tx);
     });
   }
+  getForecastJournal(query: ForecastJournalQueryDto = {}) {
+    return this.warehouse.authTransaction(async (tx) => {
+      await this._manager(tx);
+      const input = await this._input(tx);
+      return listForecastJournal(tx, {
+        ...query,
+        scopeKeys: forecastJournalScopes(input).map((s) => s.scopeKey),
+      });
+    });
+  }
+  getForecastJournalRun(id: string) {
+    if (!/^[a-f0-9]{64}$/.test(id))
+      throw new BadRequestException("Некорректный номер прогноза");
+    return this.warehouse.authTransaction(async (tx) => {
+      await this._manager(tx);
+      const input = await this._input(tx),
+        scopeKeys = forecastJournalScopes(input).map((s) => s.scopeKey),
+        run = await readForecastJournal(tx, id, scopeKeys);
+      if (!run) throw new NotFoundException("Сохранённый прогноз не найден");
+      const history = await loadForecastHistorySeries(
+        tx,
+        input.mappings,
+        forecastDay(this.clock()),
+      );
+      return compareForecastJournal(run, history, input.asOf, scopeKeys);
+    });
+  }
   async updateForecastPolicy(body: UpdateForecastPolicyDto) {
     if (
       validateSync(Object.assign(new UpdateForecastPolicyDto(), body), {
@@ -207,6 +244,11 @@ export class ForecastService {
         input.mappings,
         forecastDay(this.clock()),
       );
+      input.journalRuns = await readForecastJournalFeedback(
+        tx,
+        forecastJournalScopes(input).map((s) => s.scopeKey),
+        input.asOf,
+      );
       return { input, runId };
     });
     if (!start) return "skipped";
@@ -229,6 +271,14 @@ export class ForecastService {
           return "superseded" as const;
         }
         if (signal?.aborted) throw new Error("Forecast stopped");
+        await appendForecastJournal(
+          tx,
+          captureForecastJournal(
+            start.input,
+            result,
+            this.clock().toISOString(),
+          ),
+        );
         await putForecast(tx, "forecast_results", "current", result);
         await tx.query("DELETE FROM forecast_results WHERE id=$1", ["lease"]);
         await tx.query("DELETE FROM forecast_results WHERE id=$1", ["failure"]);

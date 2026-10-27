@@ -55,6 +55,8 @@ test("forecast routes are manager-only, CSRF protected, strictly validated and i
     for (const path of [
       "forecast",
       "forecast/history",
+      "forecast/journal",
+      "forecast/journal?limit=1&cursor=" + "0".repeat(64),
       "forecast/history/series?skuId=sku-cats",
     ]) {
       assert.equal((await call(path)).status, 401);
@@ -62,6 +64,42 @@ test("forecast routes are manager-only, CSRF protected, strictly validated and i
       const response = await call(path, "manager");
       assert.equal(response.status, 200);
       assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+    const missingJournalPath = "forecast/journal/" + "0".repeat(64);
+    assert.equal((await call(missingJournalPath)).status, 401);
+    assert.equal((await call(missingJournalPath, "employee")).status, 403);
+    const missingJournal = await call(missingJournalPath, "manager");
+    assert.equal(missingJournal.status, 404);
+    assert.equal(missingJournal.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await (await call("forecast/journal", "manager")).json(), {
+      runs: [],
+      nextCursor: null,
+    });
+    for (const query of [
+      "limit=0",
+      "limit=51",
+      "limit=-1",
+      "limit=1.5",
+      "limit=oops",
+      "limit=1&limit=2",
+      "cursor=not-a-forecast",
+      "extra=true",
+    ]) {
+      assert.equal(
+        (await call(`forecast/journal?${query}`, "manager")).status,
+        400,
+        `strict journal query validation: ${query}`,
+      );
+    }
+    for (const path of [
+      "forecast/journal/not-a-forecast",
+      `forecast/journal/${"0".repeat(64)}?extra=true`,
+    ]) {
+      assert.equal(
+        (await call(path, "manager")).status,
+        400,
+        `strict journal detail validation: ${path}`,
+      );
     }
     const policy = {
       requestId: randomUUID(),
@@ -122,6 +160,11 @@ test("forecast routes are manager-only, CSRF protected, strictly validated and i
         (await tx.query("SELECT id FROM forecast_history_jobs")).rows.length,
         0,
         "GET never starts historical jobs",
+      );
+      assert.equal(
+        (await tx.query("SELECT id FROM forecast_journal")).rows.length,
+        0,
+        "GET never appends historical predictions",
       );
       assert.equal(
         (await tx.query("SELECT id FROM forecast_results")).rows.length,
