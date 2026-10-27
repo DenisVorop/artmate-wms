@@ -113,7 +113,7 @@ function ForecastContent() {
       <section aria-label="Загрузка истории продаж">
         <div className={styles.sectionHeading}>
           <h2>История продаж</h2>
-          <span>С 29 января 2024 года до вчерашнего дня</span>
+          <span>С начала торговли · обновляется автоматически</span>
         </div>
         {history.isPending ? (
           <p className={styles.help} role="status">
@@ -165,14 +165,16 @@ function ForecastContent() {
                       </Badge>
                     </header>
                     <p>
-                      {provider.from
-                        ? `${shortDate(provider.from)} — ${shortDate(provider.to)}`
-                        : "История ещё не накоплена"}
+                      {provider.firstSaleDate
+                        ? `Первые продажи: ${shortDate(provider.firstSaleDate)}`
+                        : "Первые продажи ещё ищем в архиве"}
                     </p>
                     <span className={styles.help}>
-                      {provider.knownDays > 0
-                        ? `Проверено ${provider.knownDays} дней. Пустые периоды не подтверждают наличие товара.`
-                        : "После загрузки сравним прогнозы с фактическими продажами."}
+                      {provider.archiveFrom && provider.archiveThrough
+                        ? `Архив проверен: ${shortDate(provider.archiveFrom)} — ${shortDate(provider.archiveThrough)}.`
+                        : "Загружаем сохранённые продажи по порядку."}
+                      {provider.lastSaleDate &&
+                        ` Последние загруженные продажи: ${shortDate(provider.lastSaleDate)}.`}
                     </span>
                     {job?.loadedThrough && job.status !== "complete" && (
                       <p className={styles.help}>
@@ -183,13 +185,21 @@ function ForecastContent() {
                       <Button
                         variant="secondary"
                         disabled={busy || running || job?.status === "complete"}
-                        onClick={() => void actions.start(provider.provider)}
+                        onClick={() =>
+                          void actions.start(
+                            provider.provider,
+                            job && job.status !== "complete"
+                              ? { from: job.from, to: job.to }
+                              : undefined,
+                          )
+                        }
                       >
                         {running
                           ? "Загружается в фоне"
                           : job?.status === "complete"
                             ? "История загружена"
-                            : job?.status === "paused"
+                            : job?.status === "paused" ||
+                                job?.status === "failed"
                               ? "Продолжить загрузку"
                               : "Загрузить историю"}
                       </Button>
@@ -210,6 +220,11 @@ function ForecastContent() {
         )}
       </section>
       <section aria-label="Прогноз по тематике">
+        <p className={styles.help}>
+          Модели проверяют всю загруженную историю: месяцы, дни недели,
+          праздники и предновогодний спрос. Для каждой тематики применяется
+          метод, подтвердивший точность на прошлых продажах.
+        </p>
         <div className={styles.sectionHeading}>
           <h2>Прогноз по тематике</h2>
           {forecast.data?.computing && (

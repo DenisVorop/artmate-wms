@@ -137,6 +137,18 @@ test("new product fallback uses known days since observation and the same daily 
   );
   assert.equal(result.overview.rows[0].seasonalityApplied, false);
   assert.equal(result.overview.rows[0].sources[0].predictedUnits, 1060);
+  assert.match(
+    result.overview.rows[0].sources[0].candidates.find(
+      (c) => c.model === "mean",
+    )!.reason!,
+    /Базовая оценка/,
+  );
+  assert.doesNotMatch(
+    result.overview.rows[0].sources[0].candidates.find(
+      (c) => c.model === "mean",
+    )!.reason!,
+    /Проверено/,
+  );
   assert.equal(
     result.overview.rows[0].sources[0].points.filter(
       (p) => p.predicted !== null,
@@ -282,7 +294,12 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
       (s) => s.metricLabel === "Заказы за вычетом отмен",
     )!;
   assert.equal(row.seasonalityApplied, true);
-  assert.equal(source.modelLabel, "Сезон выкупов с проверкой по заказам");
+  assert.match(source.modelLabel, /ML: ближайшие 30 дней/);
+  assert.equal(
+    source.candidates.find((c) => c.model === "financial_calendar_ml_monthly")!
+      .eligible,
+    true,
+  );
   assert.equal(
     source.candidates.find((c) => c.model === "financial_calibrated")!.eligible,
     true,
@@ -425,5 +442,54 @@ test("unknown demand is distinct from an explicitly observed zero and never beco
   assert.equal(
     baselineForecastSource(input, "ozon", "one", 106).salesForecastKnown,
     false,
+  );
+});
+
+test("monthly annual winner reaches provider plan and seasonal labels while distant tail remains unvalidated fallback", () => {
+  const { input } = fixture();
+  const ordered = history(
+    "ordered",
+    (i) => 30 + 25 * Math.sin((2 * Math.PI * i) / 365),
+  );
+  ordered.points = ordered.points.slice(0, 600);
+  const cancelled = {
+    ...ordered,
+    metric: "cancelled" as const,
+    points: ordered.points.map((p) => ({ ...p, units: 0 })),
+  };
+  input.asOf = ordered.points.at(-1)!.date;
+  input.series = [ordered, cancelled];
+  const result = computeForecast(input);
+  const row = result.overview.rows[0];
+  const source = result.goals[row.skuId].sources![0];
+  const baseline = baselineForecastSource(
+    input,
+    "ozon",
+    "one",
+    source.dailyForecast.length,
+  );
+  assert.equal(row.seasonalityApplied, true);
+  assert.equal(row.methodLabel, "Прогноз с сезонностью");
+  assert.doesNotMatch(source.methodLabel, /ML/);
+  assert.match(source.methodLabel, /ближайшие 30 дней/);
+  assert.equal(source.salesForecastKnown, true);
+  assert.equal(source.scenario, false);
+  assert.deepEqual(
+    source.dailyForecast.slice(30),
+    baseline.dailyForecast.slice(30),
+  );
+  assert.notDeepEqual(
+    source.dailyForecast.slice(0, 30),
+    baseline.dailyForecast.slice(0, 30),
+  );
+  assert.ok(
+    row.sources[0].candidates.some(
+      (c) =>
+        ["annual_seasonal_monthly", "annual_growth_monthly"].includes(
+          c.model,
+        ) &&
+        c.eligible &&
+        c.folds === 3,
+    ),
   );
 });

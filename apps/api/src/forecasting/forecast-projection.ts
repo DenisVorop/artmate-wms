@@ -12,7 +12,10 @@ import type {
 } from "../marketplaces/providers/types";
 import type { ForecastHistorySeries } from "./history-types";
 import { runForecast, FORECAST_MODEL_VERSION } from "./engine";
-import { calibrateFinancialSeason } from "./forecast-calibration";
+import {
+  calibrateFinancialSeason,
+  calibrateFinancialCalendarMl,
+} from "./forecast-calibration";
 import { demandBaseline } from "./demand-baseline";
 import { newYearScenario } from "./new-year-scenario";
 import {
@@ -59,8 +62,8 @@ const MODEL_LABELS: Record<ForecastModel, string> = {
   mean: "Средний спрос",
   annual_seasonal: "Прошлогодний сезон",
   annual_growth: "Сезон с поправкой на рост",
-  ridge: "Сезонная модель и тренд",
-  autoregressive: "Обучаемая модель спроса",
+  ridge: "ML: месяцы, недели, праздники и тренд",
+  autoregressive: "ML: динамика спроса и календарь",
 };
 const confidenceLabel = (value: ForecastResult["confidence"]) =>
   value === "high"
@@ -489,7 +492,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             metric: "financial_gross_sold",
           }
         : null;
-      const calibrated = financial
+      const annualCalibrated = financial
         ? calibrateFinancialSeason(
             series,
             financial,
@@ -499,7 +502,37 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             isNewYear(input, row.skuId),
           )
         : null;
-      if (calibrated) fingerprints.push(calibrated.fingerprint);
+      const calendarCalibrated = financial
+        ? calibrateFinancialCalendarMl(
+            series,
+            financial,
+            input.asOf,
+            horizon,
+            input.settings.historyDays,
+            isNewYear(input, row.skuId),
+          )
+        : null;
+      const calendarMonthly = financial
+        ? calibrateFinancialCalendarMl(
+            series,
+            financial,
+            input.asOf,
+            MONTHLY_ML_DAYS,
+            input.settings.historyDays,
+            isNewYear(input, row.skuId),
+          )
+        : null;
+      // Both candidates have independent operational holdouts. A calibrated ML
+      // curve never borrows eligibility from financial-only validation.
+      const calibrated = calendarCalibrated?.candidate.eligible
+        ? calendarCalibrated
+        : annualCalibrated;
+      for (const candidate of [
+        annualCalibrated,
+        calendarCalibrated,
+        calendarMonthly,
+      ])
+        if (candidate) fingerprints.push(candidate.fingerprint);
       const directSeasonal =
         policy.seasonalityEnabled &&
         result.selectedModel !== "mean" &&
@@ -513,8 +546,20 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         calibrated?.candidate.eligible &&
         !directSeasonal;
       const useSeasonal = directSeasonal || !!useCalibrated;
-      const useMonthlyMl = policy.seasonalityEnabled && hybrid.usesMonthlyMl;
+      const useFinancialMonthlyMl =
+        policy.seasonalityEnabled &&
+        !hybrid.usesMonthlyForecast &&
+        calendarMonthly?.candidate.eligible === true;
+      const useMonthlyMl =
+        policy.seasonalityEnabled &&
+        (hybrid.usesMonthlyMl || useFinancialMonthlyMl);
+      const useMonthlySeasonal =
+        policy.seasonalityEnabled && hybrid.usesMonthlySeasonal;
+      const useMonthlyForecast =
+        policy.seasonalityEnabled &&
+        (hybrid.usesMonthlyForecast || useFinancialMonthlyMl);
       const annual =
+        useMonthlySeasonal ||
         useCalibrated ||
         (directSeasonal && result.selectedModel !== "autoregressive");
       if (annual) seasonal++;
@@ -522,7 +567,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       const scenario =
         !useSeasonal &&
         baselineSource.scenario &&
-        (!useMonthlyMl ||
+        (!useMonthlyForecast ||
           baselineSource.dailyForecast.some(
             (p) =>
               p.date > hybrid.monthly.dailyForecast.at(-1)!.date &&
@@ -535,42 +580,56 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         : directSeasonal
           ? result.dailyForecast
           : baselineSource.dailyForecast;
-      const dailyForecast = useMonthlyMl
-        ? applyMonthlySegment(hybrid.monthly, tailForecast)
-        : tailForecast;
+      const monthlyFinancialByDay = new Map(
+        calendarMonthly?.dailyForecast.map((p) => [p.date, p.units]) ?? [],
+      );
+      const dailyForecast = useFinancialMonthlyMl
+        ? tailForecast.map((p) => ({
+            date: p.date,
+            units: monthlyFinancialByDay.get(p.date) ?? p.units,
+          }))
+        : useMonthlyForecast
+          ? applyMonthlySegment(hybrid.monthly, tailForecast)
+          : tailForecast;
       const predictedUnits = dailyForecast.reduce((n, p) => n + p.units, 0);
       demand += predictedUnits;
       const methodLabel = useMonthlyMl
         ? `ML: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : useSeasonal ? "сезонный прогноз" : "текущий спрос"}`
-        : useCalibrated
-          ? calibrated!.candidate.label
-          : directSeasonal
-            ? MODEL_LABELS[result.selectedModel]
-            : baselineSource.methodLabel;
+        : useMonthlySeasonal
+          ? `${MODEL_LABELS[hybrid.monthly.selectedModel]}: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : useSeasonal ? "сезонный прогноз" : "текущий спрос"}`
+          : useCalibrated
+            ? calibrated!.candidate.label
+            : directSeasonal
+              ? MODEL_LABELS[result.selectedModel]
+              : baselineSource.methodLabel;
       register(mapping.provider, {
         dailyForecast,
         methodLabel,
-        confidenceLabel: useMonthlyMl
-          ? confidenceLabel(hybrid.monthly.confidence)
-          : useCalibrated
-            ? "Умеренная уверенность"
-            : useSeasonal
-              ? confidenceLabel(result.confidence)
-              : baselineSource.confidenceLabel,
+        confidenceLabel: useFinancialMonthlyMl
+          ? "Умеренная уверенность"
+          : useMonthlyForecast
+            ? confidenceLabel(hybrid.monthly.confidence)
+            : useCalibrated
+              ? "Умеренная уверенность"
+              : useSeasonal
+                ? confidenceLabel(result.confidence)
+                : baselineSource.confidenceLabel,
         scenario,
         salesForecastKnown:
-          useMonthlyMl ||
+          useMonthlyForecast ||
           useSeasonal ||
           baselineSource.salesForecastKnown === true,
       });
       confidences.push(
-        useMonthlyMl
-          ? hybrid.monthly.confidence
-          : useCalibrated
-            ? "medium"
-            : useSeasonal
-              ? result.confidence
-              : "low",
+        useFinancialMonthlyMl
+          ? "medium"
+          : useMonthlyForecast
+            ? hybrid.monthly.confidence
+            : useCalibrated
+              ? "medium"
+              : useSeasonal
+                ? result.confidence
+                : "low",
       );
       for (const point of series.points)
         if (point.units !== null && point.date <= input.asOf)
@@ -604,12 +663,59 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             }
           : {
               ...c,
-              reason: c.eligible
-                ? `Проверено на горизонте ${horizon} дней.`
-                : c.reason,
+              reason:
+                c.model === "mean"
+                  ? "Базовая оценка недавнего спроса; не является подтверждением ML на рабочем горизонте."
+                  : c.eligible
+                    ? `Проверено на горизонте ${horizon} дней.`
+                    : c.reason,
             },
       );
-      if (calibrated) source.candidates.push(calibrated.candidate);
+      const calendarMonthlyCandidate = hybrid.monthly.candidates.find(
+        (c) => c.model === "ridge",
+      )!;
+      const calendarMonthlyMetrics =
+        calendarMonthlyCandidate.metrics?.byHorizon.find(
+          (m) => m.horizonDays === MONTHLY_ML_DAYS,
+        );
+      source.candidates.push({
+        model: "ridge_monthly",
+        label: "ML: месяцы, недели и праздники на 30 дней",
+        eligible: calendarMonthlyCandidate.eligible,
+        reason: calendarMonthlyCandidate.reason,
+        mae: calendarMonthlyMetrics?.mae ?? null,
+        wape: calendarMonthlyMetrics?.wape ?? null,
+        bias: calendarMonthlyMetrics?.bias ?? null,
+        folds: calendarMonthlyMetrics?.folds ?? 0,
+      });
+      for (const model of ["annual_seasonal", "annual_growth"] as const) {
+        const candidate = hybrid.monthly.candidates.find(
+          (c) => c.model === model,
+        )!;
+        const metrics = candidate.metrics?.byHorizon.find(
+          (m) => m.horizonDays === MONTHLY_ML_DAYS,
+        );
+        source.candidates.push({
+          model: `${model}_monthly`,
+          label: `${MODEL_LABELS[model]}: 30 дней`,
+          eligible: candidate.eligible,
+          reason: candidate.eligible
+            ? "Проверено на горизонте 30 дней; дальний запас оценивается отдельно."
+            : candidate.reason,
+          mae: metrics?.mae ?? null,
+          wape: metrics?.wape ?? null,
+          bias: metrics?.bias ?? null,
+          folds: metrics?.folds ?? 0,
+        });
+      }
+      for (const c of [annualCalibrated, calendarCalibrated])
+        if (c) source.candidates.push(c.candidate);
+      if (calendarMonthly)
+        source.candidates.push({
+          ...calendarMonthly.candidate,
+          model: "financial_calendar_ml_monthly",
+          label: "ML: календарь всей истории выкупов → заказы на 30 дней",
+        });
       source.modelLabel = methodLabel;
       source.points = [
         ...source.points.filter((p) => p.predicted === null),
@@ -637,18 +743,26 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       };
       const result = runForecast(series, {
         asOf: input.asOf,
-        horizonDays: horizon,
+        horizonDays: MONTHLY_ML_DAYS,
         baselineHistoryDays: input.settings.historyDays,
       });
       fingerprints.push(result.fingerprint);
+      if (history.metric === "sold")
+        for (const point of series.points)
+          if (
+            point.units !== null &&
+            point.date <= input.asOf &&
+            point.availability !== "out_of_stock"
+          )
+            knownDates.add(point.date);
       row.sources.push(
         chartSource(
           series,
           result,
           history.provider,
           history.metric === "sold"
-            ? "Выкупы — отдельно от заказов"
-            : "Возвраты — отдельно от заказов",
+            ? "Выкупы — прогноз на 30 дней, отдельно от заказов"
+            : "Возвраты — прогноз на 30 дней, отдельно от заказов",
         ),
       );
     }

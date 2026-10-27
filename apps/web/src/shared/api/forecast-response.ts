@@ -91,6 +91,16 @@ function historyProvider(v: unknown) {
     record(v) &&
     provider(v.provider) &&
     bool(v.financeConfigured) &&
+    nullableDate(v.firstSaleDate) &&
+    nullableDate(v.lastSaleDate) &&
+    integer(v.ordersKnownDays) &&
+    integer(v.salesEventDays) &&
+    nullableDate(v.archiveFrom) &&
+    nullableDate(v.archiveThrough) &&
+    bool(v.archiveComplete) &&
+    ["sale_date", "report_window", "processing_window"].includes(
+      String(v.archiveScope),
+    ) &&
     nullableDate(v.from) &&
     nullableDate(v.to) &&
     integer(v.knownDays) &&

@@ -129,13 +129,20 @@ export function marketplacePlan(
         blockers.push("Тематика не сопоставлена с карточками маркетплейсов");
         reviewMessage ??= "Свяжите товар маркетплейса с тематикой склада.";
       }
+      const goal = forecast?.goals[sku.id];
+      const storedForecast = (provider: string) =>
+        forecast?.cacheCurrent === true &&
+        goal?.sources?.some(
+          (source) =>
+            source.provider === provider && source.salesForecastKnown === true,
+        ) === true;
       for (const snapshot of snapshots) {
         const related = mappings.filter(
           (x) => x.provider === snapshot.provider,
         );
         if (!related.length) continue;
         if (
-          snapshot.from > from ||
+          (snapshot.from > from && !storedForecast(snapshot.provider)) ||
           (!presentation?.savedSnapshots && snapshot.to < to)
         ) {
           blockers.push(`${snapshot.provider}: недостаточно дней истории`);
@@ -164,7 +171,6 @@ export function marketplacePlan(
             );
         }
       }
-      const goal = forecast?.goals[sku.id];
       const minimumUnits =
         (forecast?.minimumBoxes[sku.id] ?? 0) * sku.unitsPerBox;
       const inboundSources: MarketplaceInboundSourceDto[] =
@@ -473,7 +479,7 @@ export function marketplacePlan(
             global.some((reason) => reason.startsWith(`${provider}:`)) ||
             !snapshot ||
             (!!snapshot &&
-              (snapshot.from > from ||
+              ((snapshot.from > from && !storedForecast(provider)) ||
                 (!presentation?.savedSnapshots && snapshot.to < to)));
           const complete =
             !providerBlock &&

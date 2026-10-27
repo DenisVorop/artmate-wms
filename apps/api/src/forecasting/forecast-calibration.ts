@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { fitUnvalidatedCalendarForecast } from "./engine";
 import type { ForecastSeries, ForecastDailyValue } from "./engine-types";
 import type { ForecastCandidateDto } from "./forecast-dto";
 import { baselineFromObservations } from "./demand-baseline";
@@ -9,6 +10,7 @@ const MODEL = "financial_calibrated";
 const LABEL = "Сезон выкупов с проверкой по заказам";
 const VERSION = "financial-calibration-v1";
 type Observation = { day: number; units: number };
+type CalibrationMethod = "annual_shape" | "calendar_ml";
 interface CalibrationFit {
   values: number[] | null;
   reason: string | null;
@@ -154,6 +156,7 @@ export function calibrateFinancialSeason(
   horizon: number,
   baselineHistoryDays = 56,
   useNewYearScenario = false,
+  method: CalibrationMethod = "annual_shape",
 ): FinancialCalibration {
   if (
     operational.provider !== financial.provider ||
@@ -166,7 +169,55 @@ export function calibrateFinancialSeason(
   const end = Date.parse(asOf) / DAY,
     op = observed(operational, end),
     fin = observed(financial, end);
-  const current = fit(op, fin, end, horizon);
+  const trainedFit = (
+    prefix: Observation[],
+    financialPrefix: Observation[],
+    cutoff: number,
+    days: number,
+  ): CalibrationFit => {
+    if (method === "annual_shape")
+      return fit(prefix, financialPrefix, cutoff, days);
+    const recent = prefix.filter((p) => p.day > cutoff - 56);
+    const financialByDay = new Map(
+      financialPrefix.map((p) => [p.day, p.units]),
+    );
+    const paired = recent.flatMap((p) => {
+      const sold = financialByDay.get(p.day);
+      return sold === undefined ? [] : [{ ordered: p.units, sold }];
+    });
+    // No numerical conversion is assumed from finance to orders. Learn it only
+    // from actual contemporaneous observations, never from a future holdout.
+    if (paired.length < 28)
+      return {
+        values: null,
+        reason:
+          "Для связи выкупов и заказов нужны 28 совместных известных дней за последние 56 дней.",
+      };
+    const soldLevel = trimmed(paired.map((p) => p.sold));
+    if (soldLevel <= 0)
+      return {
+        values: null,
+        reason: "Недостаточно ненулевых выкупов для связи с заказами.",
+      };
+    const bridge = clamp(
+      trimmed(paired.map((p) => p.ordered)) / soldLevel,
+      0.25,
+      4,
+    );
+    const trained = fitUnvalidatedCalendarForecast(
+      financial,
+      new Date(cutoff * DAY).toISOString().slice(0, 10),
+      days,
+      baselineHistoryDays,
+    );
+    return {
+      values: trained.reason
+        ? null
+        : trained.dailyForecast.map((p) => p.units * bridge),
+      reason: trained.reason,
+    };
+  };
+  const current = trainedFit(op, fin, end, horizon);
   const folds: {
     horizon: number;
     absolute: number;
@@ -180,7 +231,7 @@ export function calibrateFinancialSeason(
       const cutoff = end - h * (n + 1),
         prefix = op.filter((p) => p.day <= cutoff),
         financialPrefix = fin.filter((p) => p.day <= cutoff);
-      const fitted = fit(prefix, financialPrefix, cutoff, h);
+      const fitted = trainedFit(prefix, financialPrefix, cutoff, h);
       if (!fitted.values) continue;
       const actual = op.filter((p) => p.day > cutoff && p.day <= cutoff + h);
       if (actual.length / h < 0.8) continue;
@@ -255,6 +306,7 @@ export function calibrateFinancialSeason(
     .update(
       JSON.stringify({
         version: VERSION,
+        method,
         asOf,
         horizon,
         baselineHistoryDays,
@@ -271,8 +323,11 @@ export function calibrateFinancialSeason(
     .digest("hex");
   return {
     candidate: {
-      model: MODEL,
-      label: LABEL,
+      model: method === "calendar_ml" ? "financial_calendar_ml" : MODEL,
+      label:
+        method === "calendar_ml"
+          ? "ML: календарь выкупов с проверкой по заказам"
+          : LABEL,
       eligible: reason === null,
       reason,
       mae: count ? round(absolute / count) : null,
@@ -284,4 +339,26 @@ export function calibrateFinancialSeason(
     totalUnits: round(dailyForecast.reduce((n, p) => n + p.units, 0)),
     fingerprint,
   };
+}
+
+/** Full-history calendar ML is a separate candidate; financial units are never
+ * added to orders. All calendar fitting and conversion ratios are prefix-only.
+ */
+export function calibrateFinancialCalendarMl(
+  operational: ForecastSeries,
+  financial: ForecastSeries,
+  asOf: string,
+  horizon: number,
+  baselineHistoryDays = 56,
+  useNewYearScenario = false,
+): FinancialCalibration {
+  return calibrateFinancialSeason(
+    operational,
+    financial,
+    asOf,
+    horizon,
+    baselineHistoryDays,
+    useNewYearScenario,
+    "calendar_ml",
+  );
 }

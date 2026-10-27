@@ -6,7 +6,7 @@ import { Button, Input, Select } from "@/shared/ui";
 import { planningSchema, type PlanningValues } from "../lib/planning-form";
 import styles from "./assembly-planning.module.css";
 const fields = [
-  { name: "historyDays", label: "Продажи за, дней", min: 7, max: 89 },
+  { name: "historyDays", label: "Недавний спрос за, дней", min: 7, max: 89 },
   {
     name: "horizonDays",
     label: "Запас на маркетплейсах, дней",
@@ -92,8 +92,10 @@ export function PlanningSettings({
         </Button>
       </form>
       <p className={styles.help}>
-        Период запаса относится к маркетплейсам. Сборка впрок идёт отдельной
-        очередью, без фиксированного запаса своего склада.
+        Модель обучается на всей загруженной истории с начала продаж. Окно
+        недавнего спроса задаёт текущий уровень продаж для сравнения и не
+        обрезает архив обучения. Запас на площадках — отдельно от подготовки
+        наших еженедельных отправок на месяц.
       </p>
     </details>
   );

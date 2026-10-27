@@ -40,7 +40,7 @@ export function planningPresentationKey(
   clock = new Date(),
 ) {
   return hash({
-    version: 2,
+    version: 3,
     resolutions: activeMarketplaceResolutions(m, clock)
       .map(({ id, revision }) => ({ id, revision }))
       .sort((a, b) => a.id.localeCompare(b.id)),
@@ -60,7 +60,12 @@ export function planningPresentationKey(
         `${b.provider}/${b.externalId}`,
       ),
     ),
-    settings: m.settings,
+    settings: {
+      horizonDays: m.settings.horizonDays,
+      safetyDays: m.settings.safetyDays,
+      leadDays: m.settings.leadDays,
+      dispatchWeekday: m.settings.dispatchWeekday ?? 6,
+    },
     skus: w.skus
       .map((sku) => ({
         id: sku.id,

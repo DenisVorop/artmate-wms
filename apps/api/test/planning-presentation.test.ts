@@ -265,6 +265,12 @@ test("compatibility ignores refresh details but invalidates account, mapping, pa
     planningPresentationKey(w, m, { ...forecast, key: "new-history-day" }),
     original,
   );
+  m.settings.historyDays = 89;
+  assert.equal(
+    planningPresentationKey(w, m, forecast),
+    original,
+    "recent-window changes retain the previous dated display while ML retrains",
+  );
   const cases: ((state: ReturnType<typeof fixture>) => void)[] = [
     ({ m }) => {
       m.connections[0].version++;
@@ -285,7 +291,7 @@ test("compatibility ignores refresh details but invalidates account, mapping, pa
       w.skus[0].name = "different name";
     },
     ({ m }) => {
-      m.settings.historyDays++;
+      m.settings.horizonDays++;
     },
     ({ forecast }) => {
       forecast.minimumBoxes["sku-cats"] = 2;

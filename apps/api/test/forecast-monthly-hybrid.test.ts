@@ -105,3 +105,37 @@ test("future injection cannot influence training, the 30-day decision, tail or f
     base,
   );
 });
+
+test("validated monthly annual season replaces a mean tail without claiming ML or extending seasonal evidence", () => {
+  const input = series(600);
+  input.points = input.points.map((p, i) => ({
+    ...p,
+    date: new Date(Date.parse("2024-01-01") + i * 86400000)
+      .toISOString()
+      .slice(0, 10),
+    units: 30 + 25 * Math.sin((2 * Math.PI * i) / 365),
+  }));
+  const hybrid = runMonthlyHybridForecast(input, {
+    asOf: input.points.at(-1)!.date,
+    horizonDays: 106,
+  });
+  assert.equal(hybrid.long.selectedModel, "mean");
+  assert.ok(
+    ["annual_seasonal", "annual_growth"].includes(hybrid.monthly.selectedModel),
+  );
+  assert.equal(hybrid.usesMonthlyForecast, true);
+  assert.equal(hybrid.usesMonthlySeasonal, true);
+  assert.equal(hybrid.usesMonthlyMl, false);
+  assert.deepEqual(
+    hybrid.dailyForecast.slice(0, 30),
+    hybrid.monthly.dailyForecast,
+  );
+  assert.deepEqual(
+    hybrid.dailyForecast.slice(30),
+    hybrid.long.dailyForecast.slice(30),
+  );
+  assert.notDeepEqual(
+    hybrid.dailyForecast.slice(0, 30),
+    hybrid.long.dailyForecast.slice(0, 30),
+  );
+});

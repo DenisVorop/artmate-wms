@@ -11,8 +11,13 @@ export interface HistoryFact {
   units: number;
   source: HistorySource;
   observedAt: string;
+  /** Ozon retrieval-window provenance, independent of canonical creation date. */
+  windowFrom?: string;
+  windowTo?: string;
 }
 export interface HistoryCoverage {
+  /** WB dates select report windows, not sale dates; never imply zero sales. */
+  scope?: "sale_date" | "report_window" | "processing_window";
   snapshotHash?: string;
   storeId: string;
   provider: MarketplaceProvider;
@@ -33,6 +38,8 @@ export interface HistoryJob {
   cursor: string;
   seenCursors: string[];
   pages: number;
+  consecutiveFailures?: number;
+  cursorRestarts?: number;
   status:
     | "queued"
     | "running"

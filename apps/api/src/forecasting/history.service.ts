@@ -100,7 +100,12 @@ export class ForecastHistoryService {
         const c = m.connections.find((c) => c.provider === provider),
           storeId = c?.historyStoreId;
         const cs = coverages.filter(
-          (x) => x.provider === provider && x.storeId === storeId,
+          (x) =>
+            x.provider === provider &&
+            x.storeId === storeId &&
+            x.source !== "wb_finance" &&
+            x.scope !== "report_window" &&
+            x.scope !== "processing_window",
         );
         const dates = new Set<string>();
         for (const range of cs)
@@ -111,9 +116,55 @@ export class ForecastHistoryService {
           )
             dates.add(new Date(d).toISOString().slice(0, 10));
         const sorted = [...dates].sort();
+        const providerFacts = facts.filter(
+            (f) => f.provider === provider && f.storeId === storeId,
+          ),
+          saleFacts = providerFacts.filter(
+            (f) =>
+              f.units > 0 &&
+              f.metric === (provider === "wildberries" ? "sold" : "ordered"),
+          ),
+          saleDates = [...new Set(saleFacts.map((f) => f.date))].sort(),
+          archiveSource =
+            provider === "wildberries" ? "wb_finance" : "ozon_fbo",
+          archive = coverages.filter(
+            (x) =>
+              x.provider === provider &&
+              x.storeId === storeId &&
+              x.source === archiveSource,
+          ),
+          scopedJobs = jobs.filter(
+            (j) => j.provider === provider && j.storeId === storeId,
+          ),
+          explicitJobs = scopedJobs.filter(
+            (j) =>
+              !(j as HistoryJob & { maintenanceDay?: string }).maintenanceDay,
+          ),
+          archiveDates = new Set<string>();
+        for (const range of archive)
+          for (
+            let d = Date.parse(range.from);
+            d <= Date.parse(range.to);
+            d += 86400000
+          )
+            archiveDates.add(new Date(d).toISOString().slice(0, 10));
+        const sortedArchive = [...archiveDates].sort();
+        // Report windows and operational order coverage have different meanings.
+        // A financial event date never certifies that another sale date had zero sales.
         return {
           provider,
           financeConfigured: !!c?.financeEncrypted,
+          firstSaleDate: saleDates[0] ?? null,
+          lastSaleDate: saleDates.at(-1) ?? null,
+          ordersKnownDays: dates.size,
+          salesEventDays: saleDates.length,
+          archiveFrom: sortedArchive[0] ?? null,
+          archiveThrough: sortedArchive.at(-1) ?? null,
+          archiveComplete:
+            explicitJobs.length > 0 &&
+            explicitJobs.every((j) => j.status === "complete"),
+          archiveScope:
+            provider === "wildberries" ? "report_window" : "processing_window",
           from: sorted[0] ?? null,
           to: sorted.at(-1) ?? null,
           knownDays: dates.size,
@@ -122,7 +173,7 @@ export class ForecastHistoryService {
           ).size,
           message:
             provider === "wildberries"
-              ? "Текущие заказы сохраняются. Для старой истории нужен доступ «Финансы». Историческое наличие неизвестно."
+              ? "Текущие заказы и архив выкупов сохраняются раздельно. Период финансового отчёта не означает известное количество продаж за каждый день. Историческое наличие неизвестно."
               : "История FBO загружается постепенно. Заказы и текущие отмены; историческое наличие неизвестно.",
         };
       }),
@@ -321,12 +372,12 @@ export class ForecastHistoryService {
       }).length ||
       !validDate(b.from) ||
       !validDate(b.to) ||
-      b.from < "2024-01-01" ||
+      b.from < "2000-01-01" ||
       b.from > b.to ||
       b.to >= today()
     )
       throw new BadRequestException(
-        "Укажите период с 2024 года до вчерашнего дня",
+        "Укажите корректный период до вчерашнего дня",
       );
     if (b.provider === "wildberries" && b.from < "2024-01-29")
       throw new BadRequestException(
@@ -366,7 +417,10 @@ export class ForecastHistoryService {
       await put(tx, "marketplace_connections", c.provider, c);
       const id = historyId(c.historyStoreId, b.from, b.to);
       const existing = (await loadHistoryJobs(tx)).find((j) => j.id === id);
-      if (existing && existing.status === "paused") {
+      if (
+        existing &&
+        ["paused", "failed", "permission_required"].includes(existing.status)
+      ) {
         existing.status =
           c.provider === "wildberries" && !c.financeEncrypted
             ? "permission_required"
@@ -375,6 +429,7 @@ export class ForecastHistoryService {
         existing.leaseId = null;
         existing.leaseUntil = null;
         existing.retryAt = null;
+        existing.consecutiveFailures = 0;
         existing.message = "Загрузка истории продолжится";
         await historyPut(tx, "forecast_history_jobs", id, existing);
       }
@@ -474,8 +529,12 @@ export class ForecastHistoryService {
           .toISOString()
           .slice(0, 10);
         const desired = missingFrom < rollingFrom ? missingFrom : rollingFrom;
+        // Reuse canonical monthly retrieval boundaries, so a later refresh
+        // replaces an earlier partial month rather than accumulating partitions.
+        const aligned =
+          c.provider === "ozon" ? `${desired.slice(0, 7)}-01` : desired;
         const from =
-          desired < authorization.from ? authorization.from : desired;
+          aligned < authorization.from ? authorization.from : aligned;
         if (from > through) continue;
         const now = new Date().toISOString();
         const job: MaintenanceJob = {
@@ -512,6 +571,75 @@ export class ForecastHistoryService {
     await this.warehouse.authTransaction(async (tx) => {
       const m = await loadMarketplaces(tx);
       await bootstrapForecastHistory(tx, m.connections, m.snapshots);
+      // Older versions published WB facts without storing the completed report windows.
+      // Reconstruct only ranges whose traversal is proven by the durable month cursor.
+      const existing = await historyRows<HistoryCoverage>(
+          tx,
+          "forecast_history_coverage",
+        ),
+        jobs = await loadHistoryJobs(tx);
+      let repaired = false;
+      // Ozon filters may return created dates outside their retrieval window.
+      // Previously saved query-window coverage must not imply missing created dates were zero.
+      for (const range of existing) {
+        if (range.source !== "ozon_fbo" || range.scope === "processing_window")
+          continue;
+        range.scope = "processing_window";
+        await historyPut(
+          tx,
+          "forecast_history_coverage",
+          historyId(range.storeId, range.source, range.from, range.to),
+          range,
+        );
+        repaired = true;
+      }
+      for (const j of jobs) {
+        if (
+          j.provider !== "wildberries" ||
+          !m.connections.some(
+            (c) =>
+              c.enabled &&
+              c.provider === j.provider &&
+              c.historyStoreId === j.storeId,
+          )
+        )
+          continue;
+        const through =
+          j.status === "complete"
+            ? j.to
+            : new Date(Date.parse(j.monthFrom) - 86400000)
+                .toISOString()
+                .slice(0, 10);
+        for (let from = j.from; from <= through; ) {
+          const to = monthEnd(from, through),
+            id = historyId(j.storeId, "wb_finance", from, to);
+          if (
+            !existing.some(
+              (r) =>
+                r.storeId === j.storeId &&
+                r.source === "wb_finance" &&
+                r.from === from &&
+                r.to === to &&
+                r.scope === "report_window",
+            )
+          ) {
+            const coverage: HistoryCoverage = {
+              storeId: j.storeId,
+              provider: j.provider,
+              source: "wb_finance",
+              scope: "report_window",
+              from,
+              to,
+              observedAt: j.updatedAt,
+            };
+            await historyPut(tx, "forecast_history_coverage", id, coverage);
+            existing.push(coverage);
+            repaired = true;
+          }
+          from = new Date(Date.parse(to) + 86400000).toISOString().slice(0, 10);
+        }
+      }
+      if (repaired) await bumpForecastHistoryRevision(tx);
     });
   }
   /** One page per tick; no upstream call while holding the SQL lock. */
@@ -610,6 +738,32 @@ export class ForecastHistoryService {
           : this.fetchPage
       )(credentials, claim.job, { signal: scoped });
       scoped.throwIfAborted();
+      if (
+        !page ||
+        !Array.isArray(page.facts) ||
+        (page.cursor !== null &&
+          (typeof page.cursor !== "string" ||
+            !page.cursor ||
+            claim.job.seenCursors.includes(page.cursor) ||
+            claim.job.cursor === page.cursor)) ||
+        claim.job.pages >= 100000 ||
+        page.facts.some(
+          (f) =>
+            !validDate(f.date) ||
+            f.date >= today() ||
+            f.date > claim.job.to ||
+            !Number.isSafeInteger(f.units) ||
+            f.units < 0 ||
+            !(
+              claim.job.provider === "ozon"
+                ? ["ordered", "cancelled"]
+                : ["sold", "returned"]
+            ).includes(f.metric) ||
+            f.source !==
+              (claim.job.provider === "ozon" ? "ozon_fbo" : "wb_finance"),
+        )
+      )
+        throw new Error("Invalid historical page");
     } catch (error) {
       failed = true;
       permissionRequired =
@@ -653,31 +807,38 @@ export class ForecastHistoryService {
           "Ключ WB не даёт доступа к финансовой истории. Проверьте права «Финансы».";
       } else if (failed || !page) {
         j.status = "failed";
-        j.retryAt = new Date(Date.now() + 1800000).toISOString();
+        const failures = (j.consecutiveFailures ?? 0) + 1;
+        j.consecutiveFailures = failures;
+        // A cursor may expire while a long archive waits for rate limits or a restart.
+        // Replay only the unpublished month after repeated failures; published months remain intact.
+        if (j.cursor && j.consecutiveFailures >= 3) {
+          await tx.query(
+            "DELETE FROM forecast_history_pages WHERE payload->>'jobId'=$1 AND payload->>'monthFrom'=$2",
+            [j.id, j.monthFrom],
+          );
+          j.cursor = "";
+          j.seenCursors = [];
+          j.cursorRestarts = (j.cursorRestarts ?? 0) + 1;
+          j.consecutiveFailures = 0;
+        }
+        const delay = [60000, 300000, 900000, 1800000][
+          Math.min(3, failures - 1)
+        ];
+        j.retryAt = new Date(Date.now() + delay).toISOString();
         j.message = "Не удалось получить страницу. Повторим автоматически.";
       } else {
+        j.consecutiveFailures = 0;
         const stagedFacts: HistoryFact[] = [];
         for (const f of page.facts) {
-          if (
-            !validDate(f.date) ||
-            (j.provider === "ozon" &&
-              (f.date < j.monthFrom || f.date > j.monthTo)) ||
-            !Number.isSafeInteger(f.units) ||
-            f.units < 0 ||
-            !(
-              j.provider === "ozon"
-                ? ["ordered", "cancelled"]
-                : ["sold", "returned"]
-            ).includes(f.metric) ||
-            f.source !== (j.provider === "ozon" ? "ozon_fbo" : "wb_finance")
-          )
-            throw new Error("Invalid historical fact");
           const fact: HistoryFact = {
             ...f,
             id: historyId(j.storeId, f.id),
             storeId: j.storeId,
             provider: j.provider,
             observedAt: j.updatedAt,
+            ...(j.provider === "ozon"
+              ? { windowFrom: j.monthFrom, windowTo: j.monthTo }
+              : {}),
           };
           stagedFacts.push(fact);
         }
@@ -698,12 +859,6 @@ export class ForecastHistoryService {
             ? new Date(Date.now() + 61000).toISOString()
             : null;
         if (page.cursor) {
-          if (
-            j.seenCursors.includes(page.cursor) ||
-            j.cursor === page.cursor ||
-            j.pages > 100000
-          )
-            throw new Error("Invalid history cursor");
           j.seenCursors.push(page.cursor);
           j.cursor = page.cursor;
           j.status = "queued";
@@ -714,13 +869,13 @@ export class ForecastHistoryService {
               [j.id, j.monthFrom],
             )
           ).rows;
-          // A fully reloaded order month is authoritative, including removed
-          // postings. Keep other sources, accounts and months untouched.
-          // Finance report windows are not sale-date windows and cannot use
-          // this replacement rule.
+          // Replace only the fully traversed retrieval window. Ozon may return
+          // creation dates outside this window, so date-based deletion is unsafe.
+          // Legacy records predate retrieval provenance and were restricted to their creation month.
+          // Finance report windows do not use replacement by sale date.
           if (j.provider === "ozon")
             await tx.query(
-              "DELETE FROM forecast_history_facts WHERE payload->>'storeId'=$1 AND payload->>'source'=$2 AND payload->>'date'>=$3 AND payload->>'date'<=$4",
+              "DELETE FROM forecast_history_facts WHERE payload->>'storeId'=$1 AND payload->>'source'=$2 AND ((payload->>'windowFrom'=$3 AND payload->>'windowTo'<=$4) OR (NOT(payload ? 'windowFrom') AND payload->>'date'>=$3 AND payload->>'date'<=$4))",
               [j.storeId, "ozon_fbo", j.monthFrom, j.monthTo],
             );
           for (const part of completedPages)
@@ -731,19 +886,21 @@ export class ForecastHistoryService {
             [j.id, j.monthFrom],
           );
           await bumpForecastHistoryRevision(tx);
-          if (j.provider === "ozon") {
+          {
             const coverage: HistoryCoverage = {
               storeId: j.storeId,
               provider: j.provider,
               from: j.monthFrom,
               to: j.monthTo,
-              source: "ozon_fbo",
+              source: j.provider === "ozon" ? "ozon_fbo" : "wb_finance",
+              scope:
+                j.provider === "ozon" ? "processing_window" : "report_window",
               observedAt: j.updatedAt,
             };
             await historyPut(
               tx,
               "forecast_history_coverage",
-              historyId(j.storeId, "ozon_fbo", j.monthFrom, j.monthTo),
+              historyId(j.storeId, coverage.source, j.monthFrom, j.monthTo),
               coverage,
             );
           }

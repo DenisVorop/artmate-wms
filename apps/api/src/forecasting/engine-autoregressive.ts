@@ -3,7 +3,7 @@ import {
   demandObservationCap,
   type DemandObservation,
 } from "./demand-baseline";
-const DAY = 86_400_000;
+import { calendarPredictors } from "./calendar-features";
 const mean = (values: number[]) =>
   values.reduce((a, b) => a + b, 0) / values.length;
 const clamp = (value: number, lo: number, hi: number) =>
@@ -25,7 +25,6 @@ function features(
   const week = rolling(7),
     month = rolling(28);
   if (week.length < 5 || month.length < 20) return null;
-  const weekday = new Date(day * DAY).getUTCDay();
   return [
     1,
     Math.log1p(lag1),
@@ -34,7 +33,7 @@ function features(
     Math.log1p(mean(week)),
     Math.log1p(mean(month)),
     (day - origin) / 180,
-    ...Array.from({ length: 6 }, (_, i) => (weekday === i + 1 ? 1 : 0)),
+    ...calendarPredictors(day),
   ];
 }
 function solve(rows: number[][], targets: number[]): number[] | null {
@@ -84,6 +83,23 @@ export function fitAutoregressive(
       values: null,
       reason: "Для обучаемой модели нужно не менее 70 известных дней спроса.",
     };
+  // Settled sales can legitimately lag the current complete calendar day.
+  // Forecast that short unobserved tail recursively; predictions remain excluded
+  // from training/coverage and only the requested future dates are returned.
+  const lastKnown = train.at(-1)!.day;
+  const unobservedTail = asOf - lastKnown;
+  if (unobservedTail > 0 && unobservedTail <= 7) {
+    const bridged = fitAutoregressive(
+      train,
+      lastKnown,
+      horizon + unobservedTail,
+      baselineHistoryDays,
+    );
+    return {
+      values: bridged.values?.slice(unobservedTail) ?? null,
+      reason: bridged.reason,
+    };
+  }
   const cap = demandObservationCap(train.map((p) => p.units)),
     byDay = new Map(train.map((p) => [p.day, Math.min(p.units, cap)]));
   const origin = train[0].day,

@@ -46,7 +46,9 @@ export async function fetchOzonHistoryPage(
     if (seen.has(postingId)) return invalid();
     seen.add(postingId);
     const date = moscowDate(posting.created_at);
-    if (date < job.monthFrom || date > job.monthTo) return invalid();
+    // Ozon may retrieve a February posting whose order was created in January.
+    // Keep the real order date; the service records ownership by retrieval window.
+    if (date > job.to) return invalid();
     if (
       posting.external_order &&
       object(posting.external_order).is_external === true

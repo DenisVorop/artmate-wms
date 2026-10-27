@@ -10,7 +10,9 @@ export const MONTHLY_ML_DAYS = 30;
 export interface MonthlyHybridForecast {
   long: ForecastResult;
   monthly: ForecastResult;
+  usesMonthlyForecast: boolean;
   usesMonthlyMl: boolean;
+  usesMonthlySeasonal: boolean;
   dailyForecast: ForecastDailyValue[];
   fingerprint: string;
 }
@@ -20,9 +22,9 @@ export function applyMonthlySegment(
   tail: ForecastDailyValue[],
 ): ForecastDailyValue[] {
   const candidate = monthly.candidates.find(
-    (c) => c.model === "autoregressive",
+    (c) => c.model === monthly.selectedModel,
   );
-  if (monthly.selectedModel !== "autoregressive" || !candidate?.eligible)
+  if (monthly.selectedModel === "mean" || !candidate?.eligible)
     return tail.map((p) => ({ ...p }));
   const predicted = new Map(
     monthly.dailyForecast.map((p) => [p.date, p.units]),
@@ -48,18 +50,28 @@ export function runMonthlyHybridForecast(
     horizonDays: MONTHLY_ML_DAYS,
     allowAutoregressive: true,
   });
+  const usesMonthlyForecast =
+    monthly.selectedModel !== "mean" &&
+    monthly.candidates.some(
+      (c) => c.model === monthly.selectedModel && c.eligible,
+    );
   const usesMonthlyMl =
-    monthly.selectedModel === "autoregressive" &&
-    monthly.candidates.some((c) => c.model === "autoregressive" && c.eligible);
+    usesMonthlyForecast &&
+    ["autoregressive", "ridge"].includes(monthly.selectedModel);
+  const usesMonthlySeasonal =
+    usesMonthlyForecast &&
+    ["annual_seasonal", "annual_growth"].includes(monthly.selectedModel);
   return {
     long,
     monthly,
+    usesMonthlyForecast,
     usesMonthlyMl,
+    usesMonthlySeasonal,
     dailyForecast: applyMonthlySegment(monthly, long.dailyForecast),
     fingerprint: createHash("sha256")
       .update(
         JSON.stringify({
-          version: "monthly-hybrid-v1",
+          version: "monthly-hybrid-v3",
           long: long.fingerprint,
           monthly: monthly.fingerprint,
         }),

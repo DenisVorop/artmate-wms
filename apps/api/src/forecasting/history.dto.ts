@@ -56,6 +56,18 @@ export class ForecastHistoryJobDto {
 }
 export class ForecastHistoryProviderDto {
   @ApiProperty({ type: Boolean }) financeConfigured!: boolean;
+  @ApiProperty({ type: String, nullable: true }) firstSaleDate!: string | null;
+  @ApiProperty({ type: String, nullable: true }) lastSaleDate!: string | null;
+  @ApiProperty({ type: Number }) ordersKnownDays!: number;
+  @ApiProperty({ type: Number }) salesEventDays!: number;
+  @ApiProperty({ type: String, nullable: true }) archiveFrom!: string | null;
+  @ApiProperty({ type: String, nullable: true }) archiveThrough!: string | null;
+  @ApiProperty({ type: Boolean }) archiveComplete!: boolean;
+  @ApiProperty({
+    enum: ["sale_date", "report_window", "processing_window"],
+    type: String,
+  })
+  archiveScope!: "sale_date" | "report_window" | "processing_window";
   @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
     | "wildberries"
     | "ozon";

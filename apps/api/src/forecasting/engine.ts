@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { calendarFeatures } from "./calendar-features";
 import { baselineFromObservations } from "./demand-baseline";
 import { fitAutoregressive } from "./engine-autoregressive";
 import { newYearScenarioFromObservations } from "./new-year-scenario";
@@ -17,7 +18,7 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v2.2.0";
+export const FORECAST_MODEL_VERSION = "seasonal-v3.0.1";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",
@@ -197,22 +198,6 @@ function annualReason(values: Observation[], asOf: number): string | null {
   if (recent.length / 365 < MIN_COVERAGE)
     return "В последнем годе слишком много пропусков или дней без товара.";
   return null;
-}
-
-function calendarFeatures(day: number, origin: number): number[] {
-  const date = new Date(day * DAY);
-  const start = Date.UTC(date.getUTCFullYear(), 0, 1) / DAY;
-  const end = Date.UTC(date.getUTCFullYear() + 1, 0, 1) / DAY;
-  const phase = (day - start) / (end - start);
-  const features = [1, (day - origin) / 365];
-  for (let harmonic = 1; harmonic <= 4; harmonic++) {
-    features.push(Math.sin(2 * Math.PI * harmonic * phase));
-    features.push(Math.cos(2 * Math.PI * harmonic * phase));
-  }
-  // Weekly effects and annual effects are learned in the same fit.
-  for (let weekday = 1; weekday <= 6; weekday++)
-    features.push(date.getUTCDay() === weekday ? 1 : 0);
-  return features;
 }
 
 /** Small ridge fit; pivoted elimination, unpenalized intercept. No external runtime. */
@@ -537,6 +522,42 @@ function selectionReason(
   if (Math.abs(signed) > baselineAbsolute * 0.8 || !Number.isFinite(absolute))
     return "Систематическое завышение или занижение прогноза слишком велико.";
   return null;
+}
+
+/** Internal training primitive for cross-metric validation. This result is NOT
+ * eligible for deployment on its own: the caller must validate the complete bridge
+ * against held-out operational observations at the intended horizon.
+ */
+export function fitUnvalidatedCalendarForecast(
+  series: ForecastSeries,
+  asOfDate: string,
+  horizonDays: number,
+  baselineHistoryDays = 56,
+): { dailyForecast: ForecastDailyValue[]; reason: string | null } {
+  const asOf = parseDay(asOfDate);
+  if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 366)
+    throw new Error("Forecast horizon must be between 1 and 366 days");
+  if (
+    !Number.isInteger(baselineHistoryDays) ||
+    baselineHistoryDays < 1 ||
+    baselineHistoryDays > 89
+  )
+    throw new Error("Forecast baseline window must be between 1 and 89 days");
+  const prepared = prepare(series, asOf);
+  const fitted = fit(
+    "ridge",
+    prepared.values,
+    asOf,
+    horizonDays,
+    baselineHistoryDays,
+  );
+  return {
+    reason: fitted.reason,
+    dailyForecast: (fitted.values ?? []).map((units, i) => ({
+      date: dateString(asOf + i + 1),
+      units: rounded(units),
+    })),
+  };
 }
 
 /** Pure, deterministic daily-demand forecast. Never creates stock, tasks or network traffic. */

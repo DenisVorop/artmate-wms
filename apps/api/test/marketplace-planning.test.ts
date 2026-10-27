@@ -90,6 +90,46 @@ function fixture() {
   };
   return { w, m };
 }
+test("current full-history forecasts survive a wider recent window but not stale stock or another input key", () => {
+  const { w, m } = fixture();
+  m.settings.historyDays = 89;
+  const sources = m.connections.map((c) => ({
+    provider: c.provider,
+    salesForecastKnown: true,
+    methodLabel: "ML по всей истории",
+    confidenceLabel: "Умеренная уверенность",
+    scenario: false,
+    dailyForecast: Array.from({ length: 150 }, (_, i) => ({
+      date: new Date(Date.parse("2026-10-25") + i * 86400000)
+        .toISOString()
+        .slice(0, 10),
+      units: 2,
+    })),
+  }));
+  const context = {
+    key: "current",
+    cacheCurrent: true,
+    minimumBoxes: {},
+    goals: {
+      "sku-cats": {
+        targetUnits: 100,
+        methodLabel: "ML",
+        confidenceLabel: "Умеренная",
+        message: "",
+        seasonalityApplied: true,
+        sources,
+      },
+    },
+  };
+  assert.equal(marketplacePlan(w, m, now, context).rows[0].dataComplete, true);
+  assert.equal(
+    marketplacePlan(w, m, now, { ...context, cacheCurrent: false }).rows[0]
+      .dataComplete,
+    false,
+  );
+  m.snapshots[0].to = "2026-10-23";
+  assert.equal(marketplacePlan(w, m, now, context).rows[0].dataComplete, false);
+});
 test("aggregate WB and Ozon multipacks in internal units, round boxes and count remaining WIP exactly once", () => {
   const { w, m } = fixture();
   let row = marketplacePlan(w, m, now).rows[0];

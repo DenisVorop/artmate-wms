@@ -99,7 +99,7 @@ test("ongoing history only follows explicitly authorized completed stores, is bo
         assert.equal(await service.maintainAuthorizedHistory(), 1);
         const jobs = await loadHistoryJobs(tx),
           repair = jobs.find((j) => j.id !== job.id)!;
-        assert.equal(repair.from, "2026-08-27");
+        assert.equal(repair.from, "2026-08-01");
         assert.equal(repair.to, "2026-10-25");
         assert.equal(repair.status, "queued");
         assert.equal(
@@ -174,7 +174,7 @@ test("ongoing history only follows explicitly authorized completed stores, is bo
         const repair = (await loadHistoryJobs(tx)).find(
           (j) => j.id !== job.id,
         )!;
-        assert.equal(repair.from, "2026-03-02");
+        assert.equal(repair.from, "2026-03-01");
         assert.equal(repair.to, "2026-10-25");
       },
     );

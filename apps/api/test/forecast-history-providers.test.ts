@@ -26,6 +26,35 @@ const job: HistoryJob = {
   createdAt: "",
   updatedAt: "",
 };
+test("Ozon archive preserves a real order date outside its retrieval month", async () => {
+  const page = await fetchOzonHistoryPage(
+    { apiKey: "fixture", clientId: "1" },
+    {
+      ...job,
+      to: "2024-02-29",
+      monthFrom: "2024-02-01",
+      monthTo: "2024-02-29",
+    },
+    {
+      fetch: async () =>
+        Response.json({
+          postings: [
+            {
+              posting_number: "cross-month",
+              created_at: "2024-01-29T12:00:00Z",
+              status: "delivered",
+              products: [{ sku: 123, quantity: 2 }],
+            },
+          ],
+          has_next: false,
+        }),
+    },
+  );
+  assert.equal(page.facts.length, 2);
+  assert.equal(page.facts[0].date, "2024-01-29");
+  assert.equal(page.facts[0].units, 2);
+  assert.equal(page.cursor, null);
+});
 test("Ozon history uses minimal100itemFBO page, Moscow boundaries, stable line identities and current cancellations", async () => {
   let requestBody: any;
   const options = {

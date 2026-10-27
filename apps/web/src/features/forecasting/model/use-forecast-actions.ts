@@ -66,14 +66,17 @@ export function useForecastActions() {
     pending,
     error,
     notice,
-    start: (provider: "ozon" | "wildberries") =>
+    start: (
+      provider: "ozon" | "wildberries",
+      period?: { from: string; to: string },
+    ) =>
       run(
         "history",
         () =>
           api.startForecastHistory({
             requestId: crypto.randomUUID(),
             provider,
-            ...historyPeriod(),
+            ...(period ?? historyPeriod()),
           }),
         "Не удалось запустить загрузку. Проверьте подключение маркетплейса.",
         "История поставлена в очередь. Можно продолжать работать.",

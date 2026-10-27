@@ -185,6 +185,79 @@ export async function loadForecastHistorySeries(
       date: string;
       availableUnits: number | null;
     }>(tx, "forecast_stock_observations");
+  const jobs = await loadHistoryJobs(tx);
+  // Query-window completion alone never certifies zero sale-date events.
+  // Once a full, gap-free archive started before this store's first actual event
+  // has finished, its mature prefix can supply observed zero demand days.
+  // This is sale-event coverage, not historical stock availability.
+  for (const j of jobs) {
+    if (
+      j.status !== "complete" ||
+      (j as HistoryJob & { maintenanceDay?: string }).maintenanceDay
+    )
+      continue;
+    const source: HistorySource =
+        j.provider === "wildberries" ? "wb_finance" : "ozon_fbo",
+      eventDates = facts
+        .filter(
+          (f) =>
+            f.storeId === j.storeId &&
+            f.source === source &&
+            f.units > 0 &&
+            f.metric === (j.provider === "wildberries" ? "sold" : "ordered"),
+        )
+        .map((f) => f.date)
+        .sort(),
+      firstEvent = eventDates[0];
+    if (!firstEvent || j.from >= firstEvent) continue;
+    const windows = coverage
+        .filter(
+          (c) =>
+            c.storeId === j.storeId &&
+            c.source === source &&
+            (j.provider === "wildberries"
+              ? c.scope === "report_window"
+              : c.scope === "processing_window" || c.scope === undefined) &&
+            c.from <= j.to &&
+            c.to >= j.from,
+        )
+        .sort((a, b) => a.from.localeCompare(b.from)),
+      nextDay = (d: string) =>
+        new Date(Date.parse(d) + 86400000).toISOString().slice(0, 10);
+    let next = j.from;
+    for (const c of windows) {
+      if (c.from > next) break;
+      if (c.to >= next) next = nextDay(c.to);
+    }
+    if (next <= j.to) continue;
+    let through: string;
+    if (j.provider === "ozon") {
+      const d = new Date(`${j.to}T00:00:00Z`);
+      through = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0))
+        .toISOString()
+        .slice(0, 10);
+    } else {
+      const limit =
+          j.to < asOf.slice(0, 10)
+            ? j.to
+            : new Date(Date.parse(asOf.slice(0, 10)) - 86400000)
+                .toISOString()
+                .slice(0, 10),
+        d = new Date(`${limit}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+      through = d.toISOString().slice(0, 10);
+    }
+    if (through >= firstEvent)
+      coverage.push({
+        storeId: j.storeId,
+        provider: j.provider,
+        source,
+        scope: "sale_date",
+        from: firstEvent,
+        to: through,
+        observedAt: j.updatedAt,
+      });
+  }
   const observationIndex = new Map(
     observations.map((o) => [`${o.storeId}/${o.externalId}/${o.date}`, o]),
   );
@@ -195,6 +268,27 @@ export async function loadForecastHistorySeries(
     const group = groups.get(k);
     if (group) group.push(f);
     else groups.set(k, [f]);
+  }
+  // A closed financial archive proves zero returns on known sale dates as well.
+  // The sibling metric establishes product appearance; it never creates stock history.
+  for (const f of facts.filter((f) => f.source === "wb_finance")) {
+    for (const metric of ["sold", "returned"] as const) {
+      const key = historyId(f.storeId, f.externalId, metric);
+      if (
+        !groups.has(key) &&
+        coverage.some(
+          (c) =>
+            c.storeId === f.storeId &&
+            c.source === "wb_finance" &&
+            c.scope === "sale_date" &&
+            f.date >= c.from &&
+            f.date <= c.to,
+        )
+      )
+        groups.set(key, [
+          { ...f, id: "observed-financial-product", metric, units: 0 },
+        ]);
+    }
   }
   // Catalog observation establishes existence from its observed day, never before launch.
   for (const o of observations)
@@ -244,9 +338,33 @@ export async function loadForecastHistorySeries(
     for (const f of fs) {
       const key = `${f.date}/${f.source}`;
       sums.set(key, (sums.get(key) ?? 0) + f.units);
-      eventDays.add(key);
+      if (
+        f.source !== "ozon_fbo" ||
+        coverage.some(
+          (c) =>
+            c.storeId === f.storeId &&
+            c.source === "ozon_fbo" &&
+            c.from <= (f.windowFrom ?? f.date) &&
+            c.to >= (f.windowTo ?? f.date),
+        )
+      )
+        eventDays.add(key);
     }
-    const from = starts[0],
+    const siblingDates = facts
+      .filter(
+        (f) =>
+          f.storeId === first.storeId &&
+          f.externalId === first.externalId &&
+          (first.metric === "sold" || first.metric === "returned"
+            ? f.source === "wb_finance"
+            : f.source !== "wb_finance"),
+      )
+      .map((f) => f.date)
+      .sort();
+    const from =
+        siblingDates[0] && siblingDates[0] < starts[0]
+          ? siblingDates[0]
+          : starts[0],
       to = asOf.slice(0, 10);
     const points: ForecastHistorySeries["points"] = [];
     for (
@@ -258,18 +376,22 @@ export async function loadForecastHistorySeries(
       const cs = coverage.filter(
         (c) =>
           c.storeId === first.storeId &&
+          c.scope !== "report_window" &&
+          c.scope !== "processing_window" &&
           date >= c.from &&
           date <= c.to &&
           (first.metric === "sold" || first.metric === "returned"
             ? c.source === "wb_finance"
             : c.source !== "wb_finance"),
       );
+      const financial = first.metric === "sold" || first.metric === "returned";
       const source: HistorySource = cs.some(
         (c) => c.source === "operational_snapshot",
       )
         ? "operational_snapshot"
-        : (cs[0]?.source ?? first.source);
-      const financial = first.metric === "sold" || first.metric === "returned";
+        : !financial && eventDays.has(`${date}/ozon_fbo`)
+          ? "ozon_fbo"
+          : (cs[0]?.source ?? first.source);
       const known = cs.some((c) => c.source === source);
       const dayKey = `${date}/${source}`;
       const stock = observationIndex.get(
@@ -278,7 +400,8 @@ export async function loadForecastHistorySeries(
       points.push({
         date,
         units:
-          known || (financial && eventDays.has(dayKey))
+          known ||
+          ((financial || source === "ozon_fbo") && eventDays.has(dayKey))
             ? (sums.get(dayKey) ?? 0) * map.unitsPerItem
             : null,
         availability:

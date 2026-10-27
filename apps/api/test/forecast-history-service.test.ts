@@ -255,6 +255,11 @@ test("durable history pages have auth, replay, lease, atomic cursor and account 
         assert.equal(job.cursor, "");
         assert.equal(JSON.stringify(job).includes("private-secret"), false);
         assert.ok(job.retryAt);
+        await manager(() => failing.startForecastHistory(start()));
+        const resumed = (await read())[0];
+        assert.equal(resumed.status, "queued");
+        assert.equal(resumed.retryAt, null);
+        assert.equal(resumed.cursor, job.cursor);
       },
     );
     await t.test(
@@ -502,14 +507,11 @@ test("durable history pages have auth, replay, lease, atomic cursor and account 
         );
         assert.equal(await s.runNextHistoryPage(), "complete");
         assert.equal(calls, 1);
-        assert.equal(
-          (
-            await w.authTransaction((tx) =>
-              historyRows(tx, "forecast_history_coverage"),
-            )
-          ).length,
-          0,
+        const coverage = await w.authTransaction((tx) =>
+          historyRows<{ scope?: string }>(tx, "forecast_history_coverage"),
         );
+        assert.equal(coverage.length, 1);
+        assert.equal(coverage[0].scope, "report_window");
         const command = await w.authTransaction((tx) =>
           tx.query(
             "SELECT fingerprint,response FROM commands WHERE request_id=$1",
