@@ -8,6 +8,7 @@ import {
 export function forecastChart(
   points: ForecastChartPointDto[],
   domain?: ChartRange,
+  forecastFrom?: string,
 ) {
   const width = 640,
     height = 220,
@@ -85,7 +86,17 @@ export function forecastChart(
       value,
       y: yForValue(value),
     })),
-    forecastStartX: firstPrediction?.x ?? null,
+    forecastStartX:
+      forecastFrom && chartCalendarDay(forecastFrom) !== null
+        ? chartCalendarDay(forecastFrom)! > lastDay
+          ? null
+          : xForDate(
+              forecastFrom <=
+                (validDomain?.from ?? datedPoints[0]?.date ?? forecastFrom)
+                ? (validDomain?.from ?? datedPoints[0]?.date ?? forecastFrom)
+                : forecastFrom,
+            )
+        : (firstPrediction?.x ?? null),
   };
 }
 

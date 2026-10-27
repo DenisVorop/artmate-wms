@@ -31,6 +31,24 @@ export interface ForecastJournalPoint {
   units: number;
   factor: number;
 }
+export interface ForecastChartIdentity {
+  skuId: string;
+  /** Index is a locator within this exact cache only, never an archived identity. */
+  sourceIndex: number;
+  scopeKey: string;
+  historyKey: string;
+  provider: MarketplaceProvider;
+  storeId: string;
+  externalId: string;
+  metric: "net_ordered" | "sold" | "returned";
+  unitsPerItem: number;
+}
+export interface ForecastJournalChart extends Omit<
+  ForecastChartIdentity,
+  "sourceIndex"
+> {
+  points: { date: string; units: number }[];
+}
 export interface ForecastJournalSeries extends ForecastJournalScope {
   id: string;
   metric: "net_ordered";
@@ -61,11 +79,20 @@ export interface ForecastJournalRun {
     dispatchWeekday: number;
   };
   series: ForecastJournalSeries[];
+  /** Every displayed metric/card is kept separately from aggregate planning demand. */
+  charts?: ForecastJournalChart[];
   /** Exact fact versions seen at this publication, limited to matured earlier predictions. */
   observedActuals?: ForecastJournalObservedActual[];
 }
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+export function forecastChartHistoryKey(
+  scopeKey: string,
+  externalId: string,
+  metric: ForecastChartIdentity["metric"],
+) {
+  return hash([scopeKey, externalId, metric]);
+}
 /** Stable account + mapped pack identity; credential rotation alone does not change the seller. */
 export function forecastJournalScopes(
   input: ForecastJournalInput,
@@ -170,8 +197,34 @@ export function captureForecastJournal(
       dispatchWeekday: input.settings.dispatchWeekday ?? 6,
     },
     series,
+    charts: captureForecastCharts(cache, input.asOf),
     observedActuals: captureObservedActuals(input, publishedAt),
   };
+}
+
+function captureForecastCharts(
+  cache: ForecastCache,
+  asOf: string,
+): ForecastJournalChart[] {
+  return (cache.chartIdentities ?? []).flatMap(
+    ({ sourceIndex, ...identity }) => {
+      const source = cache.overview.rows.find(
+        (row) => row.skuId === identity.skuId,
+      )?.sources[sourceIndex];
+      if (!source || source.provider !== identity.provider) return [];
+      const points = source.points
+        .filter((point) => point.date > asOf && point.predicted !== null)
+        .map((point) => {
+          if (!Number.isFinite(point.predicted) || point.predicted! < 0)
+            throw new Error("Invalid archived chart quantity");
+          return { date: point.date, units: point.predicted! };
+        });
+      if (!points.length) return [];
+      if (new Set(points.map((point) => point.date)).size !== points.length)
+        throw new Error("Duplicate archived chart date");
+      return [{ ...identity, points }];
+    },
+  );
 }
 
 /** No reconstructed past knowledge: a fact becomes known at this publication only. */

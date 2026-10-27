@@ -286,6 +286,62 @@ test("cached forecast and synchronous fallback use identical launch quantities w
   assert.equal(row.seasonalityApplied, false);
 });
 
+test("cached launch chart retains its own known net orders and zero; unknown cancellations and future actuals remain null", () => {
+  const input = fixture();
+  const ordered = input.series.find(
+    (series) =>
+      series.provider === "wildberries" &&
+      series.externalId === "wb-0" &&
+      series.metric === "ordered",
+  )!;
+  const cancelled = input.series.find(
+    (series) =>
+      series.provider === "wildberries" &&
+      series.externalId === "wb-0" &&
+      series.metric === "cancelled",
+  )!;
+  ordered.points.at(-2)!.units = 12;
+  cancelled.points.at(-2)!.units = 2;
+  cancelled.points.at(-3)!.units = null;
+  ordered.points.push({
+    date: "2026-10-27",
+    units: 999,
+    availability: "unknown",
+  });
+  cancelled.points.push({
+    date: "2026-10-27",
+    units: 0,
+    availability: "unknown",
+  });
+  const row = computeForecast(input).overview.rows.find(
+    (item) => item.skuId === "sku-0",
+  )!;
+  const source = row.sources.find((item) => item.provider === "wildberries")!;
+  assert.match(source.metricLabel, /Сценарий запуска/);
+  assert.equal(
+    source.points.find((point) => point.date === "2026-10-25")!.actual,
+    10,
+  );
+  assert.equal(
+    source.points.find((point) => point.date === "2026-10-26")!.actual,
+    0,
+  );
+  assert.equal(
+    source.points.find((point) => point.date === "2026-10-24")!.actual,
+    null,
+  );
+  assert.ok(
+    source.points
+      .filter((point) => point.date > input.asOf)
+      .every((point) => point.actual === null),
+  );
+  assert.equal(
+    source.points.find((point) => point.date === "2026-10-25")!.predicted,
+    null,
+  );
+  assert.equal(source.historyDays, 29);
+});
+
 test("planning uses confirmed zero plus pending inbound and launch demand without rewriting raw API snapshots", async () => {
   const { marketplacePlan } = await import("../src/marketplaces/planning");
   const input = fixture();

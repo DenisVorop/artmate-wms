@@ -30,6 +30,7 @@ export class ForecastChartPointDto {
   @ApiProperty({ type: String }) date!: string;
   @ApiProperty({ type: Number, nullable: true }) actual!: number | null;
   @ApiProperty({ type: Number, nullable: true }) predicted!: number | null;
+  @ApiProperty({ type: String, required: false }) predictedAt?: string;
 }
 export class ForecastCandidateDto {
   @ApiProperty({ type: String }) model!: string;
@@ -42,6 +43,8 @@ export class ForecastCandidateDto {
   @ApiProperty({ type: Number }) folds!: number;
 }
 export class ForecastSourceDto {
+  /** The current fit's forecast boundary, independent of saved past predictions. */
+  @ApiProperty({ type: String, required: false }) forecastFrom?: string;
   @ApiProperty({ enum: MARKETPLACE_PROVIDERS, type: String }) provider!:
     | "ozon"
     | "wildberries";

@@ -1,3 +1,8 @@
+import { overlayForecastChartHistory } from "./chart-history";
+import {
+  appendForecastChartDays,
+  readForecastChartDays,
+} from "./chart-history-storage";
 import { captureForecastJournal, forecastJournalScopes } from "./journal-types";
 import {
   appendForecastJournal,
@@ -108,7 +113,18 @@ export class ForecastService {
       lease = await forecastLease(tx);
     const computing =
       !!lease && Date.parse(lease.until) > this.clock().getTime();
-    if (cache?.key === input.key) return { ...cache.overview, computing };
+    if (cache?.key === input.key) {
+      const scopeKeys = forecastJournalScopes(input).map((s) => s.scopeKey),
+        active = new Set(scopeKeys),
+        historyKeys = (cache.chartIdentities ?? [])
+          .filter((identity) => active.has(identity.scopeKey))
+          .map((identity) => identity.historyKey),
+        saved = await readForecastChartDays(tx, historyKeys, input.asOf);
+      return {
+        ...overlayForecastChartHistory(cache, saved, scopeKeys, input.asOf),
+        computing,
+      };
+    }
     const failed = (
       await tx.query<{ payload: { key: string } }>(
         "SELECT payload FROM forecast_results WHERE id=$1",
@@ -271,14 +287,13 @@ export class ForecastService {
           return "superseded" as const;
         }
         if (signal?.aborted) throw new Error("Forecast stopped");
-        await appendForecastJournal(
-          tx,
-          captureForecastJournal(
-            start.input,
-            result,
-            this.clock().toISOString(),
-          ),
+        const journal = captureForecastJournal(
+          start.input,
+          result,
+          this.clock().toISOString(),
         );
+        if (await appendForecastJournal(tx, journal))
+          await appendForecastChartDays(tx, journal);
         await putForecast(tx, "forecast_results", "current", result);
         await tx.query("DELETE FROM forecast_results WHERE id=$1", ["lease"]);
         await tx.query("DELETE FROM forecast_results WHERE id=$1", ["failure"]);

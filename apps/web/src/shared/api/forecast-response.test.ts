@@ -184,3 +184,50 @@ test("history series guard keeps unknown days distinct from zero and rejects fin
     false,
   );
 });
+
+test("existing charts accept actual and saved forecast on the same date with valid publication metadata", () => {
+  const point = {
+    date: "2026-10-26",
+    actual: 7,
+    predicted: 8,
+    predictedAt: "2026-10-25T10:00:00Z",
+  };
+  const response = {
+    ...overview,
+    rows: [
+      {
+        ...row,
+        sources: [{ ...source, forecastFrom: "2026-10-27", points: [point] }],
+      },
+    ],
+  };
+  assert.equal(isForecastOverviewResponse(response), true);
+  assert.equal(
+    isForecastOverviewResponse({
+      ...response,
+      rows: [
+        {
+          ...row,
+          sources: [
+            { ...response.rows[0].sources[0], forecastFrom: "2026-02-31" },
+          ],
+        },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    isForecastOverviewResponse({
+      ...response,
+      rows: [
+        {
+          ...row,
+          sources: [
+            { ...source, points: [{ ...point, predictedAt: "invalid" }] },
+          ],
+        },
+      ],
+    }),
+    false,
+  );
+});

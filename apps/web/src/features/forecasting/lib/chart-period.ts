@@ -29,7 +29,7 @@ export function isValidChartRange(range: ChartRange): boolean {
 }
 
 export function chartRangeBounds(
-  sources: Pick<ForecastSourceDto, "points">[],
+  sources: Pick<ForecastSourceDto, "points" | "forecastFrom">[],
 ): { first: string; last: string; anchor: string } {
   const points = sources.flatMap((source) => source.points),
     dates = points
@@ -46,11 +46,18 @@ export function chartRangeBounds(
       .filter((point) => point.actual !== null)
       .map((point) => chartCalendarDay(point.date))
       .filter((day): day is number => day !== null),
-    anchor = predictedDates.length
-      ? Math.min(...predictedDates) - 1
-      : actualDates.length
-        ? Math.max(...actualDates)
-        : first;
+    forecastStarts = sources
+      .map((source) =>
+        source.forecastFrom ? chartCalendarDay(source.forecastFrom) : null,
+      )
+      .filter((day): day is number => day !== null),
+    anchor = forecastStarts.length
+      ? Math.max(...forecastStarts) - 1
+      : predictedDates.length
+        ? Math.min(...predictedDates) - 1
+        : actualDates.length
+          ? Math.max(...actualDates)
+          : first;
   return {
     first: dateForDay(first),
     last: dateForDay(last),
@@ -59,7 +66,7 @@ export function chartRangeBounds(
 }
 
 export function presetChartRange(
-  sources: Pick<ForecastSourceDto, "points">[],
+  sources: Pick<ForecastSourceDto, "points" | "forecastFrom">[],
   period: Exclude<ChartPeriod, "custom">,
 ): ChartRange {
   const bounds = chartRangeBounds(sources);

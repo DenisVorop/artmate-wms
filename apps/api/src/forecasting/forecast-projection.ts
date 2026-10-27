@@ -42,6 +42,8 @@ import type {
 } from "./forecast-dto";
 import {
   forecastJournalScopes,
+  forecastChartHistoryKey,
+  type ForecastChartIdentity,
   type ForecastJournalRun,
 } from "./journal-types";
 import {
@@ -421,6 +423,11 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
   const overview = baselineForecastOverview(input),
     fingerprints: string[] = [];
   const horizon = forecastHorizon(input);
+  const scopes = forecastJournalScopes(input);
+  const chartIdentities: ForecastChartIdentity[] = [];
+  const forecastFrom = new Date(Date.parse(input.asOf) + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
   const goalSources = new Map<string, ForecastPlanSource[]>();
   const active = input.series.filter((s) =>
     input.connections.some(
@@ -428,6 +435,36 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     ),
   );
   for (const row of overview.rows) {
+    const addChart = (
+      source: ForecastSourceDto,
+      externalId: string,
+      metric: ForecastChartIdentity["metric"],
+    ) => {
+      source.forecastFrom = forecastFrom;
+      const scope = scopes.find(
+        (item) => item.skuId === row.skuId && item.provider === source.provider,
+      );
+      const mapping = scope?.mappings.find(
+        (item) => item.externalId === externalId,
+      );
+      if (scope && mapping)
+        chartIdentities.push({
+          skuId: row.skuId,
+          sourceIndex: row.sources.length,
+          scopeKey: scope.scopeKey,
+          historyKey: forecastChartHistoryKey(
+            scope.scopeKey,
+            externalId,
+            metric,
+          ),
+          provider: scope.provider,
+          storeId: scope.storeId,
+          externalId,
+          metric,
+          unitsPerItem: mapping.unitsPerItem,
+        });
+      row.sources.push(source);
+    };
     const policy = input.policies.find((p) => p.skuId === row.skuId)!;
     const related = input.mappings.filter(
       (m) =>
@@ -495,6 +532,13 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         0,
       );
       if (isLaunchForecastSource(baselineSource)) {
+        const observed = ordered
+          ? netSeries(ordered, cancelled).points.filter(
+              (point) => point.date <= input.asOf,
+            )
+          : [];
+        for (const point of observed)
+          if (point.units !== null) knownDates.add(point.date);
         demand += baseline;
         register(
           mapping.provider,
@@ -506,19 +550,33 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         );
         launches++;
         confidences.push("low");
-        row.sources.push({
-          provider: mapping.provider,
-          metricLabel: "Сценарий запуска — отдельно от наблюдавшихся продаж",
-          modelLabel: baselineSource.methodLabel,
-          predictedUnits: baseline,
-          historyDays: 0,
-          candidates: [],
-          points: baselineSource.dailyForecast.map((point) => ({
-            date: point.date,
-            actual: null,
-            predicted: baselineSource.salesForecastKnown ? point.units : null,
-          })),
-        });
+        addChart(
+          {
+            provider: mapping.provider,
+            metricLabel: "Сценарий запуска — отдельно от наблюдавшихся продаж",
+            modelLabel: baselineSource.methodLabel,
+            predictedUnits: baseline,
+            historyDays: observed.filter((point) => point.units !== null)
+              .length,
+            candidates: [],
+            points: [
+              ...observed.map((point) => ({
+                date: point.date,
+                actual: point.units,
+                predicted: null as number | null,
+              })),
+              ...baselineSource.dailyForecast.map((point) => ({
+                date: point.date,
+                actual: null,
+                predicted: baselineSource.salesForecastKnown
+                  ? point.units
+                  : null,
+              })),
+            ],
+          },
+          mapping.externalId,
+          "net_ordered",
+        );
         continue;
       }
       if (!ordered) {
@@ -810,7 +868,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
           predicted: p.units,
         })),
       ];
-      row.sources.push(source);
+      addChart(source, mapping.externalId, "net_ordered");
     }
     // Never mix financial sales/returns into an operational order forecast.
     for (const history of active.filter(
@@ -840,7 +898,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             point.availability !== "out_of_stock"
           )
             knownDates.add(point.date);
-      row.sources.push(
+      addChart(
         chartSource(
           series,
           result,
@@ -849,6 +907,8 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
             ? "Выкупы — прогноз на 30 дней, отдельно от заказов"
             : "Возвраты — прогноз на 30 дней, отдельно от заказов",
         ),
+        history.externalId,
+        history.metric === "sold" ? "sold" : "returned",
       );
     }
     const sku = input.skus.find((s) => s.id === row.skuId)!;
@@ -910,7 +970,6 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       },
     ]),
   );
-  const scopes = forecastJournalScopes(input);
   const availableFeedback = buildForecastFeedback(
     input.journalRuns ?? [],
     active,
@@ -996,5 +1055,6 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     modelVersion: FORECAST_MODEL_VERSION,
     fingerprints,
     journalFeedback,
+    chartIdentities,
   };
 }

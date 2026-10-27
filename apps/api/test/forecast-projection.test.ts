@@ -14,6 +14,50 @@ import {
   type MarketplaceState,
 } from "../src/marketplaces/storage";
 import type { ForecastHistorySeries } from "../src/forecasting/history-types";
+import { captureForecastJournal } from "../src/forecasting/journal-types";
+
+test("every displayed chart has stable per-card metric identity and archives its own final forward curve", () => {
+  const { input } = fixture();
+  input.series = [
+    history("ordered", () => 10),
+    history("cancelled", () => 1),
+    history("sold", () => 7),
+    history("returned", () => 2),
+  ];
+  input.mappings.push({ ...input.mappings[0], externalId: "two" });
+  input.series.push(
+    ...input.series.map((series) => ({ ...series, externalId: "two" })),
+  );
+  const cache = computeForecast(input);
+  assert.equal(cache.chartIdentities!.length, 6);
+  assert.equal(
+    new Set(cache.chartIdentities!.map((identity) => identity.historyKey)).size,
+    6,
+  );
+  const run = captureForecastJournal(input, cache, input.generatedAt);
+  assert.equal(run.charts!.length, 6);
+  for (const identity of cache.chartIdentities!) {
+    const source = cache.overview.rows[0].sources[identity.sourceIndex];
+    assert.equal(source.forecastFrom, "2025-12-20");
+    const archived = run.charts!.find(
+      (chart) => chart.historyKey === identity.historyKey,
+    )!;
+    assert.equal(archived.metric, identity.metric);
+    assert.deepEqual(
+      archived.points,
+      source.points
+        .filter((point) => point.predicted !== null)
+        .map((point) => ({ date: point.date, units: point.predicted })),
+    );
+    assert.ok(archived.points.every((point) => point.date > input.asOf));
+    assert.equal("sourceIndex" in archived, false);
+  }
+  const archived = run.charts![0].points[0].units;
+  cache.overview.rows[0].sources[0].points.find(
+    (point) => point.predicted !== null,
+  )!.predicted = 999;
+  assert.equal(run.charts![0].points[0].units, archived);
+});
 
 const clock = new Date("2025-12-20T12:00:00Z");
 function fixture() {

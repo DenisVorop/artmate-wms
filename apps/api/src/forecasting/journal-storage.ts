@@ -1,9 +1,11 @@
+import { initializeForecastChartStorage } from "./chart-history-storage";
 import type { Queryable } from "../database";
 import type { ForecastJournalRun } from "./journal-types";
 import type { ForecastJournalListDto } from "./journal-dto";
 import { forecastJournalSummary } from "./journal-comparison";
 
 export async function initializeForecastJournalStorage(tx: Queryable) {
+  await initializeForecastChartStorage(tx);
   await tx.query(
     "CREATE TABLE IF NOT EXISTS forecast_journal (id TEXT PRIMARY KEY, published_at TIMESTAMPTZ NOT NULL, scope_keys TEXT[] NOT NULL, payload JSONB NOT NULL)",
   );
@@ -24,7 +26,12 @@ export async function appendForecastJournal(
     [
       run.id,
       run.publishedAt,
-      run.series.map((s) => s.scopeKey),
+      [
+        ...new Set([
+          ...run.series.map((s) => s.scopeKey),
+          ...(run.charts ?? []).map((chart) => chart.scopeKey),
+        ]),
+      ],
       JSON.stringify(run),
     ],
   );
@@ -38,6 +45,7 @@ function scopedRun(
   return {
     ...run,
     series: run.series.filter((s) => active.has(s.scopeKey)),
+    charts: run.charts?.filter((chart) => active.has(chart.scopeKey)),
     observedActuals: run.observedActuals?.filter((fact) =>
       active.has(fact.scopeKey),
     ),

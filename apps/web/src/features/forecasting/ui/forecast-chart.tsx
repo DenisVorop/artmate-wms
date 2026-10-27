@@ -1,6 +1,7 @@
 "use client";
 import { useId } from "react";
 import type { ForecastSourceDto } from "@/entities/forecast";
+import { chartActualValue } from "../lib/chart-values";
 import { chartTotals, forecastChart, shortDate } from "../lib/chart";
 import { filterChartPoints, type ChartRange } from "../lib/chart-period";
 import { useChartInspection } from "../lib/use-chart-inspection";
@@ -16,14 +17,14 @@ export function ForecastChart({
 }) {
   const id = useId(),
     points = filterChartPoints(source.points, range),
-    chart = forecastChart(points, range),
+    chart = forecastChart(points, range, source.forecastFrom),
     totals = chartTotals(points),
     actualPoints = chart.points.filter((point) => point.actualY !== null),
     predictedPoints = chart.points.filter((point) => point.predictedY !== null),
     inspection = useChartInspection(chart),
     point = inspection.point;
   const pointDescription = point
-    ? `${shortDate(point.date)}. Факт: ${point.actual === null ? "нет данных" : `${quantity(point.actual, 2)} шт.`}. Прогноз: ${point.predicted === null ? "нет данных" : `около ${quantity(point.predicted, 2)} шт.`}.`
+    ? `${shortDate(point.date)}. Факт: ${chartActualValue(point, source.forecastFrom)}. Прогноз: ${point.predicted === null ? "нет данных" : `около ${quantity(point.predicted, 2)} шт.`}.`
     : "";
   return (
     <figure className={styles.chart}>
@@ -68,15 +69,11 @@ export function ForecastChart({
               preserveAspectRatio="none"
               role="group"
               tabIndex={0}
-              aria-labelledby={`${id}-title`}
+              aria-label={`${source.provider === "ozon" ? "Ozon" : "Wildberries"}: ${source.metricLabel}, факт и прогноз по дням`}
               aria-describedby={`${id}-instructions`}
               aria-roledescription="интерактивный график"
               {...inspection.handlers}
             >
-              <title id={`${id}-title`}>
-                {source.provider === "ozon" ? "Ozon" : "Wildberries"}:{" "}
-                {source.metricLabel}, факт и прогноз по дням
-              </title>
               {chart.forecastStartX !== null && (
                 <rect
                   x={chart.forecastStartX}
@@ -175,17 +172,23 @@ export function ForecastChart({
                 <strong>{shortDate(point.date)}</strong>
                 <span>
                   <span>Факт</span>
-                  <b>
-                    {point.actual === null
-                      ? "Нет данных"
-                      : `${quantity(point.actual, 2)} шт.`}
-                  </b>
+                  <b>{chartActualValue(point, source.forecastFrom)}</b>
                 </span>
+                {point.predictedAt && (
+                  <small>
+                    Прогноз от{" "}
+                    {shortDate(
+                      new Date(Date.parse(point.predictedAt) + 10_800_000)
+                        .toISOString()
+                        .slice(0, 10),
+                    )}
+                  </small>
+                )}
                 <span>
                   <span>Прогноз</span>
                   <b className={styles.forecastTotal}>
                     {point.predicted === null
-                      ? "Нет данных"
+                      ? "Не сохранялся"
                       : `≈ ${quantity(point.predicted, 2)} шт.`}
                   </b>
                 </span>

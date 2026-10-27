@@ -1,4 +1,5 @@
 import { initializeForecastJournalStorage } from "./journal-storage";
+import type { ForecastChartIdentity } from "./journal-types";
 import type { ForecastFeedbackReport } from "./journal-feedback";
 import { activeMarketplaceResolutions } from "../marketplaces/planning-resolutions";
 import {
@@ -46,6 +47,8 @@ export interface ForecastPlanContext {
   seasonalityEnabled?: Record<string, boolean>;
 }
 export interface ForecastCache {
+  /** Bound to this exact immutable overview; never match chart series by display labels. */
+  chartIdentities?: ForecastChartIdentity[];
   journalFeedback?: ForecastFeedbackReport[];
   key: string;
   generatedAt: string;
@@ -132,6 +135,7 @@ export async function forecastInputKey(
     ).rows[0]?.value ?? "0";
   const stable = {
     version: FORECAST_MODEL_VERSION,
+    chartProjection: "daily-history-v1",
     planning: {
       version: UNIFIED_PLAN_VERSION,
       preparationDays: PREPARATION_DAYS,

@@ -13,7 +13,6 @@ import { useForecastActions } from "../model/use-forecast-actions";
 import { shortDate } from "../lib/chart";
 import { useChartWindow } from "../lib/use-chart-window";
 import type { ChartPeriod } from "../lib/chart-period";
-import { ForecastJournal } from "./forecast-journal";
 import { ForecastPolicy } from "./forecast-policy";
 import { ForecastChart } from "./forecast-chart";
 import { FinanceConnect } from "./finance-connect";
@@ -118,7 +117,8 @@ function ForecastSources({ row }: { row: ForecastRowDto }) {
         </div>
         <p className={styles.help}>
           Период меняет только графики. «Месяц», «3 месяца» и «Год» включают
-          ближайшие 30 дней прогноза.
+          ближайшие 30 дней прогноза. За прошедшие дни сохранённый прогноз
+          показан рядом с реальными продажами.
         </p>
       </fieldset>
       {!window.valid ? (
@@ -281,7 +281,6 @@ function ForecastContent() {
           )
         )}
       </section>
-      <ForecastJournal preferredSkuId={row?.skuId} />
       <section aria-label="Прогноз по тематике">
         <p className={styles.help}>
           Модели проверяют всю загруженную историю: месяцы, дни недели,

@@ -40,13 +40,16 @@ function chartPoint(v: unknown) {
     record(v) &&
     date(v.date) &&
     nullableQuantity(v.actual) &&
-    nullableQuantity(v.predicted)
+    nullableQuantity(v.predicted) &&
+    (v.predictedAt === undefined ||
+      (text(v.predictedAt) && Number.isFinite(Date.parse(v.predictedAt))))
   );
 }
 function source(v: unknown) {
   return (
     record(v) &&
     provider(v.provider) &&
+    (v.forecastFrom === undefined || date(v.forecastFrom)) &&
     text(v.metricLabel) &&
     text(v.modelLabel) &&
     quantity(v.predictedUnits) &&
