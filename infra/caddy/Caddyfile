@@ -1,0 +1,17 @@
+{$WMS_DOMAIN} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy same-origin
+    Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+    X-Robots-Tag "noindex, nofollow, noarchive"
+    -Server
+  }
+  reverse_proxy web:3080 {
+    transport http {
+      response_header_timeout 300s
+    }
+  }
+}

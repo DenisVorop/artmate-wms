@@ -1,0 +1,12 @@
+# Existing Artmate VPS: route through its Caddy, never publish another 80/443.
+services:
+  web:
+    networks:
+      private: {}
+      artmate_proxy:
+        aliases: [artmate-wms-web]
+
+networks:
+  artmate_proxy:
+    external: true
+    name: ${WMS_PROXY_NETWORK:-artmate_default}

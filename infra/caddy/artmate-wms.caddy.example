@@ -1,0 +1,20 @@
+# Add this block to the EXISTING Artmate Caddyfile only during approved rollout.
+# Caddy must be on WMS_PROXY_NETWORK (normally artmate_default).
+# Do not import the Artmate security_headers snippet: it disables the camera.
+wms.artmate.ru {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy same-origin
+    Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+    X-Robots-Tag "noindex, nofollow, noarchive"
+    -Server
+  }
+  reverse_proxy artmate-wms-web:3080 {
+    transport http {
+      response_header_timeout 300s
+    }
+  }
+}

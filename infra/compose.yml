@@ -1,0 +1,107 @@
+name: artmate-wms
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-api: &api
+  image: ${WMS_API_IMAGE:?Set WMS_API_IMAGE to an immutable release image}
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment:
+    NODE_ENV: production
+    API_HOST: 0.0.0.0
+    API_PORT: "4080"
+    DATABASE_URL: postgresql://${POSTGRES_USER:-wms}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artmate_wms}
+    WEB_ORIGIN: https://${WMS_DOMAIN:?Set WMS_DOMAIN}
+    WMS_AUTH_COOKIE_SECURE: "true"
+    WMS_AUTH_COOKIE_NAME: __Host-wms_session
+    WMS_MARKETPLACE_KEY: ${WMS_MARKETPLACE_KEY:?Supply the original encryption key for an existing database}
+  networks: [private]
+  logging: *logging
+  mem_limit: ${WMS_API_MEMORY:-2g}
+  cpus: ${WMS_API_CPUS:-2.0}
+  pids_limit: 256
+  stop_grace_period: 90s
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-artmate_wms}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [private]
+    healthcheck:
+      test:
+        [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    logging: *logging
+    mem_limit: ${WMS_POSTGRES_MEMORY:-768m}
+    shm_size: 256m
+    stop_grace_period: 60s
+
+  migrate:
+    <<: *api
+    profiles: [tools]
+    restart: "no"
+    command: [node, dist/migrate.js]
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    networks:
+      private:
+        aliases: [artmate-wms-api-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: ${WMS_WEB_IMAGE:?Set WMS_WEB_IMAGE to an immutable release image}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/apps/web/.next/cache:rw,noexec,nosuid,size=128m,uid=1000,gid=1000
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3080"
+      NEXT_TELEMETRY_DISABLED: "1"
+    networks: [private]
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *logging
+    mem_limit: ${WMS_WEB_MEMORY:-768m}
+    pids_limit: 128
+    stop_grace_period: 30s
+
+volumes:
+  postgres:
+
+networks:
+  # Private means no published host ports; outbound marketplace requests remain enabled.
+  private:

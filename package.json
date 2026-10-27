@@ -19,7 +19,9 @@
     "db:status": "node scripts/local-postgres.mjs status",
     "db:docker": "docker compose up -d postgres",
     "phone:setup": "node scripts/phone-access.mjs setup",
-    "test:phone": "node --test scripts/phone-access.test.mjs"
+    "test:phone": "node --test scripts/phone-access.test.mjs",
+    "test:release": "node --test scripts/release/*.test.mjs",
+    "test:containers": "node scripts/container-smoke.mjs"
   },
   "devDependencies": {
     "turbo": "2.9.16",

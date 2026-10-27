@@ -17,3 +17,11 @@ test-results/
 /openapi.json
 /apps/web/src/shared/api/generated/
 /apps/web/next-env.d.ts
+
+# Release secrets and database backups
+/backups/
+*.dump
+*.dump.manifest.json
+*.sql.gz
+*.key
+*.pem
