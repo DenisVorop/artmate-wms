@@ -252,6 +252,37 @@ function planRow(value: unknown) {
     text(value.proposalHash)
   );
 }
+function plan(value: unknown): value is MarketplaceOverviewDto["plan"] {
+  return (
+    record(value) &&
+    integer(value.preparationDays) &&
+    value.preparationDays > 0 &&
+    text(value.preparationThrough) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.preparationThrough) &&
+    timestamp(value.preparationThrough) &&
+    timestamp(value.generatedAt) &&
+    text(value.dispatchDate) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.dispatchDate) &&
+    timestamp(value.dispatchDate) &&
+    [value.leadDays, value.horizonDays, value.safetyDays].every(integer) &&
+    text(value.backlogMessage) &&
+    Array.isArray(value.rows) &&
+    value.rows.every(planRow) &&
+    strings(value.warnings)
+  );
+}
+function planStatus(value: unknown) {
+  return (
+    record(value) &&
+    ["current", "refreshing", "previous", "unavailable"].includes(
+      String(value.state),
+    ) &&
+    nullableTimestamp(value.calculatedAt) &&
+    nullableTimestamp(value.dataUpdatedAt) &&
+    nullableTimestamp(value.salesThrough) &&
+    text(value.message)
+  );
+}
 export function isMarketplaceOverviewResponse(
   value: unknown,
 ): value is MarketplaceOverviewDto {
@@ -266,23 +297,13 @@ export function isMarketplaceOverviewResponse(
     settings(value.settings) &&
     Array.isArray(value.planningStock) &&
     value.planningStock.every(planningStock) &&
-    record(value.plan) &&
-    integer(value.plan.preparationDays) &&
-    value.plan.preparationDays > 0 &&
-    text(value.plan.preparationThrough) &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.plan.preparationThrough) &&
-    timestamp(value.plan.preparationThrough) &&
-    timestamp(value.plan.generatedAt) &&
-    text(value.plan.dispatchDate) &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.plan.dispatchDate) &&
-    timestamp(value.plan.dispatchDate) &&
-    [value.plan.leadDays, value.plan.horizonDays, value.plan.safetyDays].every(
-      integer,
-    ) &&
-    text(value.plan.backlogMessage) &&
-    Array.isArray(value.plan.rows) &&
-    value.plan.rows.every(planRow) &&
-    strings(value.plan.warnings)
+    plan(value.plan) &&
+    (value.previousPlan === null ||
+      (plan(value.previousPlan) &&
+        value.previousPlan.rows.every(
+          (row) => row.canCreate === false && row.backlogCanCreate === false,
+        ))) &&
+    planStatus(value.planStatus)
   );
 }
 export function isMarketplaceTaskResponse(

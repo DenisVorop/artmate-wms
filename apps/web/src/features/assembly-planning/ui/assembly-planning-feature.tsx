@@ -8,6 +8,7 @@ import { usePlanningActions } from "../model/use-planning-actions";
 import {
   boxesLabel,
   dispatchLabel,
+  planningTimestamp,
   planningGroups,
   planningRows,
   type PlanningFilter,
@@ -23,7 +24,10 @@ export function AssemblyPlanningFeature() {
     [filter, setFilter] = useState<PlanningFilter | null>(null);
   if (query.isPending) return <LoadingState label="Готовим план…" />;
   if (!query.data) return <ErrorState onRetry={() => void query.refetch()} />;
-  const { plan, settings, connections, products } = query.data;
+  const { settings, connections, products, planStatus, previousPlan } =
+    query.data;
+  const plan = previousPlan ?? query.data.plan;
+  const isPrevious = previousPlan !== null;
   const connected = connections.some((item) => item.configured && item.enabled);
   const groups = planningGroups(plan.rows);
   const active = filter ?? "all";
@@ -51,6 +55,20 @@ export function AssemblyPlanningFeature() {
           </Link>
         </div>
       </header>
+      <p
+        className={isPrevious ? styles.warning : styles.notice}
+        role="status"
+        aria-live="polite"
+      >
+        {planStatus.message}
+        {planStatus.calculatedAt && (
+          <> · Расчёт от {planningTimestamp(planStatus.calculatedAt)}</>
+        )}
+        {planStatus.salesThrough && (
+          <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
+        )}
+        {isPrevious && " · Количества и даты относятся к сохранённому расчёту."}
+      </p>
       {notice && (
         <p className={styles.notice} role="status">
           {notice} <Link href="/assembly">Открыть задания →</Link>
@@ -274,6 +292,12 @@ export function AssemblyPlanningFeature() {
               <PlanningRow
                 key={row.skuId}
                 row={row}
+                currentRow={
+                  query.data.plan.rows.find(
+                    (item) => item.skuId === row.skuId,
+                  ) ?? row
+                }
+                previous={isPrevious}
                 pending={actions.pending}
                 onTransit={async (units) =>
                   !!(await actions.transit(row.skuId, units))

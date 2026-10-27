@@ -57,6 +57,14 @@ const overview = () => ({
   ],
   settings: { historyDays: 28, horizonDays: 14, safetyDays: 3, leadDays: 7 },
   planningStock: [],
+  previousPlan: null,
+  planStatus: {
+    state: "current",
+    calculatedAt: now,
+    dataUpdatedAt: now,
+    salesThrough: "2026-10-24",
+    message: "",
+  },
   plan: {
     preparationDays: 30,
     preparationThrough: "2026-11-23",
@@ -426,4 +434,48 @@ test("sales forecasts require per-theme quantities and explicit known flags inde
     salesForecastKnown: true,
   });
   assert.equal(isMarketplaceOverviewResponse(x), true);
+});
+
+test("background plan status and previous snapshot are validated, including disabled commands", () => {
+  const current = overview();
+  const previous = structuredClone(current.plan);
+  for (const row of previous.rows)
+    Object.assign(row, { canCreate: false, backlogCanCreate: false });
+  assert.equal(
+    isMarketplaceOverviewResponse({
+      ...current,
+      previousPlan: previous,
+      planStatus: { ...current.planStatus, state: "previous" },
+    }),
+    true,
+  );
+  assert.equal(
+    isMarketplaceOverviewResponse({
+      ...current,
+      previousPlan: {
+        ...previous,
+        rows: [{ ...previous.rows[0], canCreate: true }],
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    isMarketplaceOverviewResponse({
+      ...current,
+      previousPlan: {
+        ...previous,
+        rows: [{ ...previous.rows[0], backlogCanCreate: true }],
+      },
+    }),
+    false,
+  );
+  for (const planStatus of [
+    undefined,
+    { ...current.planStatus, state: "ready" },
+    { ...current.planStatus, calculatedAt: "oops" },
+  ])
+    assert.equal(
+      isMarketplaceOverviewResponse({ ...current, planStatus }),
+      false,
+    );
 });

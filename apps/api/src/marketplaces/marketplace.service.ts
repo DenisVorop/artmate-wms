@@ -23,6 +23,7 @@ import * as D from "./dto";
 import { Connection, loadMarketplaces, put, MarketplaceState } from "./storage";
 import { MarketplaceSecrets } from "./secrets";
 import { marketplacePlan } from "./planning";
+import { readPlanningPresentation } from "./planning-presentation";
 import {
   fetchMarketplaceSnapshot,
   MarketplaceProviderError,
@@ -131,6 +132,17 @@ export class MarketplaceService {
   private async _overview(tx: Queryable): Promise<D.MarketplaceOverviewDto> {
     const m = await loadMarketplaces(tx),
       w = await this.warehouse.stocktakeState(tx);
+    const clock = new Date(),
+      forecast = await readForecastPlanContext(tx, m, clock),
+      plan = marketplacePlan(w, m, clock, forecast),
+      presentation = await readPlanningPresentation(
+        tx,
+        w,
+        m,
+        clock,
+        forecast,
+        plan,
+      );
     return {
       planningStock: (m.planningStock ?? []).map(
         ({ actorAccountId: _actor, outboundSupplyKeys: _keys, ...entry }) =>
@@ -183,12 +195,8 @@ export class MarketplaceService {
         }),
       ),
       settings: m.settings,
-      plan: marketplacePlan(
-        w,
-        m,
-        new Date(),
-        await readForecastPlanContext(tx, m),
-      ),
+      plan,
+      ...presentation,
     };
   }
   async getMarketplaces() {

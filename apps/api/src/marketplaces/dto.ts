@@ -382,6 +382,17 @@ export class MarketplacePlanDto {
   rows!: MarketplacePlanRowDto[];
   @ApiProperty({ type: [String] }) warnings!: string[];
 }
+export class MarketplacePlanStatusDto {
+  @ApiProperty({
+    type: String,
+    enum: ["current", "refreshing", "previous", "unavailable"],
+  })
+  state!: "current" | "refreshing" | "previous" | "unavailable";
+  @ApiProperty({ type: String, nullable: true }) calculatedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) dataUpdatedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) salesThrough!: string | null;
+  @ApiProperty({ type: String }) message!: string;
+}
 export class MarketplaceOverviewDto {
   @ApiProperty({ type: [PlanningStockConfirmationDto] })
   planningStock!: PlanningStockConfirmationDto[];
@@ -394,6 +405,10 @@ export class MarketplaceOverviewDto {
   @ApiProperty({ type: MarketplaceSettingsDto })
   settings!: MarketplaceSettingsDto;
   @ApiProperty({ type: MarketplacePlanDto }) plan!: MarketplacePlanDto;
+  @ApiProperty({ type: MarketplacePlanDto, nullable: true })
+  previousPlan!: MarketplacePlanDto | null;
+  @ApiProperty({ type: MarketplacePlanStatusDto })
+  planStatus!: MarketplacePlanStatusDto;
 }
 export class MarketplaceTaskResultDto {
   @ApiProperty({ type: String }) taskId!: string;

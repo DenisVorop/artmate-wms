@@ -5,6 +5,7 @@ import {
   boxesLabel,
   packagedLabel,
   dispatchLabel,
+  planningTimestamp,
   planningGroups,
   planningRows,
 } from "./planning-view";
@@ -105,4 +106,11 @@ test("weekly totals use server projections once and exclude incomplete themes", 
     { date: "2026-11-07", boxes: 2 },
     { date: "2026-11-14", boxes: 2 },
   ]);
+});
+
+test("saved calculation timestamps use Moscow time across the date boundary", () => {
+  assert.match(
+    planningTimestamp("2026-10-26T22:30:00.000Z"),
+    /27 октября.*01:30/,
+  );
 });

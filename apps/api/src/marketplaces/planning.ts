@@ -27,6 +27,7 @@ export function marketplacePlan(
   m: MarketplaceState,
   clock = new Date(),
   forecast?: ForecastPlanContext,
+  presentation?: { savedSnapshots: true },
 ): MarketplacePlanDto {
   const generatedAt = clock.toISOString(),
     global: string[] = [];
@@ -43,17 +44,25 @@ export function marketplacePlan(
       globalAdviceMessage ??= "Загрузите данные маркетплейсов.";
       return [];
     }
+    const savedSnapshot =
+      presentation?.savedSnapshots === true &&
+      c.lastSuccessVersion === c.version;
+    if (presentation?.savedSnapshots && !savedSnapshot) {
+      global.push(`${c.provider}: нет подтверждённых данных этого подключения`);
+      globalAdviceMessage ??= "Дождитесь загрузки данных магазина.";
+      return [];
+    }
     const refreshingPrevious =
       c.syncStatus === "running" &&
       c.syncMode === "automatic" &&
       c.lastSuccessVersion === c.version;
-    if (c.syncStatus !== "success" && !refreshingPrevious) {
+    if (c.syncStatus !== "success" && !refreshingPrevious && !savedSnapshot) {
       global.push(`${c.provider}: последняя загрузка не завершена успешно`);
       globalAdviceMessage ??= "Обновите данные маркетплейсов.";
     }
     if (
       !Number.isFinite(Date.parse(snapshot.asOf)) ||
-      clock.getTime() - Date.parse(snapshot.asOf) > day
+      (!savedSnapshot && clock.getTime() - Date.parse(snapshot.asOf) > day)
     ) {
       global.push(`${c.provider}: данные старше 24 часов`);
       globalAdviceMessage ??= "Обновите данные маркетплейсов.";
@@ -123,7 +132,10 @@ export function marketplacePlan(
           (x) => x.provider === snapshot.provider,
         );
         if (!related.length) continue;
-        if (snapshot.from > from || snapshot.to < to) {
+        if (
+          snapshot.from > from ||
+          (!presentation?.savedSnapshots && snapshot.to < to)
+        ) {
           blockers.push(`${snapshot.provider}: недостаточно дней истории`);
           reviewMessage ??= "Загрузите продажи за весь расчётный период.";
         }
@@ -381,9 +393,10 @@ export function marketplacePlan(
           );
           const salesForecastKnown =
             !!snapshot?.coverage.demand &&
-            snapshot.to >= to &&
+            (presentation?.savedSnapshots === true || snapshot.to >= to) &&
             Number.isFinite(Date.parse(snapshot.asOf)) &&
-            clock.getTime() - Date.parse(snapshot.asOf) <= day &&
+            (presentation?.savedSnapshots === true ||
+              clock.getTime() - Date.parse(snapshot.asOf) <= day) &&
             (source.salesForecastKnown ?? observedDemand);
           const expectedSalesUnits30 = forecastQuantity(
             source,
@@ -444,7 +457,9 @@ export function marketplacePlan(
           const providerBlock =
             global.some((reason) => reason.startsWith(`${provider}:`)) ||
             !snapshot ||
-            (!!snapshot && (snapshot.from > from || snapshot.to < to));
+            (!!snapshot &&
+              (snapshot.from > from ||
+                (!presentation?.savedSnapshots && snapshot.to < to)));
           const complete =
             !providerBlock &&
             stockKnown &&

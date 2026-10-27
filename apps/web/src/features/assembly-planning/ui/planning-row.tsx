@@ -25,12 +25,16 @@ const status = {
 };
 export function PlanningRow({
   row,
+  currentRow = row,
+  previous = false,
   pending,
   onCreate,
   onTransit,
   onStock,
 }: {
   row: MarketplacePlanRowDto;
+  currentRow?: MarketplacePlanRowDto;
+  previous?: boolean;
   pending: boolean;
   onCreate: () => Promise<void>;
   onTransit: (units: number) => Promise<boolean>;
@@ -42,18 +46,20 @@ export function PlanningRow({
   const form = useForm<TransitValues>({
     resolver: zodResolver(transitSchema),
     defaultValues:
-      row.inTransitUnits == null ? {} : { inTransitUnits: row.inTransitUnits },
+      currentRow.inTransitUnits == null
+        ? {}
+        : { inTransitUnits: currentRow.inTransitUnits },
   });
   const transitDirty = form.formState.isDirty;
   const resetTransit = form.reset;
   useEffect(() => {
     if (!transitDirty)
       resetTransit(
-        row.inTransitUnits == null
+        currentRow.inTransitUnits == null
           ? {}
-          : { inTransitUnits: row.inTransitUnits },
+          : { inTransitUnits: currentRow.inTransitUnits },
       );
-  }, [row.inTransitUnits, transitDirty, resetTransit]);
+  }, [currentRow.inTransitUnits, transitDirty, resetTransit]);
   const { state, action, message } = row.advice;
   const needsAssembly =
     row.dataComplete && (state === "ready" || state === "raw_shortage");
@@ -64,14 +70,18 @@ export function PlanningRow({
           <h2>{row.skuName}</h2>
           <Badge
             tone={
-              state === "ready"
-                ? "success"
-                : state === "covered"
-                  ? "neutral"
-                  : "warning"
+              previous
+                ? "neutral"
+                : state === "ready"
+                  ? "success"
+                  : state === "covered"
+                    ? "neutral"
+                    : "warning"
             }
           >
-            {status[state]}
+            {previous && row.dataComplete
+              ? "Сохранённый расчёт"
+              : status[state]}
           </Badge>
         </div>
         <div className={styles.quantities}>
@@ -124,7 +134,7 @@ export function PlanningRow({
           </div>
         </div>
         <div className={styles.rowAction}>
-          {action === "create" && (
+          {!previous && action === "create" && (
             <Button
               disabled={pending || !row.canCreate}
               onClick={() => void onCreate()}
@@ -133,7 +143,7 @@ export function PlanningRow({
               Создать задание
             </Button>
           )}
-          {action === "receiving" && (
+          {!previous && action === "receiving" && (
             <Link className="button button--secondary" href="/receiving">
               Открыть приёмку
             </Link>
@@ -320,7 +330,7 @@ export function PlanningRow({
           товар и текущие задания уже учтены. Неразмеченные короба нужно
           привязать к адресам перед отгрузкой через WMS.
         </p>
-        <PlanningStock row={row} pending={pending} onSave={onStock} />
+        <PlanningStock row={currentRow} pending={pending} onSave={onStock} />
         <Link
           className={styles.textLink}
           href="/integrations#marketplace-supplies-title"

@@ -31,6 +31,8 @@ export interface ForecastPlanGoal {
   seasonalityApplied: boolean;
 }
 export interface ForecastPlanContext {
+  /** Presentation may retain a prior calculation while its replacement is fitted. */
+  cacheCurrent?: boolean;
   key: string;
   goals: Record<string, ForecastPlanGoal>;
   minimumBoxes: Record<string, number>;
@@ -198,6 +200,7 @@ export async function readForecastPlanContext(
     cache = await forecastCache(tx);
   return {
     key,
+    cacheCurrent: cache?.key === key,
     goals: cache?.key === key ? cache.goals : {},
     seasonalityEnabled: Object.fromEntries(
       policies.map((p) => [p.skuId, p.seasonalityEnabled]),

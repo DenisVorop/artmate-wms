@@ -167,3 +167,7 @@ ForecastScheduler инертен до main.start, CPU в worker вне SQL/event
 ## История обучения
 
 Обучаемые autoregressive и calendarRidge используют все известные допустимые наблюдения активного магазина/карточки с начала сохранённой истории до точки обучения. Не вводить скрытые отсечения365/730дней. Future,unknown и stockout не превращаются в обучение; rollingholdouts видят только свой префикс. Недавние окна baseline,matchedgrowth и annualcoverage сохраняют отдельное назначение. Получасовой импорт rollinghistoryDays — для актуальных данных/коррекций; полный архив догружается отдельно, не перечитывается с начала каждые30минут.
+
+## Фоновое отображение плана
+
+Overview отдельно возвращает строгий plan и previousPlan с planStatus. Сохранённая sanitized проекция в forecast_results переживает импорт/ошибку/смену дня и worker input-key gap, но привязана к аккаунтам/версиям, mapping, SKU/pack, настройкам/политикам/model/planning version. PreviousPlan сохраняет исходные даты и количества, всегда canCreate/backlogCanCreate=false; команды пересчитывают обычный строгий план. Начальный bootstrap только из полных last-success snapshots той же версии, без подмены отсутствующих дней нулём. Формы остатков используют живую строгую строку. См. ADR072.

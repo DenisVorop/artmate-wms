@@ -194,7 +194,7 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     const reloaded = await as("manager", () => service.getMarketplaces());
     assert.equal(reloaded.supplies[0].items[0].skuId, "sku-cats");
-    await as("manager", () =>
+    const beforeRefresh = await as("manager", () =>
       service.setMarketplaceTransit({
         ...req(),
         skuId: "sku-cats",
@@ -214,6 +214,36 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     assert.equal(failed.connections[0].syncStatus, "failed");
     assert.equal(failed.products.length, 1);
+    const savedRow = beforeRefresh.previousPlan!.rows.find(
+      (r) => r.skuId === "sku-cats",
+    )!;
+    for (const result of [partial, failed]) {
+      assert.ok(
+        result.previousPlan,
+        "a failed refresh keeps the persisted display projection",
+      );
+      assert.equal(
+        result.previousPlan.generatedAt,
+        beforeRefresh.previousPlan!.generatedAt,
+      );
+      const previous = result.previousPlan.rows.find(
+        (r) => r.skuId === "sku-cats",
+      )!;
+      assert.equal(previous.recommendedBoxes, savedRow.recommendedBoxes);
+      assert.equal(previous.canCreate, false);
+      assert.equal(previous.backlogCanCreate, false);
+    }
+    await assert.rejects(
+      as("manager", () =>
+        service.createMarketplaceTask({
+          ...req(),
+          skuId: "sku-cats",
+          proposalHash: savedRow.proposalHash,
+        }),
+      ),
+      /устарел|создать|провер/i,
+    );
+
     assert.ok(!JSON.stringify(failed).includes(connect.apiKey));
     assert.deepEqual(await w.snapshot(), baseline);
     mode = "complete";

@@ -167,6 +167,14 @@ test("Marketplace credentials and commands bypass all browser replay storage whi
         products: [],
         supplies: [],
         planningStock: [],
+        previousPlan: null,
+        planStatus: {
+          state: "unavailable",
+          calculatedAt: null,
+          dataUpdatedAt: null,
+          salesThrough: null,
+          message: "",
+        },
         settings: {
           historyDays: 28,
           horizonDays: 14,
