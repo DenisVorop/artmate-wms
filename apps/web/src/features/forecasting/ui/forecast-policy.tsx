@@ -63,7 +63,7 @@ export function ForecastPolicy({
         />
         <span>
           Учитывать сезонность
-          <small>Когда история подтверждает точность прогноза</small>
+          <small>По истории товара или похожих тематик</small>
         </span>
       </label>
       <Button

@@ -283,9 +283,9 @@ function ForecastContent() {
       </section>
       <section aria-label="Прогноз по тематике">
         <p className={styles.help}>
-          Модели проверяют всю загруженную историю: месяцы, дни недели,
-          праздники и предновогодний спрос. Для каждой тематики применяется
-          метод, подтвердивший точность на прошлых продажах.
+          Прогноз использует всю загруженную историю и текущие продажи. Сезонные
+          оценки, точность которых ещё не подтверждена, отмечены как
+          предварительные.
         </p>
         <div className={styles.sectionHeading}>
           <h2>Прогноз по тематике</h2>
@@ -331,7 +331,12 @@ function ForecastContent() {
                       <p>{row.message}</p>
                     </div>
                     <Badge
-                      tone={row.seasonalityApplied ? "success" : "neutral"}
+                      tone={
+                        row.seasonalityApplied &&
+                        row.confidenceLabel !== "Предварительная оценка"
+                          ? "success"
+                          : "neutral"
+                      }
                     >
                       {row.confidenceLabel}
                     </Badge>

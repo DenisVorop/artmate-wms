@@ -18,7 +18,7 @@ import type {
 
 export type * from "./engine-types";
 
-export const FORECAST_MODEL_VERSION = "seasonal-v3.1.0";
+export const FORECAST_MODEL_VERSION = "seasonal-v3.2.1";
 const DAY = 86_400_000;
 const MODELS: ForecastModel[] = [
   "mean",
@@ -27,7 +27,7 @@ const MODELS: ForecastModel[] = [
   "ridge",
   "autoregressive",
 ];
-const MIN_ANNUAL_OBSERVATIONS = 400;
+const MIN_ANNUAL_CALENDAR_DAYS = 365;
 const MIN_COVERAGE = 0.8;
 const MIN_IMPROVEMENT = 0.05;
 const MAX_FOLDS_PER_HORIZON = 3;
@@ -188,12 +188,14 @@ function nearbyMean(
     const value = byDay.get(day + offset);
     if (value !== undefined) window.push(value);
   }
-  return window.length >= 4 ? trimmedMean(window) : null;
+  return window.length / (radius * 2 + 1) >= MIN_COVERAGE
+    ? trimmedMean(window)
+    : null;
 }
 
 function annualReason(values: Observation[], asOf: number): string | null {
-  if (values.length < MIN_ANNUAL_OBSERVATIONS || asOf - values[0].day + 1 < 400)
-    return "Для годовой сезонности нужно не менее 400 известных дней истории.";
+  if (!values.length || asOf - values[0].day + 1 < MIN_ANNUAL_CALENDAR_DAYS)
+    return "Для годовой сезонности нужен полный календарный год истории (365 дней).";
   const recent = values.filter((p) => p.day > asOf - 365);
   if (recent.length / 365 < MIN_COVERAGE)
     return "В последнем годе слишком много пропусков или дней без товара.";
@@ -306,7 +308,7 @@ function fit(
           before.push(historic);
         }
       }
-      if (now.length < 35 || trimmedMean(before) <= 0)
+      if (now.length / 56 < MIN_COVERAGE || trimmedMean(before) <= 0)
         return {
           values: null,
           reason: "Не хватает сопоставимых дней для поправки на текущий год.",
@@ -408,9 +410,13 @@ function backtest(
   );
   const horizons = [...new Set([7, 28, horizon])].sort((a, b) => a - b);
   for (const validationDays of horizons) {
-    // Three nonoverlapping validation windows at each horizon, no random shuffle.
+    // Rolling historical origins. Long horizons overlap: these are three dated
+    // checks, not three independent samples. Each fit only sees its own prefix;
+    // the baseline and candidate share exactly the same target dates. Requiring
+    // three disjoint 106-day windows needlessly excludes a 600-day archive.
+    const originStride = Math.min(validationDays, 28);
     for (let fold = 0; fold < MAX_FOLDS_PER_HORIZON; fold++) {
-      const cutoff = prepared.asOf - validationDays * (fold + 1);
+      const cutoff = prepared.asOf - validationDays - originStride * fold;
       const prefix = prepared.values.filter((p) => p.day <= cutoff);
       if (
         prefix.filter((p) => p.day > cutoff - baselineHistoryDays).length <
@@ -546,6 +552,41 @@ export function fitUnvalidatedCalendarForecast(
   const prepared = prepare(series, asOf);
   const fitted = fit(
     "ridge",
+    prepared.values,
+    asOf,
+    horizonDays,
+    baselineHistoryDays,
+  );
+  return {
+    reason: fitted.reason,
+    dailyForecast: (fitted.values ?? []).map((units, i) => ({
+      date: dateString(asOf + i + 1),
+      units: rounded(units),
+    })),
+  };
+}
+
+/** Internal annual-shape primitive. The current level is estimated only from
+ * matched recent calendar dates. This is not eligible for deployment by itself;
+ * a cross-metric bridge or composition must validate its entire output. */
+export function fitUnvalidatedAnnualForecast(
+  series: ForecastSeries,
+  asOfDate: string,
+  horizonDays: number,
+  baselineHistoryDays = 56,
+): { dailyForecast: ForecastDailyValue[]; reason: string | null } {
+  const asOf = parseDay(asOfDate);
+  if (!Number.isInteger(horizonDays) || horizonDays < 1 || horizonDays > 366)
+    throw new Error("Forecast horizon must be between 1 and 366 days");
+  if (
+    !Number.isInteger(baselineHistoryDays) ||
+    baselineHistoryDays < 1 ||
+    baselineHistoryDays > 89
+  )
+    throw new Error("Forecast baseline window must be between 1 and 89 days");
+  const prepared = prepare(series, asOf);
+  const fitted = fit(
+    "annual_growth",
     prepared.values,
     asOf,
     horizonDays,

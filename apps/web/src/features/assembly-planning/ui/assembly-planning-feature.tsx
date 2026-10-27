@@ -129,6 +129,16 @@ export function AssemblyPlanningFeature() {
         </section>
       ) : (
         <>
+          {plan.rows.some(
+            (row) =>
+              row.dataComplete &&
+              row.providers.some((source) => source.scenario),
+          ) && (
+            <p className={styles.warning} role="status">
+              Предварительный сезонный план. Потребность включает пополнение
+              запаса на маркетплейсах; сезонные объёмы пока оценочные.
+            </p>
+          )}
           <section
             className={`glass-panel ${styles.overview}`}
             aria-label="Итог плана"

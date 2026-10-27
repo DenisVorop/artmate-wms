@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runForecast, FORECAST_MODEL_VERSION } from "../src/forecasting/engine";
+import {
+  runForecast,
+  fitUnvalidatedAnnualForecast,
+  FORECAST_MODEL_VERSION,
+} from "../src/forecasting/engine";
 import type {
   ForecastPoint,
   ForecastSeries,
@@ -41,7 +45,7 @@ test("short history uses the current mean and cannot claim learned annual season
   assert.equal(result.selectedModel, "mean");
   assert.equal(result.totalUnits, 280);
   assert.equal(result.confidence, "low");
-  assert.match(result.fallbackReason!, /400/);
+  assert.match(result.fallbackReason!, /365/);
   assert.equal(result.dailyForecast[0].date, "2024-02-26");
   assert.equal(result.dailyForecast.at(-1)!.date, "2024-03-24");
   assert.equal(result.historyCoverage.knownDays, 56);
@@ -49,7 +53,7 @@ test("short history uses the current mean and cannot claim learned annual season
     assert.equal(candidate.eligible, false);
     assert.match(
       candidate.reason!,
-      candidate.model === "autoregressive" ? /70/ : /400/,
+      candidate.model === "autoregressive" ? /70/ : /365/,
     );
   }
 });
@@ -207,14 +211,20 @@ test("validation errors are prefix-only: late changes do not alter earlier held-
 });
 
 test("a long horizon cannot borrow short-horizon validation to pretend it is proven", () => {
-  const result = forecast(
-    points(720, (i) => 20 + 15 * Math.sin((2 * Math.PI * i) / 365)),
-    330,
-  );
+  const data = points(720, (i) => 20 + 15 * Math.sin((2 * Math.PI * i) / 365));
+  const result = runForecast(series(data), {
+    asOf: data.at(-1)!.date,
+    horizonDays: 330,
+    allowAutoregressive: false,
+  });
   assert.equal(result.selectedModel, "mean");
   for (const candidate of result.candidates.filter((c) => c.model !== "mean")) {
     assert.equal(candidate.eligible, false);
-    assert.match(candidate.reason!, /трёх полных проверок/);
+    assert.match(
+      candidate.reason!,
+      candidate.model === "autoregressive" ? /30 дней/ : /трёх полных проверок/,
+    );
+    if (candidate.model === "autoregressive") continue;
     assert.ok(
       candidate.metrics!.folds >= 3,
       "short-horizon folds alone are insufficient",
@@ -396,4 +406,118 @@ test("configured baseline window is used in forecasts, comparison folds and iden
     run(56).candidates[1].metrics!.baselineImprovement,
   );
   assert.throws(() => run(0), /baseline window/);
+});
+
+test("annual fitting needs a complete calendar cycle rather than an arbitrary 400 known days", () => {
+  const data = points(
+    395,
+    (_, date) => (date.getUTCMonth() >= 10 ? 30 : 5),
+    "2025-01-01",
+  );
+  const result = forecast(data, 28);
+  const annual = result.candidates.find(
+    (candidate) => candidate.model === "annual_seasonal",
+  )!;
+  assert.ok(
+    !annual.reason?.includes("365"),
+    "one full year is enough to fit, even when history is shorter than 400 days",
+  );
+  assert.equal(
+    annual.eligible,
+    false,
+    "fittability does not bypass held-out validation",
+  );
+  assert.match(annual.reason!, /трёх полных проверок/);
+});
+
+test("rolling origins validate 106-day seasonality on a 600-day archive without borrowing future data", () => {
+  const data = points(600, (i) => 30 + 25 * Math.sin((2 * Math.PI * i) / 365));
+  const result = runForecast(series(data), {
+    asOf: data.at(-1)!.date,
+    horizonDays: 106,
+    allowAutoregressive: false,
+  });
+  const annual = result.candidates.find(
+    (candidate) => candidate.model === "annual_growth",
+  )!;
+  assert.equal(
+    annual.metrics?.byHorizon.find((fold) => fold.horizonDays === 106)?.folds,
+    3,
+  );
+  assert.equal(annual.eligible, true);
+  assert.notEqual(result.selectedModel, "mean");
+  const prefixAsOf = data[550].date;
+  const before = runForecast(series(data), {
+    asOf: prefixAsOf,
+    horizonDays: 106,
+    allowAutoregressive: false,
+  });
+  for (let index = 551; index < data.length; index++)
+    data[index].units = 100000;
+  assert.deepEqual(
+    runForecast(series(data), {
+      asOf: prefixAsOf,
+      horizonDays: 106,
+      allowAutoregressive: false,
+    }),
+    before,
+  );
+});
+
+test("annual current-level fit preserves winter shape across day 30 and permits true post-season decline", () => {
+  const data = points(
+    665,
+    (index, date) => (date.getUTCMonth() >= 10 ? 50 : 10) * (1 + index / 730),
+  );
+  const result = fitUnvalidatedAnnualForecast(
+    series(data),
+    data.at(-1)!.date,
+    106,
+  );
+  assert.equal(result.reason, null);
+  const november = result.dailyForecast.filter(
+    (point) =>
+      point.date.slice(5, 7) === "11" && Number(point.date.slice(8)) > 5,
+  );
+  const january = result.dailyForecast.filter(
+    (point) =>
+      point.date.slice(5, 7) === "01" && Number(point.date.slice(8)) > 5,
+  );
+  assert.ok(november.length > 0 && january.length > 0);
+  assert.ok(
+    november.every((point) => point.units > 75),
+    "last year's seasonal shape scales to this year's observed level",
+  );
+  assert.ok(
+    january.every((point) => point.units < 25),
+    "growth is not imposed once the observed season ends",
+  );
+  assert.ok(
+    Math.abs(
+      result.dailyForecast[30].units / result.dailyForecast[29].units - 1,
+    ) < 0.02,
+  );
+});
+
+test("annual current-level fitting rejects insufficient matched days and censored prior-year windows", () => {
+  const data = points(600, () => 10);
+  for (let index = 545; index < 565; index++)
+    data[index].availability = "out_of_stock";
+  const result = fitUnvalidatedAnnualForecast(
+    series(data),
+    data.at(-1)!.date,
+    106,
+  );
+  assert.equal(result.dailyForecast.length, 0);
+  assert.match(result.reason!, /сопоставимых дней/);
+  const missingFutureShape = points(600, () => 10);
+  for (let index = 250; index < 340; index++)
+    missingFutureShape[index].units = null;
+  const unavailable = fitUnvalidatedAnnualForecast(
+    series(missingFutureShape),
+    missingFutureShape.at(-1)!.date,
+    106,
+  );
+  assert.equal(unavailable.dailyForecast.length, 0);
+  assert.match(unavailable.reason!, /пропусков|прошлогодних наблюдений/);
 });

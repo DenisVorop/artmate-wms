@@ -92,7 +92,11 @@ export function PlanningRow({
                 ? `≈ ${number(row.expectedSalesUnits30)} шт.`
                 : "Нужны данные"}
             </strong>
-            <span>Прогноз по этой тематике</span>
+            <span>
+              {row.providers.some((source) => source.scenario)
+                ? "Предварительная оценка"
+                : "Прогноз по этой тематике"}
+            </span>
           </div>
           <div className={styles.quantity}>
             <span>Ближайшая отправка</span>

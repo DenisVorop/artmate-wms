@@ -338,7 +338,7 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
       (s) => s.metricLabel === "Заказы за вычетом отмен",
     )!;
   assert.equal(row.seasonalityApplied, true);
-  assert.match(source.modelLabel, /ML: ближайшие 30 дней/);
+  assert.match(source.modelLabel, /календарь выкупов с проверкой по заказам/);
   assert.equal(
     source.candidates.find((c) => c.model === "financial_calendar_ml_monthly")!
       .eligible,
@@ -358,7 +358,15 @@ test("gross financial sales with no returns are a separate calibrated seasonal f
     { ...cancelled, points: cancelled.points.slice(-89) },
   ];
   const early = computeForecast(input).overview.rows[0];
-  assert.equal(early.seasonalityApplied, false);
+  assert.equal(early.seasonalityApplied, true);
+  assert.equal(early.confidenceLabel, "Предварительная оценка");
+  assert.match(early.message, /предварительный сезонный сценарий/);
+  assert.equal(
+    early.sources[0].candidates.find(
+      (c) => c.model === "seasonal_scenario_financial_own",
+    )!.eligible,
+    false,
+  );
   assert.match(
     early.sources[0].candidates.find((c) => c.model === "financial_calibrated")!
       .reason!,
@@ -448,8 +456,8 @@ test("30-day learned segment reaches a 106-day planning curve while its tail rem
   );
   const baseline = baselineForecastSource(input, "ozon", "one", 106);
   assert.deepEqual(
-    source.dailyForecast.slice(30),
-    baseline.dailyForecast.slice(30),
+    source.dailyForecast.slice(59),
+    baseline.dailyForecast.slice(59),
   );
   const candidate = result.overview.rows[0].sources[0].candidates.find(
     (c) => c.model === "autoregressive",
@@ -489,7 +497,7 @@ test("unknown demand is distinct from an explicitly observed zero and never beco
   );
 });
 
-test("monthly annual winner reaches provider plan and seasonal labels while distant tail remains unvalidated fallback", () => {
+test("validated full-horizon annual curve has priority over a monthly segment", () => {
   const { input } = fixture();
   const ordered = history(
     "ordered",
@@ -515,13 +523,17 @@ test("monthly annual winner reaches provider plan and seasonal labels while dist
   assert.equal(row.seasonalityApplied, true);
   assert.equal(row.methodLabel, "Прогноз с сезонностью");
   assert.doesNotMatch(source.methodLabel, /ML/);
-  assert.match(source.methodLabel, /ближайшие 30 дней/);
+  assert.match(
+    source.methodLabel,
+    /Прошлогодний сезон|Сезон с поправкой на рост/,
+  );
   assert.equal(source.salesForecastKnown, true);
   assert.equal(source.scenario, false);
-  assert.deepEqual(
+  assert.notDeepEqual(
     source.dailyForecast.slice(30),
     baseline.dailyForecast.slice(30),
   );
+  assert.doesNotMatch(row.message, /ближайшие 30 дней/);
   assert.notDeepEqual(
     source.dailyForecast.slice(0, 30),
     baseline.dailyForecast.slice(0, 30),

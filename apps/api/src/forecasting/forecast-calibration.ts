@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { fitUnvalidatedCalendarForecast } from "./engine";
+import {
+  fitUnvalidatedAnnualForecast,
+  fitUnvalidatedCalendarForecast,
+  runForecast,
+} from "./engine";
 import type { ForecastSeries, ForecastDailyValue } from "./engine-types";
 import type { ForecastCandidateDto } from "./forecast-dto";
 import { baselineFromObservations } from "./demand-baseline";
@@ -20,6 +24,22 @@ export interface FinancialCalibration {
   dailyForecast: ForecastDailyValue[];
   totalUnits: number;
   fingerprint: string;
+  message?: string;
+  /** A financial seasonal test is not a long-horizon order backtest. */
+  seasonalityKnown?: boolean;
+  scenario?: boolean;
+  financialValidation?: {
+    model: string;
+    horizonDays: number;
+    folds: number;
+    wape: number | null;
+  };
+  bridgeValidation?: {
+    horizonDays: number[];
+    folds: number;
+    observedDays: number;
+    wape: number | null;
+  };
 }
 const mean = (values: number[]) =>
   values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
@@ -361,4 +381,395 @@ export function calibrateFinancialCalendarMl(
     useNewYearScenario,
     "calendar_ml",
   );
+}
+
+/** Learned cross-metric relationship. Ratios use only contemporaneous known
+ * days, with recent demand receiving more weight. Financial units never enter
+ * the operational series as observations. */
+function conversion(
+  op: Observation[],
+  financial: Observation[],
+  cutoff: number,
+): { ratio: number | null; reason: string | null } {
+  const sold = new Map(financial.map((p) => [p.day, p.units]));
+  const paired = op.flatMap((p) => {
+    const value = sold.get(p.day);
+    return p.day > cutoff - 56 && value !== undefined
+      ? [{ day: p.day, ordered: p.units, sold: value }]
+      : [];
+  });
+  if (paired.length < 28)
+    return {
+      ratio: null,
+      reason: "Для связи выкупов и заказов нужны 28 совместных известных дней.",
+    };
+  let soldTotal = 0,
+    orderedTotal = 0;
+  for (const p of paired) {
+    const weight = Math.exp((-Math.LN2 * (cutoff - p.day)) / 28);
+    soldTotal += p.sold * weight;
+    orderedTotal += p.ordered * weight;
+  }
+  if (soldTotal <= 0 || orderedTotal <= 0)
+    return {
+      ratio: null,
+      reason: "Недостаточно ненулевых выкупов и заказов для связи показателей.",
+    };
+  const ratio = orderedTotal / soldTotal;
+  if (!Number.isFinite(ratio) || ratio < 0.25 || ratio > 4)
+    return {
+      ratio: null,
+      reason: "Соотношение заказов и выкупов требует проверки единиц учёта.",
+    };
+  return { ratio, reason: null };
+}
+
+function assertFinancialBridgeIdentity(
+  operational: ForecastSeries,
+  financial: ForecastSeries,
+) {
+  for (const key of ["provider", "storeId", "externalId"] as const)
+    if (
+      typeof operational[key] !== "string" ||
+      !operational[key].trim() ||
+      typeof financial[key] !== "string" ||
+      !financial[key].trim()
+    )
+      throw new Error(
+        "Financial bridge requires a nonempty store and product identity",
+      );
+  if (
+    operational.provider !== financial.provider ||
+    operational.storeId !== financial.storeId ||
+    operational.externalId !== financial.externalId
+  )
+    throw new Error(
+      "Financial calibration requires the same store and product",
+    );
+  if (
+    operational.metric !== "net_ordered" ||
+    !["financial_gross_sold", "net_financial_sold"].includes(financial.metric)
+  )
+    throw new Error(
+      "Financial seasonal bridge requires order and financial sold metrics",
+    );
+}
+
+function conversionDiagnostics(
+  op: Observation[],
+  fin: Observation[],
+  end: number,
+) {
+  const current = conversion(op, fin, end);
+  const folds: {
+    horizon: number;
+    absolute: number;
+    signed: number;
+    actual: number;
+    count: number;
+    days: number[];
+  }[] = [];
+  for (const h of [7, 14, 28]) {
+    // Three dated origins per horizon; 28-day windows overlap by 14 days.
+    // observedDays below discloses the unique target-day count.
+    for (let n = 0; n < 3; n++) {
+      const cutoff = end - h - Math.min(h, 14) * n;
+      const learned = conversion(
+        op.filter((p) => p.day <= cutoff),
+        fin.filter((p) => p.day <= cutoff),
+        cutoff,
+      );
+      if (learned.ratio === null) continue;
+      const actualFinancial = new Map(
+        fin
+          .filter((p) => p.day > cutoff && p.day <= cutoff + h)
+          .map((p) => [p.day, p.units]),
+      );
+      const paired = op.flatMap((p) => {
+        const sold = actualFinancial.get(p.day);
+        return sold === undefined
+          ? []
+          : [{ day: p.day, ordered: p.units, sold }];
+      });
+      if (paired.length / h < 0.8) continue;
+      // Aggregates tolerate the order-to-buyout day lag; this does not manufacture
+      // daily orders from financial facts or claim their dates are interchangeable.
+      const actual = paired.reduce((sum, p) => sum + p.ordered, 0);
+      const predicted =
+        paired.reduce((sum, p) => sum + p.sold, 0) * learned.ratio;
+      folds.push({
+        horizon: h,
+        actual,
+        signed: predicted - actual,
+        absolute: Math.abs(predicted - actual),
+        count: paired.length,
+        days: paired.map((p) => p.day),
+      });
+    }
+  }
+  const absolute = folds.reduce((n, f) => n + f.absolute, 0),
+    signed = folds.reduce((n, f) => n + f.signed, 0),
+    actual = folds.reduce((n, f) => n + f.actual, 0),
+    count = folds.reduce((n, f) => n + f.count, 0);
+  const confirmedHorizons = [7, 14, 28].filter((h) => {
+    const group = folds.filter((f) => f.horizon === h);
+    const totalActual = group.reduce((n, f) => n + f.actual, 0);
+    return (
+      group.length >= 3 &&
+      totalActual > 0 &&
+      group.reduce((n, f) => n + f.absolute, 0) / totalActual <= 0.35 &&
+      group.filter((f) => f.actual > 0 && f.absolute / f.actual <= 0.35)
+        .length >= 2
+    );
+  });
+  return { current, folds, absolute, signed, actual, count, confirmedHorizons };
+}
+
+/** Two distinct proofs for a short operational archive: annual_growth must pass
+ * the financial metric's own full-horizon tests, while the conversion is checked
+ * on actual overlapping order/financial observations at 7/14/28-day horizons.
+ *
+ * The latter is a retrospective conversion diagnostic, NOT an end-to-end
+ * long-horizon order backtest (holdout financial totals are not known in advance).
+ * Therefore this entire composition remains an explicitly preliminary scenario.
+ */
+export function calibrateFinancialSeasonalBridge(
+  operational: ForecastSeries,
+  financial: ForecastSeries,
+  asOf: string,
+  horizon: number,
+  baselineHistoryDays = 56,
+): FinancialCalibration {
+  assertFinancialBridgeIdentity(operational, financial);
+  const end = Date.parse(asOf) / DAY;
+  const op = checkedBridgeObservations(operational, end),
+    fin = checkedBridgeObservations(financial, end);
+  // runForecast validates dates, values, coverage, and prefix-only annual tests.
+  const financialResult = runForecast(financial, {
+    asOf,
+    horizonDays: horizon,
+    baselineHistoryDays,
+    allowAutoregressive: false,
+  });
+  const annual = financialResult.candidates.find(
+    (c) => c.model === "annual_growth",
+  );
+  const financialWorking = annual?.metrics?.byHorizon.find(
+    (m) => m.horizonDays === horizon,
+  );
+  const { current, folds, absolute, signed, actual, count, confirmedHorizons } =
+    conversionDiagnostics(op, fin, end);
+  let reason = current.reason;
+  if (
+    !reason &&
+    (!annual?.eligible || !financialWorking || financialWorking.folds < 3)
+  )
+    reason =
+      "Годовая форма выкупов с динамикой текущего года не подтверждена на нужном горизонте.";
+  if (!reason && !confirmedHorizons.includes(14))
+    reason = "Связь выкупов и заказов неустойчива в проверочных периодах.";
+  const fitted = fitUnvalidatedAnnualForecast(
+    financial,
+    asOf,
+    horizon,
+    baselineHistoryDays,
+  );
+  if (!reason && fitted.reason) reason = fitted.reason;
+  const orderLevel = mean(
+    op.filter((p) => p.day > end - 56).map((p) => p.units),
+  );
+  const sorted = op.map((p) => p.units).sort((a, b) => a - b);
+  const cap = Math.max(
+    1,
+    orderLevel * 4,
+    (sorted[Math.floor((sorted.length - 1) * 0.98)] ?? 0) * 4,
+  );
+  const dailyForecast =
+    reason || current.ratio === null
+      ? []
+      : fitted.dailyForecast.map((p) => ({
+          date: p.date,
+          units: round(clamp(p.units * current.ratio!, 0, cap)),
+        }));
+  return {
+    candidate: {
+      model: "financial_seasonal_bridge_v1",
+      label: "Сезон выкупов и связь с заказами: предварительный прогноз",
+      eligible: reason === null,
+      reason,
+      // Diagnostics describe conversion totals only, never 106-day order skill.
+      mae: count ? round(absolute / count) : null,
+      wape: actual ? round(absolute / actual) : null,
+      bias: count ? round(signed / count) : null,
+      folds: folds.length,
+    },
+    dailyForecast,
+    totalUnits: round(dailyForecast.reduce((n, p) => n + p.units, 0)),
+    fingerprint: createHash("sha256")
+      .update(
+        JSON.stringify({
+          version: "financial-seasonal-bridge-v1",
+          asOf,
+          horizon,
+          baselineHistoryDays,
+          provider: operational.provider,
+          store: operational.storeId,
+          externalId: operational.externalId,
+          operationalMetric: operational.metric,
+          financialMetric: financial.metric,
+          operational: op,
+          financial: fin,
+          financialFingerprint: financialResult.fingerprint,
+        }),
+      )
+      .digest("hex"),
+    seasonalityKnown: annual?.eligible === true,
+    scenario: true,
+    financialValidation: {
+      model: "annual_growth",
+      horizonDays: horizon,
+      folds: financialWorking?.folds ?? 0,
+      wape: financialWorking?.wape ?? null,
+    },
+    bridgeValidation: {
+      horizonDays: confirmedHorizons,
+      folds: folds.length,
+      observedDays: new Set(folds.flatMap((f) => f.days)).size,
+      wape: actual ? round(absolute / actual) : null,
+    },
+  };
+}
+
+function validDay(value: string): number {
+  const stamp = Date.parse(value);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    !Number.isFinite(stamp) ||
+    new Date(stamp).toISOString().slice(0, 10) !== value
+  )
+    throw new Error("Financial bridge dates must use valid YYYY-MM-DD dates");
+  return stamp / DAY;
+}
+
+function checkedBridgeObservations(series: ForecastSeries, end: number) {
+  if (!Array.isArray(series.points) || series.points.length > 30_000)
+    throw new Error("Financial bridge history size is invalid");
+  const seen = new Set<number>();
+  for (const point of series.points) {
+    const day = validDay(point.date);
+    if (day > end) continue;
+    if (seen.has(day))
+      throw new Error("Financial bridge contains duplicate dates");
+    seen.add(day);
+    if (
+      point.units !== null &&
+      (!Number.isFinite(point.units) ||
+        point.units < 0 ||
+        point.units > 1_000_000_000)
+    )
+      throw new Error(
+        "Financial bridge units must be finite nonnegative quantities",
+      );
+    if (!["available", "out_of_stock", "unknown"].includes(point.availability))
+      throw new Error("Financial bridge availability is invalid");
+  }
+  return observed(series, end);
+}
+
+/** Convert an explicitly preliminary, externally fitted financial seasonal shape
+ * into operational units. A shape may come from this card's prior year or a
+ * category cohort. This function never promotes its seasonal evidence to ML:
+ * only the contemporaneous numerical conversion is checked on held-out periods.
+ * The supplied shape must already contain its financial current-year level; its
+ * conversion to current order units is applied exactly once here.
+ */
+export function projectFinancialSeasonalScenario(
+  operational: ForecastSeries,
+  financial: ForecastSeries,
+  financialForecast: ForecastDailyValue[],
+  asOf: string,
+): FinancialCalibration {
+  assertFinancialBridgeIdentity(operational, financial);
+  const end = validDay(asOf);
+  if (!Array.isArray(financialForecast) || financialForecast.length > 366)
+    throw new Error(
+      "Financial seasonal scenario horizon must be at most 366 days",
+    );
+  financialForecast.forEach((p, i) => {
+    if (
+      validDay(p.date) !== end + i + 1 ||
+      !Number.isFinite(p.units) ||
+      p.units < 0 ||
+      p.units > 1_000_000_000
+    )
+      throw new Error(
+        "Financial seasonal scenario must contain consecutive future days with finite nonnegative units",
+      );
+  });
+  const op = checkedBridgeObservations(operational, end),
+    fin = checkedBridgeObservations(financial, end);
+  const { current, folds, absolute, signed, actual, count, confirmedHorizons } =
+    conversionDiagnostics(op, fin, end);
+  let reason = current.reason;
+  if (!reason && !financialForecast.length)
+    reason = "Нет сезонной формы выкупов для будущих дней.";
+  if (!reason && !confirmedHorizons.includes(14))
+    reason = "Связь выкупов и заказов неустойчива в проверочных периодах.";
+  const orderLevel = mean(
+    op.filter((p) => p.day > end - 56).map((p) => p.units),
+  );
+  const sorted = op.map((p) => p.units).sort((a, b) => a - b);
+  const cap = Math.max(
+    1,
+    orderLevel * 4,
+    (sorted[Math.floor((sorted.length - 1) * 0.98)] ?? 0) * 4,
+  );
+  const dailyForecast =
+    reason || current.ratio === null
+      ? []
+      : financialForecast.map((p) => ({
+          date: p.date,
+          units: round(clamp(p.units * current.ratio!, 0, cap)),
+        }));
+  return {
+    candidate: {
+      model: "financial_seasonal_scenario_bridge_v1",
+      label: "Прошлогодний сезон и текущие заказы: предварительный сценарий",
+      eligible: reason === null,
+      reason,
+      mae: count ? round(absolute / count) : null,
+      wape: actual ? round(absolute / actual) : null,
+      bias: count ? round(signed / count) : null,
+      folds: folds.length,
+    },
+    dailyForecast,
+    totalUnits: round(dailyForecast.reduce((n, p) => n + p.units, 0)),
+    fingerprint: createHash("sha256")
+      .update(
+        JSON.stringify({
+          version: "financial-seasonal-scenario-bridge-v1",
+          asOf,
+          provider: operational.provider,
+          store: operational.storeId,
+          externalId: operational.externalId,
+          operationalMetric: operational.metric,
+          financialMetric: financial.metric,
+          operational: op,
+          financial: fin,
+          financialForecast,
+        }),
+      )
+      .digest("hex"),
+    message:
+      reason ??
+      "Сезонный сценарий переведён в текущий объём заказов по сопоставимым дням. Проверена связь показателей на коротких периодах; долгосрочная точность заказов ещё не подтверждена.",
+    scenario: true,
+    seasonalityKnown: false,
+    bridgeValidation: {
+      horizonDays: confirmedHorizons,
+      folds: folds.length,
+      observedDays: new Set(folds.flatMap((f) => f.days)).size,
+      wape: actual ? round(absolute / actual) : null,
+    },
+  };
 }

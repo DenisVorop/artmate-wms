@@ -17,11 +17,13 @@ import {
   calibrateFinancialSeason,
   calibrateFinancialCalendarMl,
 } from "./forecast-calibration";
+import { planningSeasonality } from "./planning-seasonality";
 import { demandBaseline } from "./demand-baseline";
 import { newYearScenario } from "./new-year-scenario";
 import {
   runMonthlyHybridForecast,
   applyMonthlySegment,
+  applyForecastSegment,
   MONTHLY_ML_DAYS,
 } from "./monthly-hybrid";
 import type {
@@ -434,6 +436,7 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       (c) => c.provider === s.provider && c.storeId === s.storeId,
     ),
   );
+  const seasonalScenario = planningSeasonality(input, active, horizon);
   for (const row of overview.rows) {
     const addChart = (
       source: ForecastSourceDto,
@@ -475,7 +478,9 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       seasonal = 0,
       learned = 0,
       scenarios = 0,
-      launches = 0;
+      launches = 0,
+      seasonalScenarios = 0;
+    const seasonalMessages = new Set<string>();
     const planSources: ForecastPlanSource[] = [];
     const modelComponents = new Map<MarketplaceProvider, string[]>();
     goalSources.set(row.skuId, planSources);
@@ -521,12 +526,33 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
       );
       const ordered = group.find((s) => s.metric === "ordered"),
         cancelled = group.find((s) => s.metric === "cancelled");
-      const baselineSource = baselineForecastSource(
+      let baselineSource = baselineForecastSource(
         { ...input, series: active },
         mapping.provider,
         mapping.externalId,
         horizon,
       );
+      if (policy.seasonalityEnabled && isLaunchForecastSource(baselineSource)) {
+        baselineSource = resolveLaunchForecast(
+          input,
+          mapping.provider,
+          mapping.externalId,
+          horizon,
+          baselineSource,
+          (provider, externalId, days) => {
+            const seasonal = seasonalScenario(provider, externalId);
+            return seasonal
+              ? {
+                  dailyForecast: seasonal.dailyForecast,
+                  methodLabel: seasonal.methodLabel,
+                  confidenceLabel: "Предварительная оценка",
+                  scenario: true,
+                  salesForecastKnown: true,
+                }
+              : baselineForecastSource(input, provider, externalId, days);
+          },
+        );
+      }
       const baseline = baselineSource.dailyForecast.reduce(
         (n, p) => n + p.units,
         0,
@@ -671,77 +697,96 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         !directSeasonal;
       const useSeasonal = directSeasonal || !!useCalibrated;
       const useFinancialMonthlyMl =
+        !useSeasonal &&
         policy.seasonalityEnabled &&
         !hybrid.usesMonthlyForecast &&
         calendarMonthly?.candidate.eligible === true;
+      // A coherent annual scenario covers the entire planning horizon. A winner
+      // on only 30 days never cuts this seasonal shape off on day 31.
+      const preliminary =
+        policy.seasonalityEnabled && !useSeasonal
+          ? seasonalScenario(mapping.provider, mapping.externalId)
+          : null;
       const useMonthlyMl =
+        !useSeasonal &&
+        !preliminary &&
         policy.seasonalityEnabled &&
         (hybrid.usesMonthlyMl || useFinancialMonthlyMl);
       const useMonthlySeasonal =
-        policy.seasonalityEnabled && hybrid.usesMonthlySeasonal;
+        !useSeasonal &&
+        !preliminary &&
+        policy.seasonalityEnabled &&
+        hybrid.usesMonthlySeasonal;
       const useMonthlyForecast =
+        !preliminary &&
+        !useSeasonal &&
         policy.seasonalityEnabled &&
         (hybrid.usesMonthlyForecast || useFinancialMonthlyMl);
       const annual =
-        useMonthlySeasonal ||
-        useCalibrated ||
-        (directSeasonal && result.selectedModel !== "autoregressive");
+        useMonthlySeasonal || useCalibrated || directSeasonal || !!preliminary;
       if (annual) seasonal++;
       if (useMonthlyMl) learned++;
+      if (preliminary) {
+        seasonalScenarios++;
+        seasonalMessages.add(preliminary.message);
+      }
       const scenario =
-        !useSeasonal &&
-        baselineSource.scenario &&
-        (!useMonthlyForecast ||
-          baselineSource.dailyForecast.some(
-            (p) =>
-              p.date > hybrid.monthly.dailyForecast.at(-1)!.date &&
-              p.date.slice(0, 4) === input.asOf.slice(0, 4) &&
-              p.date.slice(5, 7) >= "11",
-          ));
+        !!preliminary ||
+        (!useSeasonal &&
+          baselineSource.scenario &&
+          (!useMonthlyForecast ||
+            baselineSource.dailyForecast.some(
+              (p) =>
+                p.date > hybrid.monthly.dailyForecast.at(-1)!.date &&
+                p.date.slice(0, 4) === input.asOf.slice(0, 4) &&
+                p.date.slice(5, 7) >= "11",
+            )));
       if (scenario) scenarios++;
-      const tailForecast = useCalibrated
-        ? calibrated!.dailyForecast
-        : directSeasonal
-          ? result.dailyForecast
-          : baselineSource.dailyForecast;
-      const monthlyFinancialByDay = new Map(
-        calendarMonthly?.dailyForecast.map((p) => [p.date, p.units]) ?? [],
-      );
-      const dailyForecast = useFinancialMonthlyMl
-        ? tailForecast.map((p) => ({
-            date: p.date,
-            units: monthlyFinancialByDay.get(p.date) ?? p.units,
-          }))
-        : useMonthlyForecast
-          ? applyMonthlySegment(hybrid.monthly, tailForecast)
-          : tailForecast;
+      const tailForecast =
+        preliminary?.dailyForecast ??
+        (useCalibrated
+          ? calibrated!.dailyForecast
+          : directSeasonal
+            ? result.dailyForecast
+            : baselineSource.dailyForecast);
+      const dailyForecast =
+        useMonthlyForecast && useFinancialMonthlyMl
+          ? applyForecastSegment(calendarMonthly!.dailyForecast, tailForecast)
+          : useMonthlyForecast
+            ? applyMonthlySegment(hybrid.monthly, tailForecast)
+            : tailForecast;
       const predictedUnits = dailyForecast.reduce((n, p) => n + p.units, 0);
       demand += predictedUnits;
-      const methodLabel = useMonthlyMl
-        ? `ML: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : useSeasonal ? "сезонный прогноз" : "текущий спрос"}`
-        : useMonthlySeasonal
-          ? `${MODEL_LABELS[hybrid.monthly.selectedModel]}: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : useSeasonal ? "сезонный прогноз" : "текущий спрос"}`
-          : useCalibrated
-            ? calibrated!.candidate.label
-            : directSeasonal
-              ? MODEL_LABELS[result.selectedModel]
-              : baselineSource.methodLabel;
+      const methodLabel = preliminary
+        ? preliminary.methodLabel
+        : useCalibrated
+          ? calibrated!.candidate.label
+          : directSeasonal
+            ? MODEL_LABELS[result.selectedModel]
+            : useMonthlyMl
+              ? `ML: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : "текущий спрос"}`
+              : useMonthlySeasonal
+                ? `${MODEL_LABELS[hybrid.monthly.selectedModel]}: ближайшие ${MONTHLY_ML_DAYS} дней; далее ${scenario ? "предпраздничный сценарий" : "текущий спрос"}`
+                : baselineSource.methodLabel;
       register(
         mapping.provider,
         {
           dailyForecast,
           methodLabel,
-          confidenceLabel: useFinancialMonthlyMl
-            ? "Умеренная уверенность"
-            : useMonthlyForecast
-              ? confidenceLabel(hybrid.monthly.confidence)
-              : useCalibrated
-                ? "Умеренная уверенность"
-                : useSeasonal
-                  ? confidenceLabel(result.confidence)
-                  : baselineSource.confidenceLabel,
+          confidenceLabel: preliminary
+            ? "Предварительная оценка"
+            : useFinancialMonthlyMl
+              ? "Умеренная уверенность"
+              : useMonthlyForecast
+                ? confidenceLabel(hybrid.monthly.confidence)
+                : useCalibrated
+                  ? "Умеренная уверенность"
+                  : useSeasonal
+                    ? confidenceLabel(result.confidence)
+                    : baselineSource.confidenceLabel,
           scenario,
           salesForecastKnown:
+            !!preliminary ||
             useMonthlyForecast ||
             useSeasonal ||
             baselineSource.salesForecastKnown === true,
@@ -749,30 +794,37 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
         forecastPlanModelIdentity(input, mapping, policy, {
           kind: "operational",
           scenario,
-          monthly: useFinancialMonthlyMl
-            ? "financial_calendar_ml"
-            : useMonthlyForecast
-              ? hybrid.monthly.selectedModel
-              : null,
-          tail: useCalibrated
-            ? calibrated!.candidate.model
-            : directSeasonal
-              ? result.selectedModel
-              : baselineSource.scenario
-                ? "new_year_scenario"
-                : "recent_demand",
+          monthly:
+            useMonthlyForecast && useFinancialMonthlyMl
+              ? "financial_calendar_ml"
+              : useMonthlyForecast
+                ? hybrid.monthly.selectedModel
+                : null,
+          composition: "coherent-seasonality-v1",
+          seasonalScenario: preliminary?.origin ?? null,
+          tail: preliminary
+            ? "seasonal_scenario"
+            : useCalibrated
+              ? calibrated!.candidate.model
+              : directSeasonal
+                ? result.selectedModel
+                : baselineSource.scenario
+                  ? "new_year_scenario"
+                  : "recent_demand",
         }),
       );
       confidences.push(
-        useFinancialMonthlyMl
-          ? "medium"
-          : useMonthlyForecast
-            ? hybrid.monthly.confidence
-            : useCalibrated
-              ? "medium"
-              : useSeasonal
-                ? result.confidence
-                : "low",
+        preliminary
+          ? "low"
+          : useFinancialMonthlyMl
+            ? "medium"
+            : useMonthlyForecast
+              ? hybrid.monthly.confidence
+              : useCalibrated
+                ? "medium"
+                : useSeasonal
+                  ? result.confidence
+                  : "low",
       );
       for (const point of series.points)
         if (point.units !== null && point.date <= input.asOf)
@@ -859,6 +911,17 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
           model: "financial_calendar_ml_monthly",
           label: "ML: календарь всей истории выкупов → заказы на 30 дней",
         });
+      if (preliminary)
+        source.candidates.push({
+          model: `seasonal_scenario_${preliminary.origin}`,
+          label: preliminary.methodLabel,
+          eligible: false,
+          reason: preliminary.message,
+          mae: null,
+          wape: null,
+          bias: null,
+          folds: 0,
+        });
       source.modelLabel = methodLabel;
       source.points = [
         ...source.points.filter((p) => p.predicted === null),
@@ -919,13 +982,15 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     row.seasonalityApplied = seasonal > 0;
     row.methodLabel = launches
       ? "Прогноз запуска новинки"
-      : learned
-        ? "ML: ближайшие 30 дней; дальше — отдельная оценка"
-        : seasonal
-          ? "Прогноз с сезонностью"
-          : scenarios
-            ? "Сценарий к Новому году"
-            : "Недавний спрос";
+      : seasonalScenarios
+        ? "Сезонный сценарий"
+        : learned
+          ? "ML: ближайшие 30 дней; дальше — отдельная оценка"
+          : seasonal
+            ? "Прогноз с сезонностью"
+            : scenarios
+              ? "Сценарий к Новому году"
+              : "Недавний спрос";
     row.confidenceLabel = confidenceLabel(
       confidences.length && confidences.every((c) => c === "high")
         ? "high"
@@ -939,23 +1004,25 @@ export function computeForecast(input: ForecastComputeInput): ForecastCache {
     row.knownDays = dates.length;
     row.message = launches
       ? "Запуск на новой площадке оценивается по продажам этого товара на другой площадке и соотношению спроса похожих тематик. Это предварительный сценарий; после накопления собственных продаж прогноз пересчитается."
-      : learned
-        ? "ML-прогноз количества продаж проверен на ближайшие 30 дней. Более дальний запас оценивается отдельно по сезонности или текущему спросу."
-        : seasonal
-          ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
-          : scenarios
-            ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
-            : !policy.seasonalityEnabled
-              ? "Автопрогноз отключён. Используется недавний спрос."
-              : related.length
-                ? "Сложные модели пока не подтвердили преимущество; учитываем недавний спрос и известные дни после появления товара."
-                : "Свяжите тематику с товарами маркетплейсов.";
+      : seasonalScenarios
+        ? [...seasonalMessages].join(" ")
+        : learned
+          ? "ML-прогноз количества продаж проверен на ближайшие 30 дней. Более дальний запас оценивается отдельно по сезонности или текущему спросу."
+          : seasonal
+            ? "Сезонная модель проверена на прошлом и учитывает текущую динамику продаж."
+            : scenarios
+              ? "Сценарий к Новому году: сохраняем наблюдаемый рост только до конца декабря. Годовая сезонность пока не подтверждена."
+              : !policy.seasonalityEnabled
+                ? "Автопрогноз отключён. Используется недавний спрос."
+                : related.length
+                  ? "Сложные модели пока не подтвердили преимущество; учитываем недавний спрос и известные дни после появления товара."
+                  : "Свяжите тематику с товарами маркетплейсов.";
   }
   overview.ready = true;
   overview.computing = false;
   overview.generatedAt = input.generatedAt;
   overview.message = overview.rows.some((r) => r.seasonalityApplied)
-    ? "Прогноз учитывает проверенную сезонность. Остатки и поставки вычитаются в плане сборки."
+    ? "План учитывает текущий спрос и прошлогоднюю сезонность. Предварительные сезонные сценарии отмечены у тематик. Остатки и поставки вычитаются в плане сборки."
     : "Прогноз учитывает недавний спрос. Обучаемые модели применяются после проверки на прошлом.";
   const goals: Record<string, ForecastPlanGoal> = Object.fromEntries(
     overview.rows.map((r) => [
