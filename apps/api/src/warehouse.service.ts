@@ -164,6 +164,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     await this.ready;
     return this._enqueue(() => this.db.transaction(fn));
   }
+  /** Readiness performs one read without a session, mutation, or background work. */
+  async checkReady() {
+    await this.ready;
+    await this.db.query("SELECT 1");
+  }
   async onModuleInit() {
     await this.ready;
   }
@@ -182,7 +187,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         ["seeded"],
       );
       if (!initialized.rows.length) {
-        const seed = seedWorkspace();
+        // Existing stores never enter this branch. Production starts without demo facts.
+        const seed =
+          process.env.NODE_ENV === "production" ? {} : seedWorkspace();
         for (const table of tables)
           for (const entity of seed[table] ?? [])
             await tx.query(`INSERT INTO ${table}(id,payload) VALUES ($1,$2)`, [
@@ -193,6 +200,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "seeded",
           "1",
         ]);
+        // V2's sole synthetic address belongs to demo initialization, not a new store.
+        if (process.env.NODE_ENV === "production")
+          await tx.query("INSERT INTO metadata(key,value) VALUES ($1,$2)", [
+            "schema_version",
+            "2",
+          ]);
       }
       const version = await tx.query<{ value: string }>(
         "SELECT value FROM metadata WHERE key=$1",

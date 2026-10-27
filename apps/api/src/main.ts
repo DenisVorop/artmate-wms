@@ -4,7 +4,10 @@ import { SwaggerModule } from "@nestjs/swagger";
 import { createApp, buildOpenApi } from "./app";
 import { MarketplaceScheduler } from "./marketplaces/marketplace-scheduler";
 import { ForecastHistoryScheduler } from "./forecasting/history-scheduler";
+import { validateProductionEnvironment } from "./production-config";
+import { createShutdown } from "./runtime-lifecycle";
 async function main() {
+  await validateProductionEnvironment();
   const app = await createApp();
   SwaggerModule.setup("api/docs", app, buildOpenApi(app));
   await app.listen(
@@ -15,23 +18,17 @@ async function main() {
   const historyScheduler = app.get(ForecastHistoryScheduler);
   const forecastScheduler = app.get(ForecastScheduler);
   const workAutomation = app.get(WorkAutomationScheduler);
-  let stopping = false;
-  const shutdown = async () => {
-    if (stopping) return;
-    stopping = true;
-    try {
-      await workAutomation.stop();
-      await forecastScheduler.stop();
-      await historyScheduler.stop();
-      await scheduler.stop();
-      await app.close();
-    } catch {
+  const close = createShutdown(
+    [workAutomation, forecastScheduler, historyScheduler, scheduler],
+    () => app.close(),
+  );
+  const shutdown = () =>
+    void close().catch(() => {
       console.error("WMS could not shut down cleanly");
       process.exitCode = 1;
-    }
-  };
-  process.once("SIGTERM", () => void shutdown());
-  process.once("SIGINT", () => void shutdown());
+    });
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
   scheduler.start();
   historyScheduler.start();
   forecastScheduler.start();
@@ -40,7 +37,9 @@ async function main() {
     `Artmate WMS API http://localhost:${process.env.API_PORT ?? 4080}/api/docs`,
   );
 }
-main().catch((error) => {
-  console.error(error);
+main().catch(() => {
+  console.error(
+    "WMS API startup failed; check production configuration and database availability",
+  );
   process.exit(1);
 });

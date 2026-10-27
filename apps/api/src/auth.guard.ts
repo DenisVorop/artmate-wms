@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { Request } from "express";
+import { HealthController } from "./health.controller";
 import { WarehouseService } from "./warehouse.service";
 import { requestAuth } from "./auth-context";
 import { authorizeWarehouse, requireAuth, requireOrigin } from "./auth-policy";
@@ -19,6 +20,12 @@ export class AuthGuard implements CanActivate {
       name = context.getHandler().name;
     const auth = requestAuth.getStore();
     if (!auth) throw new ForbiddenException("Отсутствует контекст запроса");
+    if (
+      context.getClass() === HealthController &&
+      ["GET", "HEAD"].includes(request.method) &&
+      ["live", "ready"].includes(name)
+    )
+      return true;
     const write = !["GET", "HEAD", "OPTIONS"].includes(request.method);
     if (write) {
       requireOrigin(auth.origin);

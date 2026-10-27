@@ -8,7 +8,17 @@ import { mkdir, open, readFile, lstat, link, unlink } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 export class MarketplaceSecrets {
   private pending: Promise<Buffer> | undefined;
-  constructor(private readonly options: { key?: string; path?: string } = {}) {}
+  constructor(
+    private readonly options: {
+      key?: string;
+      path?: string;
+      production?: boolean;
+    } = {},
+  ) {}
+  /** Validate external key material before accepting production requests. */
+  async validateKey() {
+    await this._key();
+  }
   private async _key() {
     if (!this.pending)
       this.pending = this._load().catch((e) => {
@@ -31,25 +41,39 @@ export class MarketplaceSecrets {
         process.env.WMS_MARKETPLACE_KEY_FILE ??
           resolve(__dirname, "../../../..", ".data/marketplace-secret.key"),
       );
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const temporary = `${path}.${randomBytes(12).toString("hex")}.tmp`;
-    const file = await open(temporary, "wx", 0o600);
-    try {
-      await file.writeFile(randomBytes(32));
-      await file.sync();
-      await file.close();
-      // A complete key becomes visible atomically, including across API processes.
+    const production =
+      this.options.production ?? process.env.NODE_ENV === "production";
+    if (
+      production &&
+      !this.options.path &&
+      !process.env.WMS_MARKETPLACE_KEY_FILE
+    )
+      throw new Error(
+        "Production requires an external marketplace encryption key",
+      );
+    if (!production) {
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      const temporary = `${path}.${randomBytes(12).toString("hex")}.tmp`;
+      const file = await open(temporary, "wx", 0o600);
       try {
-        await link(temporary, path);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST")
-          throw new Error("Не удалось создать ключ шифрования интеграций");
+        await file.writeFile(randomBytes(32));
+        await file.sync();
+        await file.close();
+        // A complete key becomes visible atomically, including across API processes.
+        try {
+          await link(temporary, path);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST")
+            throw new Error("Не удалось создать ключ шифрования интеграций");
+        }
+      } finally {
+        await file.close().catch(() => undefined);
+        await unlink(temporary).catch(() => undefined);
       }
-    } finally {
-      await file.close().catch(() => undefined);
-      await unlink(temporary).catch(() => undefined);
     }
-    const info = await lstat(path);
+    const info = await lstat(path).catch(() => {
+      throw new Error("Marketplace encryption key file is unavailable");
+    });
     if (!info.isFile())
       throw new Error("Ключ интеграций должен быть обычным файлом");
     if ((info.mode & 0o077) !== 0)

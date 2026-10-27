@@ -1,3 +1,4 @@
+import { HealthController } from "./health.controller";
 import { WorkAutomationController } from "./work-automation/controller";
 import { WorkAutomationService } from "./work-automation/service";
 import { WorkAutomationScheduler } from "./work-automation/scheduler";
@@ -1245,6 +1246,7 @@ class JsonExceptionFilter implements ExceptionFilter {
 }
 @Module({
   controllers: [
+    HealthController,
     WorkAutomationController,
     WarehouseController,
     BoxLabelController,
@@ -1343,7 +1345,7 @@ export async function createApp() {
     ],
     credentials: true,
   });
-  app.enableShutdownHooks();
+  // Executable main owns signal handling and drains schedulers before app.close().
   return app;
 }
 export function buildOpenApi(app: Awaited<ReturnType<typeof createApp>>) {

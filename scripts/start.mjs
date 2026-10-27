@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { writeFileSync, mkdirSync, unlinkSync, existsSync } from "node:fs";
 import path from "node:path";
 import {
   readPhoneConfig,
@@ -39,17 +39,27 @@ const api = spawn(process.execPath, ["dist/main.js"], {
   stdio: "inherit",
   env,
 });
+const standalone = path.join(
+  root,
+  "apps/web/.next/standalone/apps/web/server.js",
+);
 const web = spawn(
   process.execPath,
-  [
-    path.join(root, "node_modules/next/dist/bin/next"),
-    "start",
-    "--hostname",
-    "127.0.0.1",
-    "--port",
-    "3080",
-  ],
-  { cwd: path.join(root, "apps/web"), stdio: "inherit", env },
+  existsSync(standalone)
+    ? [standalone]
+    : [
+        path.join(root, "node_modules/next/dist/bin/next"),
+        "start",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3080",
+      ],
+  {
+    cwd: path.join(root, "apps/web"),
+    stdio: "inherit",
+    env: { ...env, HOSTNAME: "127.0.0.1", PORT: "3080" },
+  },
 );
 const children = [api, web];
 mkdirSync(path.join(root, ".data"), { recursive: true });
