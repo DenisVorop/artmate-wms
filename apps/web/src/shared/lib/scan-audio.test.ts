@@ -74,7 +74,7 @@ test("audio is created/resumed by activation, patterns differ, latest error inte
   audio.play("success");
   assert.deepEqual(fake.frequencies, [1046, 1397]);
   audio.play("error");
-  assert.deepEqual(fake.frequencies.slice(2), [220, 165, 220]);
+  assert.deepEqual(fake.frequencies.slice(2), [2349, 1760, 2349]);
   assert.equal(fake.stops.filter((at) => at === undefined).length, 2);
   audio.close();
   assert.equal(fake.closes(), 1);
@@ -130,9 +130,9 @@ test("a confirmed scan cannot mask a simultaneous dropped-scan error", async () 
   await tick();
   audio.play("error");
   audio.play("success");
-  assert.deepEqual(fake.frequencies, [220, 165, 220]);
-  fake.context.currentTime += 0.5;
+  assert.deepEqual(fake.frequencies, [2349, 1760, 2349]);
+  fake.context.currentTime += 0.8;
   audio.play("success");
-  assert.deepEqual(fake.frequencies, [220, 165, 220, 1046, 1397]);
+  assert.deepEqual(fake.frequencies, [2349, 1760, 2349, 1046, 1397]);
   audio.close();
 });
