@@ -74,13 +74,13 @@ test("audio is created/resumed by activation, patterns differ, latest error inte
   audio.play("success");
   assert.deepEqual(fake.frequencies, [1046, 1397]);
   audio.play("error");
-  assert.deepEqual(fake.frequencies.slice(2), [2349, 1760, 2349]);
+  assert.deepEqual(fake.frequencies.slice(2), [185]);
   assert.equal(fake.stops.filter((at) => at === undefined).length, 2);
   audio.close();
   assert.equal(fake.closes(), 1);
   assert.equal(fake.listeners.size, 0);
   audio.play("success");
-  assert.equal(fake.frequencies.length, 5);
+  assert.equal(fake.frequencies.length, 3);
 });
 test("sound test waits for resume and interruptions request activation again", async () => {
   const fake = fakeAudio(),
@@ -130,9 +130,9 @@ test("a confirmed scan cannot mask a simultaneous dropped-scan error", async () 
   await tick();
   audio.play("error");
   audio.play("success");
-  assert.deepEqual(fake.frequencies, [2349, 1760, 2349]);
-  fake.context.currentTime += 0.8;
+  assert.deepEqual(fake.frequencies, [185]);
+  fake.context.currentTime += 0.5;
   audio.play("success");
-  assert.deepEqual(fake.frequencies, [2349, 1760, 2349, 1046, 1397]);
+  assert.deepEqual(fake.frequencies, [185, 1046, 1397]);
   audio.close();
 });

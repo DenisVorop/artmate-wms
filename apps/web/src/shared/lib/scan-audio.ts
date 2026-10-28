@@ -21,10 +21,12 @@ export function createScanAudio(port: {
     // A warning about dropped/failed scans must finish before any later success.
     if (kind === "success" && context.currentTime < errorUntil) return;
     const error = kind === "error";
-    const duration = error ? 0.16 : 0.055;
-    const gap = error ? 0.08 : 0.025;
-    const volume = error ? 0.32 : 0.18;
-    if (error) errorUntil = context.currentTime + 3 * (duration + gap);
+    const duration = error ? 0.45 : 0.055;
+    const gap = error ? 0 : 0.025;
+    const volume = error ? 0.72 : 0.18;
+    const frequencies = error ? [185] : [1046, 1397];
+    if (error)
+      errorUntil = context.currentTime + frequencies.length * (duration + gap);
     try {
       // The latest result replaces old tones; never announce stale queued success.
       for (const oscillator of playing) {
@@ -34,16 +36,15 @@ export function createScanAudio(port: {
       }
       playing.clear();
       const start = context.currentTime;
-      const frequencies = error ? [2349, 1760, 2349] : [1046, 1397];
       frequencies.forEach((frequency, index) => {
         const oscillator = context!.createOscillator(),
           gain = context!.createGain();
         const at = start + index * (duration + gap);
-        oscillator.type = error ? "square" : "sine";
+        oscillator.type = error ? "triangle" : "sine";
         oscillator.frequency.value = frequency;
         gain.gain.setValueAtTime(0, at);
         gain.gain.linearRampToValueAtTime(volume, at + 0.008);
-        // Hold the alarm's body; the former low triangular tone was too muffled.
+        // A sustained low triangle keeps the alarm full without sharp harmonics.
         if (error) gain.gain.setValueAtTime(volume, at + duration - 0.012);
         gain.gain.linearRampToValueAtTime(0, at + duration);
         oscillator.connect(gain);
