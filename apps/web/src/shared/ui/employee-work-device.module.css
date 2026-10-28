@@ -1,0 +1,14 @@
+.controls {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+.controls p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #b1bab4);
+}
+.controls button {
+  min-height: 44px;
+}

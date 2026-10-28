@@ -9,6 +9,8 @@ import { getAuthEpoch } from "../api/auth-memory";
 import { useEmployeeScanActivity } from "./employee-scan-activity";
 import { useEmployeeScanGateway } from "./employee-scan-gateway";
 import { EmployeeCamera } from "./employee-camera";
+import { useEmployeeScanFeedback } from "./employee-work-device";
+import { scanWithFeedback } from "../lib/scan-feedback";
 import styles from "./employee-scan.module.css";
 const schema = z.object({
   code: z
@@ -39,6 +41,9 @@ export function EmployeeScan({
 }: EmployeeScanProps) {
   const activity = useEmployeeScanActivity();
   const gateway = useEmployeeScanGateway();
+  const feedback = useEmployeeScanFeedback();
+  const sound = useRef(feedback);
+  sound.current = feedback;
   const intercepting = useRef(false);
   const selectAfterIntercept = useRef(false);
   const id = useId(),
@@ -83,7 +88,14 @@ export function EmployeeScan({
         live.current.epoch === epoch &&
         getAuthEpoch() === epoch &&
         !live.current.disabled,
-      accept: (value) => live.current.onScan(value),
+      accept: async (value) =>
+        scanWithFeedback(
+          () => live.current.onScan(value),
+          (accepted) => (accepted ? "success" : "error"),
+          // A confirmed final scan can advance/unmount its form before resolving.
+          () => getAuthEpoch() === epoch,
+          (kind) => sound.current.play(kind),
+        ),
       changed: setQueueState,
       failed: (value) => {
         form.setValue("code", value);
@@ -92,10 +104,12 @@ export function EmployeeScan({
           input.current?.select();
         }
       },
-      dropped: (count) =>
+      dropped: (count) => {
+        if (getAuthEpoch() === epoch) sound.current.play("error");
         live.current.onProblem?.(
           `Не подтверждено сканов: ${count}. Остановитесь и проверьте текущий шаг.`,
-        ),
+        );
+      },
     });
     queue.current = processor;
     setQueueState({ pending: 0, running: false, failedCode: null });
@@ -203,6 +217,7 @@ export function EmployeeScan({
         form.reset({ code: "" });
         setLocalError(null);
       } else {
+        sound.current.play("error");
         setLocalError("Дождитесь сохранения и повторите скан.");
         selectField();
       }
@@ -218,7 +233,17 @@ export function EmployeeScan({
       }
     };
     try {
-      const result = gateway.intercept(values.code);
+      const result = scanWithFeedback(
+        () => gateway.intercept(values.code),
+        (result) =>
+          result === "handled"
+            ? "success"
+            : result === "blocked"
+              ? "error"
+              : null,
+        () => getAuthEpoch() === epoch,
+        (kind) => sound.current.play(kind),
+      );
       if (typeof result === "string") {
         apply(result);
         return;
@@ -254,7 +279,9 @@ export function EmployeeScan({
   return (
     <form
       className={styles.form}
-      onSubmit={form.handleSubmit(submitCode)}
+      onSubmit={form.handleSubmit(submitCode, () =>
+        sound.current.play("error"),
+      )}
       noValidate
     >
       <label className={styles.label} htmlFor={id}>
@@ -360,9 +387,12 @@ export function EmployeeScan({
             closeCamera();
             form.setValue("code", code);
             // The same resolver, zone gateway and ordered queue as HID/manual input.
-            void form.handleSubmit((values) => {
-              if (cameraCurrent(camera)) submitCode(values);
-            })();
+            void form.handleSubmit(
+              (values) => {
+                if (cameraCurrent(camera)) submitCode(values);
+              },
+              () => sound.current.play("error"),
+            )();
           }}
         />
       )}

@@ -28,6 +28,8 @@ import {
   EmployeeScanBoundary,
   EmployeeScanGateway,
   EmployeeScan,
+  EmployeeWorkDevice,
+  EmployeeDeviceControls,
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import styles from "./workspace.module.css";
@@ -235,7 +237,7 @@ function EmployeeWorkspaceBody({
     shipping: "Отгрузка",
   };
 
-  return (
+  const content = (
     <EmployeeScanGateway
       intercept={intercept}
       canIntercept={(value) => isWorkZoneScan(value) || zoneEntry}
@@ -272,6 +274,7 @@ function EmployeeWorkspaceBody({
               {menu ? <X /> : <Ellipsis />}
             </button>
           </header>
+          {!menu && <EmployeeDeviceControls />}
           <nav className={styles.workViews} aria-label="Работа сотрудника">
             <button
               type="button"
@@ -298,6 +301,7 @@ function EmployeeWorkspaceBody({
               aria-label="Меню сотрудника"
             >
               <p className={styles.person}>{user?.name}</p>
+              <EmployeeDeviceControls details />
               {scan.pending > 0 && (
                 <p role="status">
                   Сначала дождитесь сохранения сканов или исправьте непринятый
@@ -635,5 +639,10 @@ function EmployeeWorkspaceBody({
         />
       </div>
     </EmployeeScanGateway>
+  );
+  return (
+    <EmployeeWorkDevice active={!noShift} sessionKey={user?.id}>
+      {content}
+    </EmployeeWorkDevice>
   );
 }

@@ -188,6 +188,10 @@ export function ErrorState({
 
 export { EmployeeScan } from "./employee-scan";
 export {
+  EmployeeWorkDevice,
+  EmployeeDeviceControls,
+} from "./employee-work-device";
+export {
   EmployeeScanGateway,
   useEmployeeScanGateway,
 } from "./employee-scan-gateway";
