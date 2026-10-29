@@ -273,3 +273,53 @@ readiness → web API proxy → публичные HTTPS маршруты. Пе�
 сборочных задач 0; создание корректно ожидает подтверждённых готовых остатков,
 размещённого сырья, актуального плана и свободных мест. Рабочий товар и тестовые
 задания для проверки выкладки не создавались. Правила лимита и ротации — ADR080.
+
+
+## Автоспуск сырья на доступные ярусы — 2026-10-30
+
+API и web source `060d3690165fbf34dbb365bdcd2acbd1c5ab5985` выложены напрямую
+по действующему разрешению пользователя, без ожидания pipeline. Active bundle:
+`/opt/artmate-wms/releases/060d3690165fbf34dbb365bdcd2acbd1c5ab5985-access-20261030`.
+`current-release.json` отмечает `direct-runtime-update-user-requested`, раздельные
+revision, оба image ID, pinned bases и checksum полного artifact manifest.
+
+Образы:
+- API `artmate-wms-api:060d3690165fbf34dbb365bdcd2acbd1c5ab5985`, ID
+  `sha256:80cdcdcb2e793c295a7d49a9b250b4f8a7851408da1092db21e50ff696b272d0`;
+- web `artmate-wms-web:060d3690165fbf34dbb365bdcd2acbd1c5ab5985`, ID
+  `sha256:74d9ab8dc3a2e09663567998544f7bff6508001222aef87130ab8c69b0f2faba`.
+
+Проверены 643 runtime-файла: 99 compiled API JS и 544 web standalone/static.
+От прежнего API изменились ровно девять ожидаемых файлов, включая новый
+work-automation/raw-access.js; остальные прежние JS совпали. API base —1ed319b,
+web base —d45cb5f; Linux dependencies, package manifests, lockfile и schema18
+не менялись. Mac native modules и секреты в артефакт не включались.
+
+Backup перед переключением:
+`/opt/artmate-wms/backups/before-access-release-2026-10-29T23-43-56.490Z.dump`.
+Действовали deploy.lock, проверка OCI/checksum и pure compiled guards до остановки,
+web smoke с прежним API, backup, graceful switch API+web, readiness, web proxy и
+публичные HTTPS health/warehouse/session. Секреты сохранены, автоматического
+rollback нет. Переключение успешно `2026-10-29T23:44:13.080Z` (30 октября по Москве).
+Ежедневный backup timer active; копии на Mac для этой выкладки не переносились.
+
+Проверки: API 599 pass, 2 optional skip; web 458 pass; Swagger/Orval, оба typecheck,
+FSD lint, формат и обе production-сборки успешны. 27 адресных проверок покрыли
+спуск, FIFO, приёмку, HTTP и конкурентный цикл. Дополнительный независимый review
+интеграции замечаний не выявил.
+
+UI проверен через CUA на изолированном настоящем EmployeeMovements с тестовой
+моделью команд без рабочей БД: контейнер 360 px, scrollWidth=360, кнопки около44px,
+тематика25px; явное взятие и четыре скана дошли до подтверждения завершения.
+Исходная ошибка отсутствующего QueryClient в стенде исправлена добавлением
+штатного provider; это не ошибка production-приложения. Authenticated production
+click-through и запрос карты из стенда не выполнялись; HTTP-доступ и маршруты
+покрыты API-тестами. Временный сервер/вкладка закрыты. Артефакты проверки хранятся
+в task workspace output/ui/raw-access-verification.json и снимке экрана.
+
+После запуска production фоновый цикл проверен: активных автоспусков0, сборок0.
+Единственная положительная raw-паллета на верхнем ярусе не выбрана, поскольку
+она не старейшая партия своей тематики; pure read-only диагностика подтвердила
+причину «Сначала нужна самая старая партия этой тематики». Тестовых заданий,
+перемещений товара и корректировок остатков на production не делалось.
+Правила добровольного автоспуска и разнообразия тематик описаны в ADR087.
