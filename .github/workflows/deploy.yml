@@ -1,0 +1,76 @@
+name: Deploy WMS production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full commit SHA from a successful Publish WMS images run
+        required: true
+        type: string
+      ingress:
+        description: none keeps all ports private; edge explicitly enables public HTTPS
+        required: true
+        type: choice
+        default: none
+        options: [none, edge]
+
+concurrency:
+  group: wms-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+jobs:
+  deploy:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Resolve a verified publication of the requested commit
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/release/pipeline.mjs validate --sha "$RELEASE_SHA"
+          git fetch origin "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" "origin/$DEFAULT_BRANCH"
+          publish_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow publish.yml --commit "$RELEASE_SHA" --branch "$DEFAULT_BRANCH" --event workflow_dispatch --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if ! [[ "$publish_run" =~ ^[0-9]+$ ]]; then
+            echo 'No successful default-branch publication with passed CI exists for this commit.' >&2
+            exit 1
+          fi
+          gh run download "$publish_run" --repo "$GITHUB_REPOSITORY" --name wms-release-manifest --dir "$RUNNER_TEMP/wms-manifest"
+          node scripts/release/pipeline.mjs validate --sha "$RELEASE_SHA" --manifest "$RUNNER_TEMP/wms-manifest/release.json"
+          git checkout --detach "$RELEASE_SHA"
+      - name: Ship infrastructure and deploy verified image digests over pinned SSH
+        run: node scripts/release/pipeline.mjs ship --sha "$RELEASE_SHA" --manifest "$RUNNER_TEMP/wms-manifest/release.json" --ingress "$WMS_INGRESS"
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          WMS_INGRESS: ${{ inputs.ingress }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_PORT: ${{ vars.PRODUCTION_PORT || '22' }}
+          PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rollout result
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          WMS_INGRESS: ${{ inputs.ingress }}
+        run: |
+          printf 'Internal checks passed for `%s`, ingress `%s`. Public HTTPS, login and warehouse operations need a separate verification.\n' "$RELEASE_SHA" "$WMS_INGRESS" >> "$GITHUB_STEP_SUMMARY"

@@ -2,8 +2,8 @@
 
 WMS выпускается отдельно от Artmate-monorepo: свои образы, PostgreSQL, том,
 конфигурация и master-key. Общими могут быть только сервер и внешний Caddy.
-Решение о площадке, DNS и публикации ещё не принято. Эти файлы не подключаются
-к серверу автоматически и не меняют инфраструктуру Artmate.
+Для WMS выбран отдельный VPS; DNS и первый rollout выполняются отдельно.
+Эти файлы не подключаются к серверу автоматически и не меняют инфраструктуру Artmate.
 
 ## Что готово в репозитории
 
@@ -16,7 +16,9 @@ WMS выпускается отдельно от Artmate-monorepo: свои об
 - `infra/compose.artmate.yml`: только Web подключается к существующей сети прокси.
 - `.github/workflows/ci.yml`: типы, архитектура, тесты, build и реальный smoke
   контейнеров с восстановлением backup. `publish.yml` запускается вручную после
-  этих проверок и выпускает только SHA-теги, без `latest` и без SSH/deploy.
+  этих проверок и выпускает SHA-теги и digest manifest, без `latest` и без deployment.
+  `deploy.yml` — отдельный ручной rollout по проверенному manifest с закреплённым
+  SSH host key: [настройка GitHub и VPS](GITHUB_DEPLOYMENT.md).
 - Скрипты настройки, preflight, deploy, backup и restore:
   [эксплуатационные команды](RELEASE_OPERATIONS.md).
 
