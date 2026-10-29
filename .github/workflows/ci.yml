@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: 24
           cache: yarn
+      - name: Check public dependency sources
+        run: node scripts/check-dependency-sources.mjs
       - run: yarn install --frozen-lockfile --non-interactive
       - run: yarn check-types
       - run: yarn lint

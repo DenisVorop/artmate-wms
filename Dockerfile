@@ -3,10 +3,11 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
 COPY package.json yarn.lock .yarnrc ./
+COPY scripts/check-dependency-sources.mjs scripts/check-dependency-sources.mjs
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
-    yarn install --frozen-lockfile --non-interactive
+    node scripts/check-dependency-sources.mjs && yarn install --frozen-lockfile --non-interactive
 
 FROM dependencies AS generated
 COPY . .
@@ -26,8 +27,9 @@ FROM ${NODE_IMAGE} AS api-dependencies
 WORKDIR /runtime
 COPY apps/api/package.json ./package.json
 COPY yarn.lock .yarnrc ./
+COPY scripts/check-dependency-sources.mjs scripts/check-dependency-sources.mjs
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
-    yarn install --production --frozen-lockfile --non-interactive
+    node scripts/check-dependency-sources.mjs && yarn install --production --frozen-lockfile --non-interactive
 
 FROM ${NODE_IMAGE} AS api
 ENV NODE_ENV=production API_HOST=0.0.0.0 API_PORT=4080
