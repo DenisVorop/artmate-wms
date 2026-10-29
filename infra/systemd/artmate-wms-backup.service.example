@@ -1,14 +1,14 @@
 [Unit]
-Description=Artmate WMS database backup
+Description=Artmate WMS current production database backup
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
-# Replace with the deployment account that already has authorized Docker access.
-User=deploy
-Group=deploy
+User=wms-deploy
+Group=wms-deploy
 WorkingDirectory=/opt/artmate-wms
 UMask=0077
-ExecStart=/usr/bin/node /opt/artmate-wms/scripts/backup-daily.mjs --env-file /opt/artmate-wms/.env.production --directory /var/backups/artmate-wms
+Environment=TZ=Europe/Moscow
+ExecStart=/usr/local/bin/node /opt/artmate-wms/bin/backup-current.mjs
 TimeoutStartSec=30min

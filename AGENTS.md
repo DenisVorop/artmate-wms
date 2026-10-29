@@ -229,7 +229,7 @@ WMS отдельный Compose-проект/БД/ключи. Не изменят
 - Репозиторий: private `DenisVorop/artmate-wms`; GitHub production environment хранит SSH credentials и production env. Значения секретов никогда не писать сюда.
 - Project directory: `/opt/artmate-wms`, owner `wms-deploy`, mode `700`; Compose project `artmate-wms`.
 - Bootstrap проверен 2026-10-29: Node `24.22.2`, Docker Engine `29.9.2`, Docker Compose plugin `5.6.1`, Docker enabled/active, swap `/swapfile` 2 GiB, `vm.swappiness=10`.
-- Входы operator и CI по отдельным ключам проверены; Compose base/edge проходят preflight на самом VPS. Приложение/БД ещё не развёрнуты; shared production env создаст отдельный первый rollout.
+- Входы operator и CI по отдельным ключам проверены; Compose base/edge проходят preflight на самом VPS. Production развёрнут 2026-10-29 на https://wms.artmate.ru; shared env уже существует, исходный master key сохранять неизменным.
 - Локальные SSH aliases в `~/.ssh/config`: `artmate-wms` (оператор) и `artmate-wms-deploy` (CI user); IdentitiesOnly/StrictHostKeyChecking включены.
 - Точка входа подключения после первичной установки ключа:
 
@@ -250,3 +250,14 @@ ssh -i /Users/denis.voropayev/.ssh/artmate-wms-codex -o IdentitiesOnly=yes -o St
 `yarn.lock` содержит только публичные HTTPS tarball URLs npmjs.org/registry.yarnpkg.com; корпоративные proxy/Artifactory и credentials не переносить из глобальных настроек разработчика. Версии и integrity hashes фиксированы; при исправлении registry менять только resolved URL. `node scripts/check-dependency-sources.mjs` выполняется до установки в CI и обеих install-стадиях Docker. Не отключать TLS/проверку сертификатов для обхода ошибок registry. Чистая установка без локального кэша обязательна при изменении источников зависимостей.
 
 Yarn Classic cache mounts в Docker используют `sharing=locked`: workspace dependencies и production dependencies могут собираться параллельно и иначе повреждают общий extraction cache. Не отключать проверку integrity и не лечить гонку повторными установками.
+
+
+## Production после переключения — 2026-10-29
+
+Рабочий адрес https://wms.artmate.ru, сотрудникам https://wms.artmate.ru/work. DNS A wms → 178.236.242.215 (Cloudflare DNS only), Caddy выдаёт публичный HTTPS. Сайт Artmate и его сервер не менялись. Активный релиз и directory читать из `/opt/artmate-wms/shared/current-release.json`, не предполагать фиксированный checkout. Первый успешный SHA ff127e3ce666555c8f0c54808af611a293e9009c, deployment Actions 40914910221.
+
+Production DB `artmate_wms_import` восстановлена из полного локального снимка. Перед первым запуском совпали counts+content hashes всех 55 таблиц; оригинальный ключ расшифровал Ozon/WB и WB finance. Аккаунты сохраняют прежние пароли; на новом домене войти заново. Внешние порты только SSH22, HTTP80/HTTPS443; API/PostgreSQL не публиковать.
+
+Локальный `scripts/start.mjs` и его API/web/phone остановлены при переключении. Не запускать локальные schedulers с прежней рабочей базой: единственный источник дальнейшего учёта — production VPS. Для разработки сначала отдельная тестовая БД, без рабочих ключей и живого импорта. Исходные локальные данные не удалялись.
+
+Ежедневная копия systemd `artmate-wms-backup.timer`, 03:15 Europe/Moscow + до 5 мин. Wrapper `/opt/artmate-wms/bin/backup-current.mjs` выбирает текущий release, вызывает штатный backup, при deploy.lock пропускает запуск, ничего не удаляет. Исходник и unit templates хранятся в scripts/release и infra/systemd. Копии `/opt/artmate-wms/backups` имеют checksum manifests; первая production-копия дополнительно сохранена на Mac с явного разрешения пользователя. Автоматическая внешняя выгрузка ещё не настроена. См. docs/PRODUCTION.md. Не выдавать первые замеры памяти за нагрузочное тестирование реальной смены.

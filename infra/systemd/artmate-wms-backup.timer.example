@@ -2,8 +2,8 @@
 Description=Daily Artmate WMS database backup
 
 [Timer]
-OnCalendar=*-*-* 02:15:00
-RandomizedDelaySec=300
+OnCalendar=*-*-* 03:15:00 Europe/Moscow
+RandomizedDelaySec=5min
 Persistent=true
 Unit=artmate-wms-backup.service
 
