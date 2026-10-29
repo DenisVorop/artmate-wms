@@ -3,14 +3,18 @@ import { useState } from "react";
 import type { RollLabelFormat } from "@/shared/lib/label-paper";
 
 /** Image readiness belongs to this exact response and retry, never a prior QR. */
-export function useLabelPrint(identity: string, svg?: string) {
-  const [format, setFormat] = useState<RollLabelFormat>("75x120");
+export function useLabelPrint(
+  identity: string,
+  svg?: string,
+  initialFormat: RollLabelFormat = "75x120",
+) {
+  const [format, setFormat] = useState<RollLabelFormat>(initialFormat);
   const [attempt, setAttempt] = useState(0);
   const [image, setImage] = useState<{
     key: string;
     status: "loaded" | "failed";
   } | null>(null);
-  const key = `${identity}:${attempt}:${svg ?? ""}`;
+  const key = `${identity}:${format}:${attempt}:${svg ?? ""}`;
   const ready = !!svg && image?.key === key && image.status === "loaded";
   const failed = image?.key === key && image.status === "failed";
   return {

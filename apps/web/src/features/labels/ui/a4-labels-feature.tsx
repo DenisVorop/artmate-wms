@@ -11,6 +11,8 @@ import {
   ErrorState,
   LoadingState,
   rollPaperClass,
+  LocationRollLabel,
+  RollLabel,
 } from "@/shared/ui";
 import { a4LabelItems, a4Sheets, type A4LabelType } from "../lib/a4-labels";
 import { useA4Labels } from "../model/use-a4-labels";
@@ -94,7 +96,7 @@ function A4LabelsEditor({
     selected.length > 0 &&
     batch.length === selected.length &&
     print.ready;
-  const roll = print.output === "75x120";
+  const roll = print.output !== "a4";
   const sheets = roll ? batch.map((item) => [item]) : a4Sheets(batch);
   function toggle(key: string) {
     setSelected((current) =>
@@ -120,8 +122,8 @@ function A4LabelsEditor({
           </Link>
           <h1 className="page-heading">Таблички склада</h1>
           <p className="page-description">
-            Выберите зоны и места. Печатайте на рулоне Xprinter 75 × 120 мм или
-            по четыре таблички на листе А4.
+            Выберите зоны и места. Печатайте горизонтальные этикетки 120 × 75 мм
+            или по четыре таблички на листе А4.
           </p>
         </div>
         <Button
@@ -149,9 +151,12 @@ function A4LabelsEditor({
               className="input"
               value={print.output}
               onChange={(event) =>
-                print.setOutput(event.target.value as "a4" | "75x120")
+                print.setOutput(
+                  event.target.value as "a4" | "75x120" | "120x75",
+                )
               }
             >
+              <option value="120x75">120 × 75 мм · горизонтально</option>
               <option value="a4">А4 · 4 таблички на листе</option>
               <option value="75x120">Xprinter · 75 × 120 мм</option>
             </select>
@@ -231,12 +236,14 @@ function A4LabelsEditor({
             <p>
               <strong>
                 {roll
-                  ? "75 × 120 мм · одна этикетка · масштаб 100%"
+                  ? `${print.output === "120x75" ? "120 × 75" : "75 × 120"} мм · одна этикетка · масштаб 100%`
                   : "А4 · книжная ориентация · масштаб 100%"}
               </strong>
               <span>
                 {roll
-                  ? "В драйвере выберите бумагу 75 × 120 мм, без полей и колонтитулов."
+                  ? print.output === "120x75"
+                    ? "Рулон 75 × 120 мм: альбомная ориентация, без полей и колонтитулов."
+                    : "Рулон 75 × 120 мм: книжная ориентация, без полей и колонтитулов."
                   : "Отключите колонтитулы браузера. Пунктир — линия вырезания."}
               </span>
             </p>
@@ -328,12 +335,34 @@ function A4LabelsEditor({
           <div className={styles.sheets}>
             {sheets.map((sheet, index) => (
               <div
-                className={`${styles.sheet} ${roll ? `${styles.rollSheet} ${rollPaperClass("75x120")}` : ""}`}
+                className={`${styles.sheet} ${roll ? `${styles.rollSheet} ${print.output === "120x75" ? styles.wideSheet : ""} ${rollPaperClass(print.output === "120x75" ? "120x75" : "75x120")}` : ""}`}
                 key={index}
                 aria-label={`Лист ${index + 1} из ${sheets.length}`}
               >
                 {sheet.map((item) => {
                   const imageKey = print.key(item);
+                  if (print.output === "120x75") {
+                    const qr = {
+                      imageKey,
+                      onLoad: () => print.loaded(imageKey),
+                      onError: () => print.fail(imageKey),
+                    };
+                    return item.type === "location" ? (
+                      <LocationRollLabel
+                        key={item.key}
+                        label={item.label}
+                        {...qr}
+                      />
+                    ) : (
+                      <RollLabel
+                        key={item.key}
+                        label={item.label}
+                        format="120x75"
+                        caption={item.category}
+                        {...qr}
+                      />
+                    );
+                  }
                   return (
                     <article
                       className={`${styles.card} ${item.label.title.length > 24 ? styles.mediumCard : ""} ${item.label.title.length > 50 ? styles.longCard : ""} ${item.label.title.length > 130 || item.label.code.length > 40 ? styles.denseCard : ""}`}

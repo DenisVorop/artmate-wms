@@ -52,7 +52,7 @@ export function LocationLabel({ id, onClose }: Props) {
             className="button button--primary"
           >
             <Printer size={16} />
-            Этикетка 75 × 120
+            Этикетка 120 × 75
           </Link>
         </div>
       )}

@@ -1,0 +1,65 @@
+.label {
+  width: 120mm;
+  height: 75mm;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 73mm minmax(0, 1fr);
+  padding: 1mm;
+  background: white;
+  color: black;
+  font-family: Arial, sans-serif;
+  line-height: 1.1;
+  flex: none;
+}
+.label img {
+  display: block;
+  width: 73mm;
+  height: 73mm;
+  padding: 2mm;
+  box-sizing: border-box;
+  background: white;
+}
+.captions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 7mm 1mm 8mm;
+  min-width: 0;
+}
+.place {
+  font-size: 16pt;
+  overflow-wrap: anywhere;
+}
+.tier {
+  margin-top: 5mm;
+  font-size: 23pt;
+}
+.code {
+  margin-top: auto;
+  font-size: 28pt;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.longCode {
+  font-size: 18pt;
+}
+.longPlace {
+  font-size: 12pt;
+}
+.archived {
+  font-size: 10pt;
+  margin-bottom: 2mm;
+}
+@media print {
+  .label {
+    margin: 0;
+    break-inside: avoid;
+    break-after: page;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .label:last-child {
+    break-after: auto;
+  }
+}

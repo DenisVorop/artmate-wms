@@ -7,6 +7,7 @@ import {
   RollLabelFormatSelect,
   rollPaperClass,
   RollLabel,
+  LocationRollLabel,
 } from "@/shared/ui";
 import { rollLabelFormats } from "@/shared/lib/label-paper";
 import { useLabel, type LabelType } from "../model/use-label";
@@ -21,7 +22,11 @@ const labelNames = {
 };
 export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
   const query = useLabel(type, id);
-  const print = useLabelPrint(`${type}:${id}`, query.data?.svg);
+  const print = useLabelPrint(
+    `${type}:${id}`,
+    query.data?.svg,
+    type === "location" ? "120x75" : "75x120",
+  );
   const backHref =
     type === "box"
       ? "/assembly"
@@ -96,6 +101,9 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
         </div>
         <div className={styles.printActions}>
           <RollLabelFormatSelect
+            formats={
+              type === "location" ? ["120x75", "75x120", "100x70"] : undefined
+            }
             value={print.format}
             onChange={print.setFormat}
           />
@@ -137,14 +145,23 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
         Дождитесь загрузки QR перед печатью.
       </p>
       <div className={styles.preview}>
-        <RollLabel
-          label={label}
-          format={print.format}
-          imageKey={print.key}
-          caption={labelNames[type]}
-          onLoad={print.markLoaded}
-          onError={print.markFailed}
-        />
+        {type === "location" && print.format === "120x75" ? (
+          <LocationRollLabel
+            label={label}
+            imageKey={print.key}
+            onLoad={print.markLoaded}
+            onError={print.markFailed}
+          />
+        ) : (
+          <RollLabel
+            label={label}
+            format={print.format}
+            imageKey={print.key}
+            caption={labelNames[type]}
+            onLoad={print.markLoaded}
+            onError={print.markFailed}
+          />
+        )}
       </div>
     </div>
   );

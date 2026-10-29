@@ -5,13 +5,19 @@ import {
 } from "@/shared/lib/label-paper";
 import styles from "./roll-label-format.module.css";
 export function rollPaperClass(format: RollLabelFormat) {
-  return format === "75x120" ? styles.portrait : styles.landscape;
+  return format === "120x75"
+    ? styles.addressLandscape
+    : format === "75x120"
+      ? styles.portrait
+      : styles.landscape;
 }
 export function RollLabelFormatSelect({
   value,
   onChange,
+  formats = ["75x120", "100x70"],
 }: {
   value: RollLabelFormat;
+  formats?: readonly RollLabelFormat[];
   onChange: (value: RollLabelFormat) => void;
 }) {
   return (
@@ -22,9 +28,9 @@ export function RollLabelFormatSelect({
         value={value}
         onChange={(event) => onChange(event.target.value as RollLabelFormat)}
       >
-        {Object.entries(rollLabelFormats).map(([key, title]) => (
+        {formats.map((key) => (
           <option key={key} value={key}>
-            {title}
+            {rollLabelFormats[key]}
           </option>
         ))}
       </select>

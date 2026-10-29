@@ -102,6 +102,7 @@
 }
 .preview {
   min-width: 0;
+  overflow-x: auto;
 }
 .instructions {
   display: flex;
@@ -382,7 +383,17 @@
 .rollSheet .code.longCode {
   font-size: 10pt;
 }
+.sheet.wideSheet {
+  width: 120mm;
+  height: 75mm;
+}
 @media print {
+  .sheet.rollSheet.wideSheet {
+    page: wmsRoll120;
+  }
+  .page[data-output="120x75"][data-print-ready="false"] .printNotice {
+    page: wmsRoll120;
+  }
   .sheet.rollSheet {
     page: wmsRoll75;
   }

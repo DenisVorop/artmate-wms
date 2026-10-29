@@ -123,6 +123,19 @@
   font-size: 7pt;
 }
 
+.label[data-format="120x75"] .labelBody {
+  grid-template-columns: 45mm minmax(0, 1fr);
+}
+.label[data-format="120x75"] .labelBody img {
+  width: 45mm;
+  height: 45mm;
+}
+.label[data-format="120x75"] .labelBody h2 {
+  font-size: 20pt;
+}
+.label[data-format="120x75"].denseLabel .labelBody h2 {
+  font-size: 10pt;
+}
 @media print {
   .label {
     width: var(--roll-width);
