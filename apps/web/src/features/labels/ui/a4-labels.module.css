@@ -268,6 +268,9 @@
   .workspace {
     display: block;
   }
+  .preview {
+    overflow: visible;
+  }
   .sheets {
     display: block;
   }
