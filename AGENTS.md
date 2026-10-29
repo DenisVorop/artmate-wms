@@ -212,3 +212,32 @@ Ozon querywindow и created_at различаются: сохранять нас
 ## Релиз и инфраструктура
 
 WMS отдельный Compose-проект/БД/ключи. Не изменять Artmate-monorepo или сервер/DNS без отдельного запроса. Docker targets api/web, Next standalone, compile-time API DNS artmate-wms-api-internal:4080; generated Swagger/Orval не коммитить. Production main/migrate требуют явный PostgreSQL, HTTPS origins, Secure host-only cookie и существующий master-key; fresh production без demo. DI/export не запускают schedulers и не требуют настоящих секретов. Публичные health probes отдают только status, warehouse auth не обходить. Graceful shutdown: остановить/дождаться всех schedulers до app/DB.close. Один API на первом релизе. Backup до миграции, restore только в новую БД, исходный ключ обязателен; не делать down-v/prune/drop/автооткат. CI не публикует и не деплоит; publish отдельный ручной SHA/digest workflow. Контейнерные проверки только unique disposable project с loopback портом. См. ADR082 и docs/DEPLOYMENT.md.
+
+
+## Production VPS WMS и SSH
+
+Сервер WMS отдельный от сервера сайта Artmate. Не путать host, ключи, БД, registry и Compose-проекты.
+
+- Провайдер: Aeza; service `2020285`; location Moscow, тариф MSKs-1.
+- Host: `178.236.242.215`; SSH port: `22`; Ubuntu 26.04; 1 shared vCPU / 2 GB RAM / 30 GB NVMe.
+- Host key первого входа, сообщённый пользователем: Ed25519 `SHA256:8UJSoReEby9w+/Thy4oKJhvFkoGgNq7kFIwR3Gp96Z8` (TOFU; затем проверять строго).
+- SSH operator: `root`; локальный приватный ключ `/Users/denis.voropayev/.ssh/artmate-wms-codex`.
+- Fingerprint operator public key: `SHA256:6zAX++zUpAUqNz0LiigxqZedzJT+5iG94PH5Ee4GMW4`.
+- SSH CI user: `wms-deploy` (non-root с административным Docker-доступом).
+- Отдельный ключ CI: `/Users/denis.voropayev/.ssh/artmate-wms-github-actions-deploy`; fingerprint `SHA256:YHXFhty87ofY54fmdD1MqZorz/FlRIbo1h8qgPGL/ZY`.
+- Репозиторий: private `DenisVorop/artmate-wms`; GitHub production environment хранит SSH credentials и production env. Значения секретов никогда не писать сюда.
+- Планируемый project directory: `/opt/artmate-wms`; Compose project `artmate-wms`.
+- Локальные SSH aliases в `~/.ssh/config`: `artmate-wms` (оператор) и `artmate-wms-deploy` (CI user); IdentitiesOnly/StrictHostKeyChecking включены.
+- Точка входа подключения после первичной установки ключа:
+
+```bash
+ssh -i /Users/denis.voropayev/.ssh/artmate-wms-codex -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes root@178.236.242.215
+```
+
+Перед SSH-операциями нужна явная авторизация пользователя на соответствующую работу; запрос на подключение и настройку WMS разрешает необходимые команды в рамках этой задачи, без повторного вопроса для каждой команды. Не распространять это разрешение на сервер сайта Artmate. Новая выкладка приложения, перенос рабочей БД, изменение DNS, удаление данных или смена ключа шифрования требуют отдельного соответствующего запроса; настройка доступа и пайплайнов сама по себе их не разрешает.
+
+Строго проверять SSH host key; первый key закрепляется при доверенном первичном входе, последующие несовпадения не обходить. GitHub Actions получает pinned `known_hosts`; не делать blind ssh-keyscan/StrictHostKeyChecking=no. Содержимое приватных ключей, паролей, auth cookies, токенов, `.env.production` и дампов не выводить в чат/логи и не коммитить. Ключи WMS не заимствовать у Artmate-monorepo. Доступ CI с Docker является административным для этого VPS; не выдавать его другим репозиториям.
+
+На 2 GB применять начальные бюджеты `infra/resources.small.env.example` через protected production env. Они ограничивают память контейнеров и V8 heap, но не заменяют замер нагрузки. Сборки выполняются на GitHub runner. Параллельные API/обучения и публичные порты PostgreSQL/API не включать. Swap — страховка от краткого пика, а не дополнительная RAM. До production проверить сканы одновременно с импортом/прогнозом и отсутствие OOM.
+
+Пайплайны: `WMS CI` на push/PR, ручной `Publish WMS images` на main после CI с manifest SHA/digest, отдельный ручной `Deploy WMS production`. Deploy только successful publish SHA из main и pinned known_hosts; временный GITHUB_TOKEN для private GHCR, сравнение OCI revision/source до остановки, сохранение существующих secrets, backup→migrate→health. По умолчанию ingress=none. Применённый ingress=edge сохраняется явно. Подробности: `docs/GITHUB_DEPLOYMENT.md`, `docs/VPS_ACCESS.md`; bootstrap: `scripts/server/bootstrap.sh`.

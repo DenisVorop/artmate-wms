@@ -18,6 +18,7 @@ x-api: &api
     NODE_ENV: production
     API_HOST: 0.0.0.0
     API_PORT: "4080"
+    NODE_OPTIONS: ${WMS_API_NODE_OPTIONS:-}
     DATABASE_URL: postgresql://${POSTGRES_USER:-wms}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-artmate_wms}
     WEB_ORIGIN: https://${WMS_DOMAIN:?Set WMS_DOMAIN}
     WMS_AUTH_COOKIE_SECURE: "true"
@@ -90,6 +91,7 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: "3080"
       NEXT_TELEMETRY_DISABLED: "1"
+      NODE_OPTIONS: ${WMS_WEB_NODE_OPTIONS:-}
     networks: [private]
     depends_on:
       api:
