@@ -134,3 +134,43 @@ health/auth checks прошли; отдельный read-only probe на product
 стандартная выкладка может заменить его опубликованным GHCR digest через прежний
 пайплайн. Текущий прямой релиз не означает разрешение автоматически выкатывать
 позднее завершившиеся фоновые публикации.
+
+## Горизонтальные этикетки адресов — 2026-10-29
+
+Web обновлён напрямую по постоянному запросу пользователя выкладывать изменения
+без ожидания пайплайнов. Финальный webRevision:
+`a1ca354d5132fe730229c1a615370a145860e86c` (шаблон: `1493742`).
+API остался на `255e2991cf503ee6c9b239b16407e54ac52430dd`, его контейнер не
+перезапускался; schema18, конфигурация, мастер-ключ и учёт сохранены.
+
+Image `artmate-wms-web:a1ca354d5132fe730229c1a615370a145860e86c`, image ID
+`sha256:836aa92e33737b4853ea08e6aaadf928a276f1fb925ed7fdffe84a01ac9b5b22`.
+Directory:
+`/opt/artmate-wms/releases/a1ca354d5132fe730229c1a615370a145860e86c-web-clean-20261029`.
+Mode в current-release: `direct-web-update-user-requested`, apiRevision и
+webRevision раздельные. Новый web использует plain commit tag, API сохраняет
+свой прежний sha-tag. Не retag/prune локальные образы действующих релизов.
+
+Из-за недоступного Docker registry frontend собран штатным `next build` локально
+с production API DNS, затем portable standalone app/static помещены в новый
+образ поверх прежнего Linux/amd64 runtime. yarn.lock, package.json, Next config
+и Dockerfile не менялись относительно runtime; Linux node_modules сохранены.
+Всё приложение .next заменено целиком, старые chunks в образе не смешивались.
+Контрольные суммы всех 544 файлов проверены на VPS и внутри нового image.
+Dockerfile, artifact-manifest и процедура выкладки находятся в release bundle.
+Это отдельный immutable image; активный контейнер не редактировался.
+
+После deploy.lock: отдельный read-only smoke-контейнер с loopback-портом и
+лимитом 256 MiB проверил health, прокси к API и маршрут labels/a4, затем удалён.
+Перед переключением web сохранён checksum backup
+`before-web-labels-2026-10-29T19-13-17.574Z.dump`. Перезапущен только web,
+конфигурация кроме WMS_WEB_IMAGE побайтно по значениям сохранена. Публичные
+health/labels/auth, healthy/OOM, revision/image и разрешение текущего каталога
+ежедневным backup wrapper проверены независимо. Shared env остаётся0600.
+
+Проверки исходников:557 API pass,2 optional skip;445 web pass;check-types,
+FSD lint, build. В браузере проверен реальный компонент на адресе A-07-01 и
+дополнительных fixtures:120×75 мм, подписи и QR, без обрезания. Production-сессия
+руководителя закончилась: авторизованный редактор печати в этой проверке не
+проходился; его HTML-маршрут/статика и API proxy проверены контейнером.
+Шаблон и границы FSD описаны в ADR085.
