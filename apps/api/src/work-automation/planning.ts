@@ -11,6 +11,7 @@ import type {
   AutomaticTaskPurpose,
 } from "./types";
 export const AUTOMATIC_TASK_MAX_BOXES = 10;
+export const AUTOMATIC_QUEUE_MAX_TASKS = 5;
 export const AUTOMATIC_RUN_MAX_INTENTS = 20;
 export function untouchedAutomaticTask(
   task: TaskDto,
@@ -107,6 +108,33 @@ export function automaticTaskIntents(
     untouchedAutomaticTask(task, origins),
   );
   const base = automaticPlanningWorkspace(w, origins);
+  // Taken, assigned and manual work keeps its slot until completion. Only
+  // untouched automatic work may be replaced by the latest priorities.
+  const availableSlots = Math.max(
+    0,
+    AUTOMATIC_QUEUE_MAX_TASKS -
+      base.tasks.filter((task) => task.status !== "completed").length,
+  );
+  // Rotate only themes that have actually entered work. Pending automatic
+  // proposals do not change ordering on each scheduler tick.
+  const lastServedAt = new Map<string, number>();
+  for (const task of base.tasks) {
+    const origin = origins.find(
+      (item) => item.taskId === task.id && item.status === "queued",
+    );
+    if (!origin) continue;
+    const timestamp = Date.parse(origin.createdAt ?? task.createdAt ?? "");
+    const knownTime = Number.isFinite(timestamp)
+      ? timestamp
+      : Number.NEGATIVE_INFINITY;
+    lastServedAt.set(
+      task.skuId,
+      Math.max(
+        lastServedAt.get(task.skuId) ?? Number.NEGATIVE_INFINITY,
+        knownTime,
+      ),
+    );
+  }
   const simulation = { ...base, tasks: [...base.tasks] };
   const desired = new Map<
     string,
@@ -119,15 +147,19 @@ export function automaticTaskIntents(
     const rows = [...plan.rows].sort(
       (a, b) =>
         Number(b.recommendedBoxes > 0) - Number(a.recommendedBoxes > 0) ||
+        Number(lastServedAt.has(a.skuId)) - Number(lastServedAt.has(b.skuId)) ||
+        (lastServedAt.get(a.skuId) ?? Number.NEGATIVE_INFINITY) -
+          (lastServedAt.get(b.skuId) ?? Number.NEGATIVE_INFINITY) ||
         (a.backlogRank ?? Number.MAX_SAFE_INTEGER) -
           (b.backlogRank ?? Number.MAX_SAFE_INTEGER) ||
         a.skuName.localeCompare(b.skuName, "ru"),
     );
     for (const row of rows) {
-      if (desired.size >= AUTOMATIC_RUN_MAX_INTENTS) break;
+      if (desired.size >= availableSlots) break;
       const sku = w.skus.find((item) => item.id === row.skuId);
       if (
         !sku ||
+        desired.has(row.skuId) ||
         !row.dataComplete ||
         !row.backlogCapacityKnown ||
         !Number.isSafeInteger(sku.unitsPerBox) ||
@@ -179,6 +211,8 @@ export function automaticTaskIntents(
           proposalHash: goal.hash,
         });
     }
+    // A truncated reconciliation must finish withdrawing obsolete work in a
+    // later run before creating replacements; otherwise the live queue can grow.
     if (intents.length >= AUTOMATIC_RUN_MAX_INTENTS) return intents;
   }
   for (const [skuId, goal] of desired) {

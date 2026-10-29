@@ -12,6 +12,7 @@ import {
   initializeWorkAutomationStorage,
   automationOrigins,
   automationSettings,
+  saveAutomationOrigin,
 } from "../src/work-automation/storage";
 import type {
   MarketplacePlanDto,
@@ -336,5 +337,202 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
     if (previousDir === undefined) delete process.env.WMS_DATA_DIR;
     else process.env.WMS_DATA_DIR = previousDir;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent runs preserve the five-task budget through withdrawal, claim and completion", async () => {
+  const previousDir = process.env.WMS_DATA_DIR;
+  process.env.WMS_DATA_DIR = "memory://";
+  let warehouse: WarehouseService | undefined;
+  try {
+    warehouse = new WarehouseService();
+    const w = warehouse;
+    await w.snapshot();
+    for (let index = 0; index < 4; index++)
+      await w.createTask({
+        requestId: randomUUID(),
+        skuId: "sku-flowers",
+        boxesTarget: 1,
+      });
+    const manual = structuredClone((await w.snapshot()).tasks);
+    const legacyIds: string[] = [];
+    await w.authTransaction(async (tx) => {
+      const state = await w.stocktakeState(tx);
+      const previousIds = new Set(state.tasks.map((task) => task.id));
+      // Legacy queue, using the normal atomic FIFO reservation path.
+      await w.applyAutomaticTasks(
+        tx,
+        state,
+        Array.from({ length: 6 }, () => ({
+          kind: "create" as const,
+          skuId: "sku-cats",
+          boxesTarget: 1,
+          purpose: "urgent" as const,
+          proposalHash: "legacy",
+        })),
+      );
+      for (const task of state.tasks.filter(
+        (task) => !previousIds.has(task.id),
+      )) {
+        legacyIds.push(task.id);
+        await saveAutomationOrigin(tx, {
+          taskId: task.id,
+          skuId: task.skuId,
+          purpose: "urgent",
+          proposalHash: "legacy",
+          createdAt: "2026-10-27T10:00:00Z",
+          updatedAt: "2026-10-27T10:00:00Z",
+          boxesTarget: 1,
+          status: "queued",
+          withdrawnAt: null,
+          withdrawnReason: null,
+          withdrawnTask: null,
+        });
+      }
+    });
+    let completedSpace = false;
+    const row = (skuId: string, rank: number, boxes = 1) =>
+      ({
+        skuId,
+        skuName: skuId,
+        unitsPerBox: 20,
+        averageDailyUnits: 10,
+        localAfterAssemblyUnits: 0,
+        recommendedBoxes: boxes,
+        recommendedUnits: boxes * 20,
+        rawAvailableUnits: 1000,
+        canCreate: boxes > 0,
+        dataComplete: true,
+        backlogCapacityKnown: true,
+        backlogCanCreate: false,
+        backlogRank: rank,
+        unregisteredUnits: 0,
+        stockEstimated: false,
+        proposalHash: `current-${skuId}`,
+        providers: [],
+        blockers: [],
+      }) as unknown as MarketplacePlanRowDto;
+    const makeService = () =>
+      WorkAutomationService.forTesting(w, {
+        forecast: async () => ({
+          key: "published",
+          cacheCurrent: true,
+          goals: {},
+          minimumBoxes: {},
+        }),
+        plan: () =>
+          ({
+            rows: [
+              row("sku-space", 1, completedSpace ? 0 : 1),
+              row("sku-dinos", completedSpace ? 0 : 2),
+              row("sku-flowers", 3),
+            ],
+          }) as MarketplacePlanDto,
+      });
+    const run = () =>
+      Promise.all([
+        makeService().runWorkAutomation(),
+        makeService().runWorkAutomation(),
+      ]);
+    const before = await w.snapshot();
+    assert.equal(before.tasks.length, 10);
+    assert.equal(
+      (await run()).filter((result) => result === "updated").length,
+      1,
+    );
+    const after = await w.snapshot();
+    assert.equal(
+      after.tasks.filter((task) => task.status !== "completed").length,
+      5,
+    );
+    assert.deepEqual(
+      after.tasks.filter((task) => manual.some((old) => old.id === task.id)),
+      manual,
+    );
+    const automatic = after.tasks.find((task) => task.autoPurpose)!;
+    assert.equal(automatic.skuId, "sku-space");
+    assert.deepEqual(
+      automatic.reservations.map((r) => [r.palletId, r.quantity]),
+      [["pallet-raw-1", 20]],
+    );
+    assert.deepEqual(after.pallets, before.pallets);
+    const origins = await w.authTransaction((tx) => automationOrigins(tx));
+    const withdrawn = origins.filter((origin) =>
+      legacyIds.includes(origin.taskId),
+    );
+    assert.equal(withdrawn.length, 6);
+    assert.ok(
+      withdrawn.every(
+        (origin) =>
+          origin.status === "withdrawn" &&
+          origin.withdrawnAt &&
+          origin.withdrawnReason,
+      ),
+    );
+    assert.equal(
+      withdrawn
+        .flatMap((origin) => origin.withdrawnTask!.reservations)
+        .reduce((sum, r) => sum + r.quantity, 0),
+      120,
+    );
+    assert.ok(
+      after.tasks.every((task) =>
+        task.reservations.every(
+          (r) => !["pallet-raw-0", "pallet-cats-new"].includes(r.palletId),
+        ),
+      ),
+    );
+    await w.claimTask(automatic.id, {
+      requestId: randomUUID(),
+      employeeId: "employee-1",
+    });
+    const claimed = await w.snapshot();
+    assert.deepEqual(await run(), ["skipped", "skipped"]);
+    assert.deepEqual((await w.snapshot()).tasks, claimed.tasks);
+    const source = claimed.pallets.find(
+      (p) => p.id === automatic.reservations[0].palletId,
+    )!;
+    const scan = (kind: "source" | "box" | "barcode", value: string) =>
+      w.scanTask(automatic.id, {
+        requestId: randomUUID(),
+        employeeId: "employee-1",
+        kind,
+        value,
+      });
+    await scan("source", source.code);
+    await scan("box", automatic.openBoxCode);
+    const sku = claimed.skus.find((sku) => sku.id === automatic.skuId)!;
+    for (let index = 0; index < sku.unitsPerBox; index++)
+      await scan("barcode", sku.barcode);
+    const finished = await w.snapshot();
+    assert.equal(
+      finished.tasks.find((task) => task.id === automatic.id)!.status,
+      "completed",
+    );
+    assert.equal(
+      finished.tasks.filter((task) => task.status !== "completed").length,
+      4,
+    );
+    completedSpace = true;
+    assert.equal(
+      (await run()).filter((result) => result === "updated").length,
+      1,
+    );
+    const replenished = await w.snapshot();
+    assert.equal(
+      replenished.tasks.filter((task) => task.status !== "completed").length,
+      5,
+    );
+    const added = replenished.tasks.filter(
+      (task) => !finished.tasks.some((old) => old.id === task.id),
+    );
+    assert.equal(added.length, 1);
+    assert.equal(added[0].skuId, "sku-dinos");
+    assert.equal(added[0].status, "queued");
+    assert.equal(added[0].employeeId, null);
+  } finally {
+    await warehouse?.onModuleDestroy();
+    if (previousDir === undefined) delete process.env.WMS_DATA_DIR;
+    else process.env.WMS_DATA_DIR = previousDir;
   }
 });
