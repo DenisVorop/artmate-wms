@@ -64,7 +64,7 @@ Docker Compose, Node 24, swap, владельца каталогов и fingerpr
 пароли, заполненный env или dump в документацию/коммиты/логи.
 
 На 2 GB исходные бюджеты находятся в `infra/resources.small.env.example`.
-Сумма лимитов контейнеров 1664 MiB; Ограничения V8 heap не включают весь RSS и
+Сумма лимитов контейнеров 1664 MiB; ограничения V8 heap не включают весь RSS и
 не гарантируют отсутствие OOM при одновременной работе forecast worker.
 До рабочего запуска замерить память и задержку сканов во время импорта/прогноза.
 
@@ -72,3 +72,24 @@ Docker Compose, Node 24, swap, владельца каталогов и fingerpr
 Подготовка сервера/CI не означает разрешение выкладывать приложение, менять DNS
 или переносить рабочую БД. Для переноса нужен согласованный финальный снимок
 локального склада, исходный master key и отдельный запрос на переключение.
+
+## Проверка выполненного bootstrap — 2026-10-29
+
+- Operator `root` и CI `wms-deploy` успешно вошли с соответствующими ключами.
+- Host key совпал с закреплённым fingerprint.
+- Node 24.22.2, Docker Engine 29.9.2 и Docker Compose plugin 5.6.1 установлены;
+  docker.service active/enabled.
+- `/swapfile` 2 GiB активен и записан в fstab, vm.swappiness=10.
+- `/opt/artmate-wms`, `shared`, `releases`, `backups` принадлежат wms-deploy,
+  права 700. SSH-каталог 700, authorized_keys 600; CI key с `restrict`.
+- CI user имеет Docker-доступ и запись в release-каталог, passwordless sudo нет.
+- Base и edge Compose проверены на VPS через настоящий preflight/config --quiet
+  с временными тестовыми значениями. Проверочные файлы удалены.
+- Контейнеров нет; снаружи слушает только SSH 22 (DNS resolver локальный).
+- После подготовки свободно около 23 GiB диска, available RAM около 1.4 GiB;
+  это измерение пустого сервера, а не рабочей WMS.
+
+Production-приложение и БД не запускались, рабочие данные и production env
+на сервер не переносились, DNS не менялся. GitHub Secrets и pipeline готовы,
+но первый hosted CI был остановлен GitHub до запуска jobs из-за оплаты/лимита
+Actions. Это отдельное ограничение аккаунта, а не провал теста приложения.

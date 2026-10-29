@@ -30,7 +30,7 @@ GitHub concurrency и серверный `shared/deploy.lock` запрещают
 
 ## Однократная подготовка хоста
 
-Нужны Docker Engine с Compose v2, Node.js **24 LTS**, отдельный non-root пользователь
+Нужны Docker Engine с Compose plugin, Node.js **24 LTS**, отдельный non-root пользователь
 `wms-deploy` с доступом к Docker и принадлежащий ему каталог `/opt/artmate-wms`
 с правами `700`. Доступ к Docker даёт административные возможности: ключ pipeline
 не использовать как личный ключ оператора. VPS должен иметь запас диска для

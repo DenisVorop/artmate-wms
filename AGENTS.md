@@ -227,7 +227,9 @@ WMS отдельный Compose-проект/БД/ключи. Не изменят
 - SSH CI user: `wms-deploy` (non-root с административным Docker-доступом).
 - Отдельный ключ CI: `/Users/denis.voropayev/.ssh/artmate-wms-github-actions-deploy`; fingerprint `SHA256:YHXFhty87ofY54fmdD1MqZorz/FlRIbo1h8qgPGL/ZY`.
 - Репозиторий: private `DenisVorop/artmate-wms`; GitHub production environment хранит SSH credentials и production env. Значения секретов никогда не писать сюда.
-- Планируемый project directory: `/opt/artmate-wms`; Compose project `artmate-wms`.
+- Project directory: `/opt/artmate-wms`, owner `wms-deploy`, mode `700`; Compose project `artmate-wms`.
+- Bootstrap проверен 2026-10-29: Node `24.22.2`, Docker Engine `29.9.2`, Docker Compose plugin `5.6.1`, Docker enabled/active, swap `/swapfile` 2 GiB, `vm.swappiness=10`.
+- Входы operator и CI по отдельным ключам проверены; Compose base/edge проходят preflight на самом VPS. Приложение/БД ещё не развёрнуты; shared production env создаст отдельный первый rollout.
 - Локальные SSH aliases в `~/.ssh/config`: `artmate-wms` (оператор) и `artmate-wms-deploy` (CI user); IdentitiesOnly/StrictHostKeyChecking включены.
 - Точка входа подключения после первичной установки ключа:
 
