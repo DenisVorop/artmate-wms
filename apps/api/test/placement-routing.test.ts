@@ -579,3 +579,30 @@ test("unknown, disconnected and capped traces never invent straight paths", () =
   assert.equal(capped.status, "unknown");
   assert.match(capped.note, /лимит/);
 });
+
+test("an assembly pallet inside an aisle is a physical obstacle, including a fully blocked passage", () => {
+  const assembly = location("assembly", 5, 4, 2, 2, { kind: "assembly" });
+  const s = plan(
+    [location("source", 0.5, 4.5), location("target", 10.5, 4.5), assembly],
+    { aisles: [aisle("main", 0, 3, 12, 4)] },
+  );
+  assert.equal(
+    checkedPath(s).status,
+    "aisles",
+    "route goes around the assembly footprint",
+  );
+  assert.equal(
+    checkedPath(s, "source", "assembly").status,
+    "aisles",
+    "assembly remains a reachable endpoint",
+  );
+  assembly.y = 3;
+  assembly.depth = 4;
+  assert.equal(
+    checkedPath(s).status,
+    "unreachable",
+    "a completely blocked aisle has no false straight route",
+  );
+  assembly.archived = true;
+  assert.equal(checkedPath(s).status, "aisles");
+});

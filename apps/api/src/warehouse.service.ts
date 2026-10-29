@@ -1462,7 +1462,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         (next.kind !== "picking" || next.accessSides !== 4)
       )
         fail("Спуск требует доступ с четырёх сторон");
-      if (!l.sectionId && geometryChanged(l, next))
+      if (!l.sectionId && (geometryChanged(l, next) || l.kind !== next.kind))
         checkRect(s, next, "location");
       Object.assign(l, next);
       activity(s, "Адрес обновлён", l.code, "location");

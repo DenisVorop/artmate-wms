@@ -8,6 +8,8 @@ type Rect = {
   width: number;
   depth: number;
   rotation: number;
+  kind?: string;
+  sectionId?: string | null;
 };
 type Box = { x: number; y: number; width: number; depth: number };
 export type DoorSegment = {
@@ -91,9 +93,14 @@ export function checkRect(
       (x) =>
         !x.archived &&
         !x.sectionId &&
-        !(type === "location" && x.id === rect.id),
+        !(type === "location" && x.id === rect.id) &&
+        !(type === "aisle" && x.kind === "assembly"),
     ),
-    ...(type === "aisle" ? [] : s.aisles.filter((x) => !x.archived)),
+    // A drawn aisle may contain the assembly pallet; routing still treats it as an obstacle.
+    ...(type === "aisle" ||
+    (type === "location" && rect.kind === "assembly" && !rect.sectionId)
+      ? []
+      : s.aisles.filter((x) => !x.archived)),
   ];
   const conflict = candidates.find((other) =>
     overlaps(footprint(rect), footprint(other)),
