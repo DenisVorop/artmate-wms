@@ -219,3 +219,54 @@ test("legacy warehouse acknowledgements may omit new metadata, but malformed pre
     false,
   );
 });
+
+test("movement acknowledgements accept legacy assigned and new free lowering but reject malformed purposes and anonymous manual work", () => {
+  const workspace = Object.fromEntries(
+    [
+      "skus",
+      "locations",
+      "lots",
+      "pallets",
+      "boxes",
+      "tasks",
+      "employees",
+      "shipments",
+      "activities",
+    ].map((key) => [key, []]),
+  );
+  assert.equal(
+    isWorkspaceCommandResponse({
+      ...workspace,
+      movements: [{ employeeId: "worker" }],
+    }),
+    true,
+  );
+  assert.equal(
+    isWorkspaceCommandResponse({
+      ...workspace,
+      movements: [
+        { employeeId: null, autoPurpose: "accessible_raw", status: "planned" },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    isWorkspaceCommandResponse({
+      ...workspace,
+      movements: [{ employeeId: "worker", autoPurpose: "accessible_raw" }],
+    }),
+    true,
+  );
+  for (const movement of [
+    { employeeId: null },
+    { employeeId: 2, autoPurpose: "accessible_raw" },
+    { employeeId: "worker", autoPurpose: "urgent" },
+    { employeeId: null, autoPurpose: null },
+    { employeeId: null, autoPurpose: "accessible_raw", status: "in_transit" },
+    { employeeId: null, autoPurpose: "accessible_raw", status: "completed" },
+  ])
+    assert.equal(
+      isWorkspaceCommandResponse({ ...workspace, movements: [movement] }),
+      false,
+    );
+});

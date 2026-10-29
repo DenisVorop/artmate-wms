@@ -24,6 +24,7 @@ test("foreign jobs and free secondary work never force an employee away from exp
     ] as WorkspaceDto["putawayTasks"],
     movements: [
       { employeeId: "other", status: "planned" },
+      { employeeId: null, status: "planned", autoPurpose: "accessible_raw" },
     ] as WorkspaceDto["movements"],
   });
   assert.equal(employeePriority(s, "self"), null);

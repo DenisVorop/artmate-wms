@@ -772,6 +772,26 @@ export class WarehouseController {
   ) {
     return this.warehouse.createMovement(body);
   }
+  @Post("movements/:id/claim")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "claimMovement" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.ClaimMovementDto })
+  @ApiParam({ name: "id", type: String })
+  claimMovement(
+    @Param("id") id: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.ClaimMovementDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.ClaimMovementDto,
+  ) {
+    return this.warehouse.claimMovement(id, body);
+  }
   @Post("movements/:id/take")
   @HttpCode(200)
   @ApiOperation({ operationId: "takeMovement" })

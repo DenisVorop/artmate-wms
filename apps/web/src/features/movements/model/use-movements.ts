@@ -15,6 +15,11 @@ export function useMovements() {
     clearError: commands.clearError,
     create: (values: MovementValues) =>
       commands.createMovement(toMovement(values, user)),
+    claim: (id: string) =>
+      commands.claimMovement(id, {
+        requestId: crypto.randomUUID(),
+        employeeId: user?.employeeId ?? "",
+      }),
     take: (id: string, values: ScanValues) =>
       commands.takeMovement(id, { ...values, requestId: crypto.randomUUID() }),
     place: (id: string, values: ScanValues) =>

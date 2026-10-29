@@ -1,6 +1,7 @@
 "use client";
 import { Button, useEmployeeScanActivity } from "@/shared/ui";
-import { selectMovement, workBlock } from "../lib/handling";
+import { LocationMapButton } from "@/entities/warehouse-map";
+import { selectMovement, workBlock, movementClaimBlock } from "../lib/handling";
 import { useHandlingState } from "../lib/use-handling-state";
 import { useHandling } from "../model/use-handling";
 import { Done, HandlingFrame, PairScan } from "./handling-parts";
@@ -21,7 +22,8 @@ export function EmployeeMovements({
     state.next();
   };
   const movement =
-    candidate?.status === "in_transit"
+    candidate?.employeeId === employeeId &&
+    ["planned", "in_transit"].includes(candidate.status)
       ? candidate
       : state.selectedId
         ? data.movements.find((m) => m.id === state.selectedId)
@@ -37,9 +39,24 @@ export function EmployeeMovements({
     (l) => l.id === movement?.toLocationId,
   );
   const block = workBlock(data, employeeId, "movement", movement?.id);
+  const automatic = movement?.autoPurpose === "accessible_raw";
+  const free =
+    automatic && movement.status === "planned" && movement.employeeId === null;
+  const claimBlock = movement
+    ? movementClaimBlock(data, employeeId, movement.id)
+    : null;
+  const theme =
+    data.skus.find((sku) => sku.id === pallet?.skuId)?.name ?? "Сырьё";
+  const source = data.locations.find(
+    (place) => place.id === movement?.fromLocationId,
+  );
+  const addressText = (place: typeof source) =>
+    place
+      ? `${place.code}${place.kind === "rack" ? ` · ярус ${place.level}` : ""}`
+      : "Адрес недоступен";
   return (
     <HandlingFrame
-      title="Перемещение паллеты"
+      title={automatic ? "Спустить сырьё ниже" : "Перемещение паллеты"}
       code={movement?.code}
       onIdle={onIdle}
       onProblem={onProblem}
@@ -56,7 +73,7 @@ export function EmployeeMovements({
           <p>
             {state.selectedId
               ? "Выбранное перемещение больше недоступно."
-              : "Назначенных перемещений пока нет."}
+              : "Доступных перемещений пока нет."}
           </p>
           {state.selectedId && (
             <Button
@@ -69,8 +86,53 @@ export function EmployeeMovements({
         </>
       ) : (
         <>
+          {automatic && (
+            <div className={styles.objectIdentity}>
+              <strong>{theme}</strong>
+              <p>
+                {addressText(source)} → {addressText(destination)}
+              </p>
+            </div>
+          )}
           {block && <p className={styles.notice}>{block}</p>}
-          {pallet && address && movement.employeeId === employeeId ? (
+          {free ? (
+            <>
+              <p>Спустите паллету на доступный ярус для сборки.</p>
+              <LocationMapButton
+                data={data}
+                locationId={source?.id}
+                routeRequest={{ kind: "movement", id: movement.id }}
+                intent="take"
+                contextKey={`${movement.id}:claim`}
+              />
+              {claimBlock && !block && (
+                <p className={styles.notice}>{claimBlock}</p>
+              )}
+              <Button
+                disabled={commands.pending || scanPending > 0 || !!claimBlock}
+                onClick={() =>
+                  void execute(
+                    () =>
+                      commands.claimMovement(movement.id, {
+                        requestId: crypto.randomUUID(),
+                        employeeId,
+                      }),
+                    () => state.setSelectedId(movement.id),
+                  )
+                }
+              >
+                Взять задание
+              </Button>
+              {commands.error && (
+                <p className={styles.error} role="alert">
+                  {commands.error}
+                </p>
+              )}
+            </>
+          ) : pallet &&
+            address &&
+            movement.employeeId === employeeId &&
+            ["planned", "in_transit"].includes(movement.status) ? (
             <>
               <p>
                 {carrying
@@ -115,9 +177,15 @@ export function EmployeeMovements({
               />
             </>
           ) : (
-            <p role="alert">
-              Паллета или адрес больше недоступны. Обновите рабочее место.
-            </p>
+            <>
+              <p role="alert">Задание уже взято или больше недоступно.</p>
+              <Button
+                disabled={commands.pending || scanPending > 0}
+                onClick={next}
+              >
+                Проверить задания
+              </Button>
+            </>
           )}
         </>
       )}

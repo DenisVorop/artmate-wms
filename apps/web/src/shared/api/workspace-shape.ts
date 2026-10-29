@@ -29,6 +29,20 @@ function validAutomationFields(value: unknown) {
   const data = value as Record<string, unknown>;
   return (
     validWorkspaceLoadDimensions(data) &&
+    (data.movements === undefined ||
+      (Array.isArray(data.movements) &&
+        data.movements.every((movement) => {
+          if (!movement || typeof movement !== "object") return false;
+          const item = movement as Record<string, unknown>;
+          return (
+            (item.autoPurpose === undefined ||
+              item.autoPurpose === "accessible_raw") &&
+            (typeof item.employeeId === "string" ||
+              (item.employeeId === null &&
+                item.autoPurpose === "accessible_raw" &&
+                ["planned", "cancelled"].includes(item.status as string)))
+          );
+        }))) &&
     (data.assemblyPressure === undefined ||
       isAssemblyPressure(data.assemblyPressure)) &&
     Array.isArray(data.tasks) &&

@@ -480,3 +480,61 @@ test("срочное освобождение сборочной паллеты 
   });
   assert.ok(elsewhere.every((job) => !job.urgentPutaway));
 });
+
+test("automatic raw lowering is visible as free work with theme and source/target levels", () => {
+  const data = workspace({
+    locations: [
+      {
+        id: "high",
+        code: "A-03-04",
+        name: "Высокий адрес",
+        kind: "rack",
+        level: 4,
+      },
+      {
+        id: "low",
+        code: "A-01-02",
+        name: "Доступный адрес",
+        kind: "rack",
+        level: 2,
+      },
+    ] as WorkspaceDto["locations"],
+    skus: [{ id: "cats", name: "Котики-2" }] as WorkspaceDto["skus"],
+    pallets: [
+      { id: "raw", code: "PAL-1", kind: "raw", skuId: "cats" },
+    ] as WorkspaceDto["pallets"],
+    movements: [
+      {
+        id: "lower",
+        code: "MOVE-1",
+        palletId: "raw",
+        fromLocationId: "high",
+        toLocationId: "low",
+        kind: "transfer",
+        employeeId: null,
+        autoPurpose: "accessible_raw",
+        status: "planned",
+        keepSourceReserved: false,
+        createdAt: "2026-10-30T00:00:00Z",
+        takenAt: null,
+        completedAt: null,
+      },
+    ],
+  });
+  const before = structuredClone(data);
+  const job = buildWorkQueue(data)[0];
+  assert.equal(job.title, "Спустить сырьё ниже");
+  assert.equal(job.skuName, "Котики-2");
+  assert.equal(job.employeeId, null);
+  assert.equal(job.state, "queued");
+  assert.equal(job.fromLabel, "A-03-04 · ярус 4");
+  assert.equal(job.toLabel, "A-01-02 · ярус 2");
+  assert.equal(filterWorkQueue([job], { employeeId: "free" }).length, 1);
+  assert.equal(
+    employeeWorkQueueGroups([job], "worker").find(
+      (group) => group.title === "Свободные задания",
+    )?.jobs[0]?.id,
+    job.id,
+  );
+  assert.deepEqual(data, before);
+});

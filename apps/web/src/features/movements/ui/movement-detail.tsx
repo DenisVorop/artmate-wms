@@ -7,7 +7,8 @@ import { Badge, Button } from "@/shared/ui";
 import {
   movementTime,
   movementPalletName,
-  movementKinds,
+  movementTitle,
+  movementClaimHint,
   movementStatuses,
   type ScanValues,
 } from "../lib/movement-form";
@@ -19,6 +20,7 @@ type Props = {
   data: WorkspaceDto;
   pending: boolean;
   error: string | null;
+  onClaim: () => Promise<unknown>;
   onTake: (values: ScanValues) => Promise<unknown>;
   onPlace: (values: ScanValues) => Promise<unknown>;
   onCancel: () => Promise<unknown>;
@@ -28,6 +30,7 @@ export function MovementDetail({
   data,
   pending,
   error,
+  onClaim,
   onTake,
   onPlace,
   onCancel,
@@ -39,6 +42,11 @@ export function MovementDetail({
       (employee) =>
         employee.id === user.employeeId && employee.status === "working",
     );
+  const free =
+    movement.autoPurpose === "accessible_raw" &&
+    movement.employeeId === null &&
+    movement.status === "planned";
+  const claimHint = movementClaimHint(data, user?.employeeId, movement.id);
   const pallet = data.pallets.find((item) => item.id === movement.palletId);
   const source = data.locations.find(
     (item) => item.id === movement.fromLocationId,
@@ -60,7 +68,11 @@ export function MovementDetail({
   return (
     <section className={`glass-panel ops-panel ${styles.detail}`}>
       <div className="ops-card-top">
-        <h2>Выполнение задания</h2>
+        <h2>
+          {movement.autoPurpose === "accessible_raw"
+            ? "Спустить сырьё ниже"
+            : "Выполнение задания"}
+        </h2>
         <Badge
           tone={
             movement.status === "completed"
@@ -73,6 +85,9 @@ export function MovementDetail({
           {movementStatuses[movement.status]}
         </Badge>
       </div>
+      {movement.autoPurpose === "accessible_raw" && (
+        <h3 className={styles.theme}>{movementPalletName(data, pallet)}</h3>
+      )}
       <div className={styles.steps} aria-label={`Этап ${step} из 3`}>
         {[1, 2, 3].map((value) => (
           <span
@@ -88,7 +103,7 @@ export function MovementDetail({
         </div>
         <div>
           <span>Операция</span>
-          <strong>{movementKinds[movement.kind]}</strong>
+          <strong>{movementTitle(movement)}</strong>
         </div>
         <div>
           <span>Паллета</span>
@@ -101,11 +116,11 @@ export function MovementDetail({
         <div>
           <span>Исполнитель</span>
           <strong>
-            {
-              data.employees.find(
-                (employee) => employee.id === movement.employeeId,
-              )?.name
-            }
+            {movement.employeeId === null
+              ? "Свободное задание"
+              : (data.employees.find(
+                  (employee) => employee.id === movement.employeeId,
+                )?.name ?? "Исполнитель недоступен")}
           </strong>
         </div>
         <div>
@@ -116,9 +131,19 @@ export function MovementDetail({
         </div>
       </div>
       <div className={styles.route}>
-        <code>{source?.code ?? "—"}</code>
+        <code>
+          {source?.code ?? "—"}
+          {movement.autoPurpose && source?.kind === "rack"
+            ? ` · ярус ${source.level}`
+            : ""}
+        </code>
         <ArrowRight size={16} />
-        <code>{target?.code ?? "—"}</code>
+        <code>
+          {target?.code ?? "—"}
+          {movement.autoPurpose && target?.kind === "rack"
+            ? ` · ярус ${target.level}`
+            : ""}
+        </code>
       </div>
       <div className={styles.meta}>
         <div>
@@ -159,13 +184,27 @@ export function MovementDetail({
           сохранятся.
         </p>
       )}
-      {!["completed", "cancelled"].includes(movement.status) && !canExecute && (
-        <p className={styles.hint}>
-          Сканы выполняет назначенный сотрудник в своей учётной записи на смене.
-        </p>
-      )}
+      {!["completed", "cancelled"].includes(movement.status) &&
+        !canExecute &&
+        !free && (
+          <p className={styles.hint}>
+            Сканы выполняет назначенный сотрудник в своей учётной записи на
+            смене.
+          </p>
+        )}
       {movement.status === "planned" && (
         <>
+          {free && (
+            <>
+              {claimHint && <p className={styles.hint}>{claimHint}</p>}
+              <Button
+                disabled={pending || !!claimHint}
+                onClick={() => void onClaim().catch(() => {})}
+              >
+                Взять задание
+              </Button>
+            </>
+          )}
           {canExecute && (
             <MovementConfirmForm
               key={`${movement.id}-take`}

@@ -18,7 +18,7 @@ import {
   Modal,
 } from "@/shared/ui";
 import {
-  movementKinds,
+  movementTitle,
   movementStatuses,
   movementPalletName,
 } from "../lib/movement-form";
@@ -36,7 +36,12 @@ export function MovementsFeature() {
     ? {
         ...snapshot,
         movements: snapshot.movements.filter(
-          (movement) => isManager || movement.employeeId === user?.employeeId,
+          (movement) =>
+            isManager ||
+            movement.employeeId === user?.employeeId ||
+            (movement.autoPurpose === "accessible_raw" &&
+              movement.employeeId === null &&
+              movement.status === "planned"),
         ),
       }
     : undefined;
@@ -189,12 +194,12 @@ export function MovementsFeature() {
                     </code>
                   </div>
                   <div className="ops-sub">
-                    {movementKinds[movement.kind]} ·{" "}
-                    {
-                      data.employees.find(
-                        (item) => item.id === movement.employeeId,
-                      )?.name
-                    }
+                    {movementTitle(movement)} ·{" "}
+                    {movement.employeeId === null
+                      ? "Свободное задание"
+                      : (data.employees.find(
+                          (item) => item.id === movement.employeeId,
+                        )?.name ?? "Исполнитель недоступен")}
                   </div>
                 </button>
               );
@@ -258,6 +263,12 @@ export function MovementsFeature() {
               data={data}
               pending={commands.pending}
               error={commands.error}
+              onClaim={async () => {
+                await commands.claim(selected.id);
+                ui.setNotice(
+                  "Задание взято. Подтвердите забор паллеты сканами.",
+                );
+              }}
               onTake={async (values) => {
                 await commands.take(selected.id, values);
                 ui.setNotice("Забор подтверждён. Паллета в пути.");

@@ -56,12 +56,75 @@ export function receiptSourceLocation(
   return locations.length === 1 ? locations[0].id : null;
 }
 
+/** Preserve accessible slots for different raw themes and their oldest lots. */
+function rawPrefersUpper(
+  s: D.WorkspaceDto,
+  incoming?: Pick<D.PalletDto, "kind" | "skuId" | "lotId" | "id">,
+): boolean | null {
+  if (incoming?.kind !== "raw" || !incoming.skuId) return null;
+  const received = (lotId: string | null) =>
+    Date.parse(s.lots.find((lot) => lot.id === lotId)?.receivedAt ?? "");
+  const incomingTime = received(incoming.lotId);
+  if (!Number.isFinite(incomingTime)) return null;
+  const existing = s.pallets.filter(
+    (pallet) =>
+      pallet.id !== incoming.id &&
+      pallet.kind === "raw" &&
+      pallet.skuId === incoming.skuId &&
+      pallet.quantity > 0 &&
+      ["stored", "in_transit"].includes(pallet.status),
+  );
+  if (existing.some((pallet) => !Number.isFinite(received(pallet.lotId))))
+    return null;
+  if (existing.some((pallet) => received(pallet.lotId) < incomingTime))
+    return true;
+  const accessible = (id: string | null) => {
+    const location = s.locations.find((place) => place.id === id);
+    return (
+      !!location &&
+      !location.archived &&
+      !location.blocked &&
+      (!location.sectionId ||
+        s.sections.some(
+          (section) => section.id === location.sectionId && !section.archived,
+        )) &&
+      (location.kind === "floor" ||
+        (location.kind === "rack" && location.level <= 2))
+    );
+  };
+  return existing.some(
+    (pallet) =>
+      received(pallet.lotId) <= incomingTime &&
+      ((pallet.status === "stored" &&
+        accessible(pallet.locationId) &&
+        !s.movements.some(
+          (movement) =>
+            movement.palletId === pallet.id &&
+            ["planned", "in_transit"].includes(movement.status),
+        )) ||
+        s.movements.some(
+          (movement) =>
+            movement.palletId === pallet.id &&
+            ["planned", "in_transit"].includes(movement.status) &&
+            accessible(movement.toLocationId),
+        )),
+  );
+}
+
 export function rankPlacementLocations(
   s: D.WorkspaceDto,
   candidates: D.LocationDto[],
   sourceLocationId: string | null,
   finishedSkuId?: string,
+  rawPallet?: Pick<D.PalletDto, "kind" | "skuId" | "lotId" | "id">,
 ) {
+  const preferUpper = rawPrefersUpper(s, rawPallet);
+  const diversityPenalty = (location: D.LocationDto) =>
+    preferUpper === null
+      ? 0
+      : Number(
+          (location.kind === "rack" && location.level > 2) !== preferUpper,
+        );
   const routes = placementRoutes(
     s,
     sourceLocationId,
@@ -103,6 +166,7 @@ export function rankPlacementLocations(
         Number(b.route.status === "unreachable") ||
       Number(b.sameSkuPallet) - Number(a.sameSkuPallet) ||
       routeOrder(a.route.status) - routeOrder(b.route.status) ||
+      diversityPenalty(a.location) - diversityPenalty(b.location) ||
       (a.score !== null && b.score !== null
         ? a.score - b.score
         : a.levelPenaltyMeters - b.levelPenaltyMeters) ||
@@ -115,7 +179,7 @@ export function rankPlacementLocations(
     locations: rows.map((r) => r.location),
     suggestedLocationId: selected?.location.id ?? null,
     recommendation: selected
-      ? recommendation(selected, sourceLocationId)
+      ? recommendation(selected, sourceLocationId, preferUpper)
       : null,
     reason:
       candidates.length && !selected
@@ -127,6 +191,7 @@ export function rankPlacementLocations(
 function recommendation(
   row: PlacementRow,
   sourceLocationId: string | null,
+  preferUpper: boolean | null = null,
 ): D.PlacementRecommendationDto {
   const level =
     row.location.kind === "rack" ? Math.max(1, row.location.level) : 0;
@@ -139,6 +204,22 @@ function recommendation(
       ? "В приоритете паллета этой тематики."
       : "Подобрано подходящее место хранения.",
   ];
+  if (
+    preferUpper === true &&
+    row.location.kind === "rack" &&
+    row.location.level > 2
+  )
+    parts.push(
+      "Запас этой тематики уже есть на складе. Нижние ярусы сохраняем для доступного отбора разных тематик.",
+    );
+  else if (
+    preferUpper === false &&
+    (row.location.kind === "floor" ||
+      (row.location.kind === "rack" && row.location.level <= 2))
+  )
+    parts.push(
+      "Для этой тематики нужна доступная паллета: приоритет полу и первым двум ярусам.",
+    );
   if (distance !== null)
     parts.push(
       `Путь по схеме около ${distance.toLocaleString("ru-RU")} м${row.route.status === "floor" ? "; в части помещений проходы не нанесены, использован свободный пол" : " по проходам"}.`,

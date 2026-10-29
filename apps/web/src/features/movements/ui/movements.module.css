@@ -214,3 +214,9 @@
     font-size: 10px;
   }
 }
+
+.detail .theme {
+  font-size: clamp(24px, 5vw, 32px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}

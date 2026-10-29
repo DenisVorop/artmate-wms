@@ -13,15 +13,19 @@ import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { Button } from "@/shared/ui";
 import styles from "./workspace.module.css";
 
-/** Inspection keeps the active work mounted. No claims or document changes here. */
+/** Inspection keeps active work mounted. Opening a movement never claims it. */
 export function EmployeeJobList({
   data,
   employeeId,
   onResume,
+  onOpenMovements,
+  canOpenMovements,
 }: {
   data: WorkspaceDto;
   employeeId: string;
   onResume: () => void;
+  onOpenMovements: () => void;
+  canOpenMovements: boolean;
 }) {
   const [kind, setKind] = useState<WorkQueueKind | "all">("all");
   const title = useRef<HTMLHeadingElement>(null);
@@ -66,7 +70,7 @@ export function EmployeeJobList({
       </label>
       <p className={styles.queueHint}>
         Чтобы взять работу, вернитесь к заданию и сканируйте QR нужной рабочей
-        зоны.
+        зоны. Для спуска паллеты откройте задание из списка.
       </p>
       {(kind === "all" || kind === "stocktake") && stocktakes.isPending && (
         <p className={styles.queueHint} role="status">
@@ -117,6 +121,21 @@ export function EmployeeJobList({
                       </p>
                     )}
                     <small>{job.code}</small>
+                    {job.kind === "movement" &&
+                      data.movements.some(
+                        (movement) =>
+                          movement.id === job.referenceId &&
+                          movement.autoPurpose === "accessible_raw" &&
+                          ["planned", "in_transit"].includes(movement.status),
+                      ) && (
+                        <Button
+                          variant="secondary"
+                          disabled={!canOpenMovements}
+                          onClick={onOpenMovements}
+                        >
+                          Открыть перемещение
+                        </Button>
+                      )}
                   </li>
                 ))}
               </ul>

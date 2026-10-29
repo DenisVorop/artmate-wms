@@ -253,6 +253,8 @@ export class RackSectionDto extends PlanArchiveDto {
   @ApiProperty({ type: Number }) depth!: number;
 }
 export class MovementDto {
+  @ApiPropertyOptional({ type: String, enum: ["accessible_raw"] })
+  autoPurpose?: "accessible_raw";
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String }) palletId!: string;
@@ -265,7 +267,7 @@ export class MovementDto {
     enum: ["planned", "in_transit", "completed", "cancelled"],
   })
   status!: string;
-  @ApiProperty({ type: String }) employeeId!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeId!: string | null;
   @ApiProperty({ type: Boolean }) keepSourceReserved!: boolean;
   @ApiProperty({ type: String }) createdAt!: string;
   @ApiProperty({ type: String, nullable: true }) takenAt!: string | null;
@@ -1150,6 +1152,9 @@ export class CreateMovementDto extends CommandDto {
   @ValidateIf((_o, v) => v !== undefined)
   @IsBoolean()
   keepSourceReserved?: boolean;
+}
+export class ClaimMovementDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() employeeId!: string;
 }
 export class ConfirmMovementDto extends CommandDto {
   @ApiProperty({ type: String }) @IsString() palletCode!: string;

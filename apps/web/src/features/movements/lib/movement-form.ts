@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AuthUserDto,
+  MovementDto,
   CreateMovementDto,
   PalletDto,
   WorkspaceDto,
@@ -183,4 +184,74 @@ export function movementPalletName(
   return pallet?.kind === "assembly"
     ? "Общая паллета сборки"
     : (data.skus.find((sku) => sku.id === pallet?.skuId)?.name ?? "Паллета");
+}
+
+export function movementTitle(
+  movement: Pick<MovementDto, "kind" | "autoPurpose">,
+) {
+  return movement.autoPurpose === "accessible_raw"
+    ? "Спустить сырьё ниже"
+    : movementKinds[movement.kind];
+}
+
+/** UI hint only; claim is validated again on the server. */
+export function movementClaimHint(
+  data: Pick<
+    WorkspaceDto,
+    "employees" | "tasks" | "putawayTasks" | "movements" | "shipments"
+  >,
+  employeeId: string | undefined,
+  movementId: string,
+): string | null {
+  if (
+    !employeeId ||
+    !data.employees.some(
+      (item) => item.id === employeeId && item.status === "working",
+    )
+  )
+    return "Начните смену, чтобы взять задание.";
+  if (
+    data.movements.some(
+      (item) =>
+        item.id !== movementId &&
+        item.employeeId === employeeId &&
+        ["planned", "in_transit"].includes(item.status),
+    )
+  )
+    return "Сначала завершите своё перемещение.";
+  if (
+    data.putawayTasks.some(
+      (item) =>
+        item.employeeId === employeeId &&
+        ["claimed", "in_transit"].includes(item.status),
+    )
+  )
+    return "Сначала завершите размещение короба.";
+  if (
+    data.tasks.some(
+      (item) =>
+        item.employeeId === employeeId &&
+        item.status !== "completed" &&
+        (item.scannedUnits > 0 ||
+          item.boxCodeConfirmed ||
+          item.openBoxContents?.length > 0),
+    )
+  )
+    return "Сначала завершите открытый короб.";
+  if (
+    data.shipments.some(
+      (item) =>
+        item.employeeId === employeeId &&
+        item.status === "draft" &&
+        (item.scannedBoxIds?.length ?? 0) > 0,
+    )
+  )
+    return "Сначала завершите текущий отбор отгрузки.";
+  if (
+    data.tasks.some(
+      (item) => item.employeeId === employeeId && item.status === "active",
+    )
+  )
+    return "Сначала поставьте сборку на паузу.";
+  return null;
 }

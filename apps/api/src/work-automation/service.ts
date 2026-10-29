@@ -20,7 +20,12 @@ import {
   WorkAutomationStatusDto,
   UpdateWorkAutomationSettingsDto,
 } from "./dto";
-import { automaticPlanningWorkspace, automaticTaskIntents } from "./planning";
+import {
+  automaticPlanningWorkspace,
+  automaticTaskIntents,
+  untouchedAutomaticTask,
+} from "./planning";
+import { rawAccessMovementIntents } from "./raw-access";
 import {
   automationOrigins,
   automationRuntime,
@@ -194,13 +199,85 @@ export class WorkAutomationService {
         return state.revision !== previousRevision ? "updated" : "skipped";
       }
       const origins = await automationOrigins(tx);
-      const effective = automaticPlanningWorkspace(state, origins);
+      // Re-slotting works from physical inventory, even while the sales forecast
+      // is refreshing. Only untouched automatic assembly reservations may yield.
+      const counting = await tx.query<{ location_id: string }>(
+        "SELECT DISTINCT r.location_id FROM stocktake_rows r JOIN stocktakes d ON d.id=r.document_id WHERE d.payload->>'status' NOT IN ('approved','cancelled')",
+      );
+      const demandSkuIds = state.tasks
+        .filter((task) => task.status !== "completed")
+        .sort(
+          (a, b) =>
+            Number(a.autoPurpose === "backlog") -
+              Number(b.autoPurpose === "backlog") ||
+            (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+            a.id.localeCompare(b.id),
+        )
+        .map((task) => task.skuId);
+      const moves = rawAccessMovementIntents(
+        automaticPlanningWorkspace(state, origins),
+        {
+          blockedLocationIds: new Set(
+            counting.rows.map((row) => row.location_id),
+          ),
+          demandSkuIds,
+        },
+      );
+      const movingSkus = new Set(
+        moves.flatMap((intent) =>
+          intent.kind === "create"
+            ? [
+                state.pallets.find((pallet) => pallet.id === intent.palletId)!
+                  .skuId,
+              ]
+            : [],
+        ),
+      );
+      const release: AutomaticTaskIntent[] = state.tasks
+        .filter(
+          (task) =>
+            movingSkus.has(task.skuId) && untouchedAutomaticTask(task, origins),
+        )
+        .map((task) => ({
+          kind: "withdraw",
+          taskId: task.id,
+          reason:
+            "Сначала спустите сырьё на доступный ярус. Сборка будет пересчитана после размещения.",
+        }));
+      if (release.length) {
+        const previous = new Map(
+          state.tasks.map((task) => [task.id, structuredClone(task)]),
+        );
+        await this.warehouse.applyAutomaticTasks(tx, state, release);
+        await this._saveOrigins(
+          tx,
+          state,
+          previous,
+          origins,
+          release,
+          checkedAt,
+        );
+      }
+      signal?.throwIfAborted();
+      if (moves.length)
+        await this.warehouse.applyAutomaticMovements(tx, state, moves);
+      const currentOrigins = release.length
+        ? await automationOrigins(tx)
+        : origins;
+      const effective = automaticPlanningWorkspace(state, currentOrigins);
+      const pendingLowering = state.movements.some(
+        (movement) =>
+          movement.autoPurpose === "accessible_raw" &&
+          ["planned", "in_transit"].includes(movement.status),
+      );
       const marketplace = await loadMarketplaces(tx);
       const forecast = await this.dependencies.forecast(tx, marketplace, clock);
       if (!forecast.cacheCurrent) {
         await saveAutomationSetting(tx, "runtime", {
           lastCheckedAt: checkedAt,
-          message: "Обновляем план сборки. Задания появятся автоматически.",
+          message: pendingLowering
+            ? "Есть задание спустить сырьё на доступный ярус. План сборки обновляется в фоне."
+            : "Обновляем план сборки. Задания появятся автоматически.",
           blockers: ["Дождитесь актуального плана сборки."],
         });
         signal?.throwIfAborted();
@@ -212,12 +289,30 @@ export class WorkAutomationService {
         clock,
         forecast,
       );
+      const loweringSkus = new Set(
+        state.movements
+          .filter(
+            (movement) =>
+              movement.autoPurpose === "accessible_raw" &&
+              ["planned", "in_transit"].includes(movement.status),
+          )
+          .map(
+            (movement) =>
+              state.pallets.find((pallet) => pallet.id === movement.palletId)
+                ?.skuId,
+          ),
+      );
+      // Do not allocate a younger lot while the FIFO pallet is being lowered.
+      const assemblyPlan = {
+        ...plan,
+        rows: plan.rows.filter((row) => !loweringSkus.has(row.skuId)),
+      };
       const pressure = this.dependencies.pressure(effective);
       const blocked = ["full", "unavailable"].includes(pressure.level);
       const intents = automaticTaskIntents(
         state,
-        plan,
-        origins,
+        assemblyPlan,
+        currentOrigins,
         blocked,
         marketplace.planningStock ?? [],
       );
@@ -232,7 +327,7 @@ export class WorkAutomationService {
           tx,
           state,
           previous,
-          origins,
+          currentOrigins,
           intents,
           checkedAt,
         );
@@ -278,10 +373,12 @@ export class WorkAutomationService {
         lastCheckedAt: checkedAt,
         message: blocked
           ? pressure.message
-          : waiting
-            ? "Свободные задания готовы. Сотрудники могут взять их в работу."
-            : (blockers[0] ??
-              "Дополнительная сборка сейчас не требуется. План проверяется автоматически."),
+          : pendingLowering
+            ? "Есть задание спустить сырьё на доступный ярус."
+            : waiting
+              ? "Свободные задания готовы. Сотрудники могут взять их в работу."
+              : (blockers[0] ??
+                "Дополнительная сборка сейчас не требуется. План проверяется автоматически."),
         blockers,
       });
       signal?.throwIfAborted();

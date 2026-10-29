@@ -67,8 +67,13 @@ import { generateSectionIdentity } from "./section-identity";
 import { seedWorkspace } from "./seed";
 import { workRoute, validateWorkRouteQuery } from "./work-route";
 import {
+  rawAccessMovementProblem,
+  type AutomaticMovementIntent,
+} from "./work-automation/raw-access";
+import {
   rankPlacementLocations,
   receiptSourceLocation,
+  levelCostMeters,
 } from "./placement-ranking";
 import {
   checkRect,
@@ -913,6 +918,16 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       )
         fail("Несогласованный статус приёмки");
     }
+    for (const movement of s.movements) {
+      if (
+        movement.employeeId === null &&
+        (movement.autoPurpose !== "accessible_raw" ||
+          !["planned", "cancelled"].includes(movement.status))
+      )
+        fail(
+          "Перемещение без исполнителя допустимо только как свободное автоматическое задание",
+        );
+    }
     const occupied = new Set<string>();
     for (const p of s.pallets) {
       if (p.quantity < 0) fail("Остаток паллеты не может быть отрицательным");
@@ -1662,6 +1677,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       s,
       candidates,
       receiptSourceLocation(s, id, palletId),
+      undefined,
+      pallet,
     );
     return {
       palletId,
@@ -1787,6 +1804,17 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       .reduce((sum, r) => sum + r.quantity, 0);
   }
   private _rawFifo(s: D.WorkspaceDto, skuId: string) {
+    // Never bypass the oldest batch with a younger pallet while it is being
+    // lowered for hand access. New assembly resumes after confirmed placement.
+    if (
+      s.movements.some(
+        (m) =>
+          m.autoPurpose === "accessible_raw" &&
+          ["planned", "in_transit"].includes(m.status) &&
+          s.pallets.some((p) => p.id === m.palletId && p.skuId === skuId),
+      )
+    )
+      return [];
     return s.pallets
       .filter(
         (p) =>
@@ -1807,7 +1835,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         (a, b) =>
           find(s.lots, a.lotId!, "Партия").receivedAt.localeCompare(
             find(s.lots, b.lotId!, "Партия").receivedAt,
-          ) || a.id.localeCompare(b.id),
+          ) ||
+          levelCostMeters(find(s.locations, a.locationId!, "Адрес")) -
+            levelCostMeters(find(s.locations, b.locationId!, "Адрес")) ||
+          a.id.localeCompare(b.id),
       );
   }
   createTask(b: D.CreateTaskDto) {
@@ -2006,6 +2037,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return employee;
   }
   private _claimTask(s: D.WorkspaceDto, task: D.TaskDto, employeeId: string) {
+    if (
+      s.movements.some(
+        (m) =>
+          m.employeeId === employeeId &&
+          m.autoPurpose === "accessible_raw" &&
+          ["planned", "in_transit"].includes(m.status),
+      )
+    )
+      fail("Сначала завершите взятое перемещение паллеты");
     if (this._activePutaway(s, employeeId))
       fail(
         "Сначала завершите размещение короба или освободите взятое задание размещения",
@@ -3027,81 +3067,234 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   createMovement(b: D.CreateMovementDto) {
     return this._command("createMovement", b, (s) => {
-      const pallet = find(s.pallets, b.palletId, "Паллета");
+      this._createMovement(s, b);
+    });
+  }
+  private _createMovement(
+    s: D.WorkspaceDto,
+    b: Omit<D.CreateMovementDto, "employeeId"> & { employeeId: string | null },
+    autoPurpose?: "accessible_raw",
+  ) {
+    const pallet = find(s.pallets, b.palletId, "Паллета");
+    if (b.employeeId !== null) {
       this._movementEmployee(s, b.employeeId);
       if (this._activePutaway(s, b.employeeId))
         fail("Сначала завершите размещение короба");
-      this._putawayPalletGuard(s, pallet);
-      if (pallet.status !== "stored" || !pallet.locationId)
-        fail("Паллета не находится на хранении");
+    } else if (!autoPurpose) fail("Для ручного перемещения нужен исполнитель");
+    this._putawayPalletGuard(s, pallet);
+    if (pallet.status !== "stored" || !pallet.locationId)
+      fail("Паллета не находится на хранении");
+    if (
+      s.movements.some(
+        (m) =>
+          m.palletId === pallet.id &&
+          ["planned", "in_transit"].includes(m.status),
+      )
+    )
+      fail("У паллеты уже есть активное перемещение");
+    if (pallet.kind === "raw" && this._reserved(s, pallet.id) > 0)
+      fail("Исходная паллета зарезервирована заданиями сборки");
+    this._activeLocation(s, pallet.locationId);
+    const target = this._activeLocation(s, b.toLocationId);
+    if (target.id === pallet.locationId)
+      fail("Источник и назначение должны отличаться");
+    if (
+      b.kind === "lower" &&
+      (target.kind !== "picking" || target.accessSides !== 4)
+    )
+      fail("Для спуска нужен адрес picking с доступом с четырёх сторон");
+    if (b.kind === "transfer" && pallet.returnLocationId === target.id)
+      fail("Для этого адреса оформите возврат");
+    if (
+      b.kind === "return" &&
+      pallet.returnLocationId &&
+      pallet.returnLocationId !== target.id
+    )
+      fail("Возврат разрешён только на сохранённый исходный адрес");
+    if (
+      b.kind === "return" &&
+      !pallet.returnLocationId &&
+      !["rack", "floor"].includes(target.kind)
+    )
+      fail("Без сохранённого адреса возврат разрешён в rack или floor");
+    if (pallet.returnLocationId && b.kind === "lower")
+      fail("Нельзя повторно спустить паллету до возврата на сохранённый адрес");
+    if (b.keepSourceReserved && b.kind !== "lower")
+      fail("Сохранять источник можно только при спуске");
+    const problem = placementError(s, target, pallet, pallet.id);
+    if (problem) fail(problem);
+    const keepSourceReserved =
+      b.kind === "lower" ? (b.keepSourceReserved ?? true) : false;
+    s.movements.push({
+      id: randomUUID(),
+      code: nextCode("MOVE"),
+      palletId: pallet.id,
+      fromLocationId: pallet.locationId,
+      toLocationId: target.id,
+      kind: b.kind,
+      status: "planned",
+      employeeId: b.employeeId,
+      keepSourceReserved,
+      createdAt: now(),
+      takenAt: null,
+      completedAt: null,
+      ...(autoPurpose ? { autoPurpose } : {}),
+    });
+    activity(
+      s,
+      autoPurpose ? "Спуск сырья запланирован" : "Перемещение запланировано",
+      `${pallet.code} → ${target.code}`,
+      "movement",
+    );
+  }
+  private async _automaticMovementCountGuard(
+    tx: Queryable,
+    locationIds: string[],
+  ) {
+    const busy = await tx.query(
+      "SELECT d.id FROM stocktakes d WHERE d.payload->>'status' NOT IN ('approved','cancelled') AND (d.payload->>'mode'='opening' OR EXISTS (SELECT 1 FROM stocktake_rows r WHERE r.document_id=d.id AND r.location_id=ANY($1::text[]))) LIMIT 1",
+      [locationIds],
+    );
+    if (busy.rows.length)
+      fail("Сначала завершите инвентаризацию затронутых адресов");
+  }
+  async applyAutomaticMovements(
+    tx: Queryable,
+    state: D.WorkspaceDto,
+    intents: AutomaticMovementIntent[],
+  ): Promise<void> {
+    if (requestAuth.getStore()?.http)
+      throw new ForbiddenException(
+        "Автоматические перемещения создаются только планировщиком",
+      );
+    const before = structuredClone(state);
+    for (const intent of intents) {
+      if (intent.kind === "cancel") {
+        const movement = find(
+          state.movements,
+          intent.movementId,
+          "Перемещение",
+        );
+        if (
+          movement.status !== "planned" ||
+          movement.employeeId !== null ||
+          movement.autoPurpose !== "accessible_raw" ||
+          movement.takenAt !== null
+        )
+          fail("Можно снять только свободное автоматическое перемещение");
+        movement.status = "cancelled";
+        activity(
+          state,
+          "Автоматический спуск снят",
+          `${movement.code} · ${intent.reason}`,
+          "automation",
+        );
+      } else {
+        if (
+          state.movements.some(
+            (m) =>
+              m.autoPurpose === "accessible_raw" &&
+              ["planned", "in_transit"].includes(m.status),
+          )
+        )
+          fail("Сначала завершите уже запланированный спуск паллеты");
+        const pallet = find(state.pallets, intent.palletId, "Паллета");
+        const problem = rawAccessMovementProblem(
+          state,
+          pallet.id,
+          intent.toLocationId,
+        );
+        if (problem) fail(problem);
+        await this._automaticMovementCountGuard(tx, [
+          pallet.locationId!,
+          intent.toLocationId,
+        ]);
+        this._createMovement(
+          state,
+          {
+            requestId: randomUUID(),
+            palletId: pallet.id,
+            toLocationId: intent.toLocationId,
+            kind: "transfer",
+            employeeId: null,
+            keepSourceReserved: false,
+          },
+          "accessible_raw",
+        );
+      }
+    }
+    if (JSON.stringify(before) !== JSON.stringify(state))
+      await this._commitState(tx, before, state, "automaticMovements", {
+        requestId: randomUUID(),
+      });
+  }
+  claimMovement(id: string, b: D.ClaimMovementDto) {
+    return this._command(`claimMovement/${id}`, b, async (s, tx) => {
+      const movement = find(s.movements, id, "Перемещение");
       if (
+        movement.status !== "planned" ||
+        movement.employeeId !== null ||
+        movement.autoPurpose !== "accessible_raw" ||
+        movement.takenAt !== null
+      )
+        fail("Взять можно только свободное автоматическое перемещение");
+      this._movementEmployee(s, b.employeeId);
+      if (
+        this._activePutaway(s, b.employeeId) ||
+        s.tasks.some(
+          (t) =>
+            t.employeeId === b.employeeId &&
+            t.status !== "completed" &&
+            (t.status === "active" ||
+              t.scannedUnits > 0 ||
+              t.boxCodeConfirmed ||
+              t.openBoxContents.length > 0),
+        ) ||
         s.movements.some(
           (m) =>
-            m.palletId === pallet.id &&
+            m.employeeId === b.employeeId &&
             ["planned", "in_transit"].includes(m.status),
+        ) ||
+        s.shipments.some(
+          (x) =>
+            x.employeeId === b.employeeId &&
+            x.status === "draft" &&
+            (x.scannedBoxIds?.length ?? 0) > 0,
         )
       )
-        fail("У паллеты уже есть активное перемещение");
-      if (pallet.kind === "raw" && this._reserved(s, pallet.id) > 0)
-        fail("Исходная паллета зарезервирована заданиями сборки");
-      this._activeLocation(s, pallet.locationId);
-      const target = this._activeLocation(s, b.toLocationId);
-      if (target.id === pallet.locationId)
-        fail("Источник и назначение должны отличаться");
-      if (
-        b.kind === "lower" &&
-        (target.kind !== "picking" || target.accessSides !== 4)
-      )
-        fail("Для спуска нужен адрес picking с доступом с четырёх сторон");
-      if (b.kind === "transfer" && pallet.returnLocationId === target.id)
-        fail("Для этого адреса оформите возврат");
-      if (
-        b.kind === "return" &&
-        pallet.returnLocationId &&
-        pallet.returnLocationId !== target.id
-      )
-        fail("Возврат разрешён только на сохранённый исходный адрес");
-      if (
-        b.kind === "return" &&
-        !pallet.returnLocationId &&
-        !["rack", "floor"].includes(target.kind)
-      )
-        fail("Без сохранённого адреса возврат разрешён в rack или floor");
-      if (pallet.returnLocationId && b.kind === "lower")
-        fail(
-          "Нельзя повторно спустить паллету до возврата на сохранённый адрес",
-        );
-      if (b.keepSourceReserved && b.kind !== "lower")
-        fail("Сохранять источник можно только при спуске");
-      const problem = placementError(s, target, pallet, pallet.id);
-      if (problem) fail(problem);
-      const keepSourceReserved =
-        b.kind === "lower" ? (b.keepSourceReserved ?? true) : false;
-      s.movements.push({
-        id: randomUUID(),
-        code: nextCode("MOVE"),
-        palletId: pallet.id,
-        fromLocationId: pallet.locationId,
-        toLocationId: target.id,
-        kind: b.kind,
-        status: "planned",
-        employeeId: b.employeeId,
-        keepSourceReserved,
-        createdAt: now(),
-        takenAt: null,
-        completedAt: null,
-      });
-      activity(
+        fail("Сначала завершите или приостановите текущее задание сотрудника");
+      const problem = rawAccessMovementProblem(
         s,
-        "Перемещение запланировано",
-        `${pallet.code} → ${target.code}`,
-        "movement",
+        movement.palletId,
+        movement.toLocationId,
+        movement.id,
       );
+      if (problem) fail(problem);
+      await this._automaticMovementCountGuard(tx, [
+        movement.fromLocationId,
+        movement.toLocationId,
+      ]);
+      movement.employeeId = b.employeeId;
+      activity(s, "Взято перемещение паллеты", movement.code, "movement");
     });
   }
   takeMovement(id: string, b: D.ConfirmMovementDto) {
-    return this._command(`takeMovement/${id}`, b, (s) => {
+    return this._command(`takeMovement/${id}`, b, async (s, tx) => {
       const m = find(s.movements, id, "Перемещение");
+      if (!m.employeeId) fail("Сначала возьмите перемещение в работу");
+      if (m.autoPurpose === "accessible_raw") {
+        const problem = rawAccessMovementProblem(
+          s,
+          m.palletId,
+          m.toLocationId,
+          m.id,
+        );
+        if (problem) fail(problem);
+        await this._automaticMovementCountGuard(tx, [
+          m.fromLocationId,
+          m.toLocationId,
+        ]);
+      }
       if (m.status !== "planned")
         fail("Забрать можно только запланированную паллету");
       this._movementEmployee(s, m.employeeId);
@@ -3147,6 +3340,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   placeMovement(id: string, b: D.ConfirmMovementDto) {
     return this._command(`placeMovement/${id}`, b, (s) => {
       const m = find(s.movements, id, "Перемещение");
+      if (!m.employeeId) fail("У перемещения нет исполнителя");
       if (m.status !== "in_transit") fail("Сначала подтвердите забор паллеты");
       this._movementEmployee(s, m.employeeId);
       const pallet = find(s.pallets, m.palletId, "Паллета");

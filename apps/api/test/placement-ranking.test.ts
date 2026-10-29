@@ -365,3 +365,158 @@ test("putaway preserves thematic priority, physical capacity and fixed destinati
     await w.onModuleDestroy();
   }
 });
+
+test("raw receipt keeps low tiers diverse while preserving oldest-lot access", () => {
+  const low = location("low-candidate", { kind: "rack", level: 1 });
+  const high = location("high-candidate", { kind: "rack", level: 3 });
+  const occupiedLow = location("occupied-low", {
+    kind: "rack",
+    level: 2,
+    x: 5,
+  });
+  const occupiedHigh = location("occupied-high", {
+    kind: "rack",
+    level: 4,
+    x: 5,
+  });
+  const s = workspace([low, high, occupiedLow, occupiedHigh]);
+  s.lots = [
+    {
+      id: "old",
+      skuId: "theme",
+      receivedAt: "2026-09-01T00:00:00Z",
+      name: "old",
+    },
+    {
+      id: "new",
+      skuId: "theme",
+      receivedAt: "2026-10-01T00:00:00Z",
+      name: "new",
+    },
+    {
+      id: "older",
+      skuId: "theme",
+      receivedAt: "2026-08-01T00:00:00Z",
+      name: "older",
+    },
+  ];
+  s.movements = [];
+  const incoming = {
+    id: "incoming",
+    kind: "raw",
+    skuId: "theme",
+    lotId: "new",
+  };
+  const rank = () =>
+    rankPlacementLocations(s, [high, low], null, undefined, incoming);
+  assert.equal(
+    rank().suggestedLocationId,
+    low.id,
+    "first raw pallet must be accessible",
+  );
+  s.pallets.push({
+    id: "stock",
+    kind: "raw",
+    skuId: "theme",
+    lotId: "old",
+    status: "stored",
+    locationId: occupiedLow.id,
+    quantity: 100,
+  } as D.PalletDto);
+  assert.equal(
+    rank().suggestedLocationId,
+    high.id,
+    "duplicate theme must not fill another low slot",
+  );
+  s.pallets[0].locationId = occupiedHigh.id;
+  assert.equal(
+    rank().suggestedLocationId,
+    high.id,
+    "newer lot must leave low slot for older high stock",
+  );
+  incoming.lotId = "older";
+  assert.equal(
+    rank().suggestedLocationId,
+    low.id,
+    "older arriving lot needs low access even if a younger pallet is low",
+  );
+  incoming.lotId = "old";
+  s.pallets[0].locationId = occupiedLow.id;
+  assert.equal(
+    rank().suggestedLocationId,
+    high.id,
+    "same-age accessible stock already covers the theme",
+  );
+  occupiedLow.blocked = true;
+  assert.equal(
+    rank().suggestedLocationId,
+    low.id,
+    "blocked stock does not cover hand-accessible stock",
+  );
+  occupiedLow.blocked = false;
+  s.pallets[0].lotId = "missing";
+  assert.equal(
+    rank().suggestedLocationId,
+    low.id,
+    "unknown dates do not invent a seniority-based policy",
+  );
+});
+
+test("a pending descent covers the raw theme and finished consolidation keeps its priority", () => {
+  const low = location("low", { kind: "rack", level: 1 });
+  const high = location("high", { kind: "rack", level: 3 });
+  const target = location("reserved-low", { kind: "rack", level: 2, x: 5 });
+  const s = workspace([low, high, target]);
+  s.lots = [
+    {
+      id: "lot",
+      skuId: "theme",
+      receivedAt: "2026-10-01T00:00:00Z",
+      name: "lot",
+    },
+  ];
+  s.pallets.push({
+    id: "stock",
+    kind: "raw",
+    skuId: "theme",
+    lotId: "lot",
+    status: "stored",
+    locationId: high.id,
+    quantity: 100,
+  } as D.PalletDto);
+  s.movements = [
+    {
+      id: "move",
+      palletId: "stock",
+      fromLocationId: high.id,
+      toLocationId: target.id,
+      status: "planned",
+    } as D.MovementDto,
+  ];
+  const incoming = {
+    id: "incoming",
+    kind: "raw",
+    skuId: "theme",
+    lotId: "lot",
+  };
+  const before = structuredClone(s);
+  assert.equal(
+    rankPlacementLocations(s, [low, high], null, undefined, incoming)
+      .suggestedLocationId,
+    high.id,
+  );
+  assert.deepEqual(s, before, "ranking must remain read-only");
+  s.pallets = [
+    {
+      id: "finished",
+      kind: "finished",
+      skuId: "theme",
+      status: "stored",
+      locationId: high.id,
+    } as D.PalletDto,
+  ];
+  assert.equal(
+    rankPlacementLocations(s, [low, high], null, "theme").suggestedLocationId,
+    high.id,
+  );
+});

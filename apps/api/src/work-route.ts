@@ -168,7 +168,11 @@ export function workRoute(
       ).suggestedLocationId;
   } else if (q.kind === "movement") {
     const movement = find(s.movements, q.id, "Перемещение");
-    own(movement.employeeId);
+    own(
+      movement.employeeId,
+      movement.status === "planned" &&
+        movement.autoPurpose === "accessible_raw",
+    );
     if (!["planned", "in_transit"].includes(movement.status))
       return unavailable("Перемещение завершено или отменено.");
     sourceLocationId = active(s, movement.fromLocationId);

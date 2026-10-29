@@ -54,7 +54,13 @@ export function projectWorkspace(
     putawayTasks: state.putawayTasks.filter(
       (t) => t.employeeId === id || t.status === "queued",
     ),
-    movements: state.movements.filter((m) => m.employeeId === id),
+    movements: state.movements.filter(
+      (m) =>
+        m.employeeId === id ||
+        (m.status === "planned" &&
+          m.employeeId === null &&
+          m.autoPurpose === "accessible_raw"),
+    ),
     warehouse: {
       ...state.warehouse,
       zoneWork: (state.warehouse.zoneWork ?? []).filter(

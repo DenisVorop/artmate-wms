@@ -100,6 +100,12 @@ export function buildWorkQueue(
     const place = locations.get(id);
     return place ? `${place.code} · ${place.name}` : "Адрес недоступен";
   };
+  const movementAddress = (id: string) => {
+    const place = locations.get(id);
+    return place
+      ? `${place.code}${place.kind === "rack" ? ` · ярус ${place.level}` : ""}`
+      : "Адрес недоступен";
+  };
   const add = (
     job: Omit<
       WorkQueueJob,
@@ -249,11 +255,21 @@ export function buildWorkQueue(
       statusLabel:
         movement.status === "in_transit" ? "Паллета в пути" : undefined,
       quantityLabel: "1 паллета",
-      fromLabel: location(movement.fromLocationId),
-      toLabel: location(movement.toLocationId),
+      fromLabel:
+        movement.autoPurpose === "accessible_raw"
+          ? movementAddress(movement.fromLocationId)
+          : location(movement.fromLocationId),
+      toLabel:
+        movement.autoPurpose === "accessible_raw"
+          ? movementAddress(movement.toLocationId)
+          : location(movement.toLocationId),
       createdAt: movement.createdAt,
       updatedAt: movement.completedAt ?? movement.takenAt ?? movement.createdAt,
       href: "/movements",
+      title:
+        movement.autoPurpose === "accessible_raw"
+          ? "Спустить сырьё ниже"
+          : undefined,
     });
   }
   for (const shipment of workspace.shipments) {

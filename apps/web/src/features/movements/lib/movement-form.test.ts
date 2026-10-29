@@ -4,6 +4,8 @@ import {
   targetHint,
   toMovement,
   wholePalletMovementAllowed,
+  movementTitle,
+  movementClaimHint,
 } from "./movement-form";
 
 test("Общий накопитель не предлагается целиком; тематическая паллета с входящим резервом ждёт завершения размещения", () => {
@@ -150,4 +152,27 @@ test("Обезличенные резервы запрещают чужие це
   assert.ok(targetHint(data, "target", pallet, "transfer"));
   data.addressHolds = [{ locationId: "source", kind: "putaway" }];
   assert.equal(wholePalletMovementAllowed(data, pallet), false);
+});
+
+test("automatic lowering title stays distinct from manual picking and claim explains an unavailable shift", () => {
+  assert.equal(
+    movementTitle({ kind: "transfer", autoPurpose: "accessible_raw" }),
+    "Спустить сырьё ниже",
+  );
+  assert.equal(movementTitle({ kind: "lower" }), "Спуск для отбора");
+  const data: Parameters<typeof movementClaimHint>[0] = {
+    employees: [{ id: "self", status: "working" }] as Parameters<
+      typeof movementClaimHint
+    >[0]["employees"],
+    tasks: [],
+    putawayTasks: [],
+    movements: [],
+    shipments: [],
+  };
+  assert.equal(movementClaimHint(data, "self", "move"), null);
+  assert.match(movementClaimHint(data, undefined, "move") ?? "", /смену/);
+  data.tasks = [
+    { employeeId: "self", status: "paused", scannedUnits: 1 },
+  ] as Parameters<typeof movementClaimHint>[0]["tasks"];
+  assert.match(movementClaimHint(data, "self", "move") ?? "", /открытый короб/);
 });

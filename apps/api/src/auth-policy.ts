@@ -102,6 +102,7 @@ export const warehouseOperations = new Set([
   "createRackLevel",
   "updateSkuPackaging",
   "createMovement",
+  "claimMovement",
   "takeMovement",
   "placeMovement",
   "cancelMovement",
@@ -144,6 +145,7 @@ const workerWrites = new Set([
   "placePutawayBox",
   "releasePutawayTask",
   "createMovement",
+  "claimMovement",
   "takeMovement",
   "placeMovement",
   "cancelMovement",
@@ -151,6 +153,7 @@ const workerWrites = new Set([
   "updateShift",
 ]);
 const actorWrites = new Set([
+  "claimMovement",
   "startZoneWork",
   "leaveZoneWork",
   "scanShipmentWork",
@@ -275,6 +278,7 @@ export async function authorizeWarehouse(
     if (
       [
         "startZoneWork",
+        "claimMovement",
         "scanShipmentWork",
         "finishShipmentWork",
         "takePutawayBox",
@@ -331,6 +335,11 @@ export async function authorizeWarehouse(
         throw new ForbiddenException(
           "Выполнить перемещение может только назначенный сотрудник",
         );
+    }
+    if (op === "claimMovement") {
+      const movement = state.movements.find((m) => m.id === id);
+      if (movement?.employeeId && movement.employeeId !== account.employee_id)
+        throw new ForbiddenException("Перемещение уже взял другой сотрудник");
     }
     if (["scanTask", "packTask", "updateTaskStatus"].includes(op)) {
       const task = state.tasks.find((t) => t.id === id);

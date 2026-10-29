@@ -184,13 +184,15 @@ function EmployeeWorkspaceBody({
     return () => window.removeEventListener("beforeunload", preventLoss);
   }, [blocked]);
   const choose = async (next: EmployeeMode, confirmed = false) => {
-    if (zones.pending || scan.pending || (scan.unsaved && !confirmed)) return;
-    if (currentZone && !(await zones.leave())) return;
+    if (zones.pending || scan.pending || (scan.unsaved && !confirmed))
+      return false;
+    if (currentZone && !(await zones.leave())) return false;
     if (confirmed) displayed.current.mode = next;
     day.choose(next);
     setProblem(null);
     day.clearError();
     setMenu(false);
+    return true;
   };
   const shift = async (status: "working" | "break" | "off") => {
     if (
@@ -438,6 +440,24 @@ function EmployeeWorkspaceBody({
                 data={data}
                 employeeId={employee.id}
                 onResume={() => setShowJobs(false)}
+                canOpenMovements={
+                  !blocked &&
+                  !noShift &&
+                  !zones.pending &&
+                  (!priority || priority.mode === "movements")
+                }
+                onOpenMovements={() => {
+                  if (
+                    blocked ||
+                    noShift ||
+                    zones.pending ||
+                    (priority && priority.mode !== "movements")
+                  )
+                    return;
+                  void choose("movements").then((opened) => {
+                    if (opened) setShowJobs(false);
+                  });
+                }}
               />
             )}
             <div ref={workPanel} hidden={showJobs && !!data && !!employee}>

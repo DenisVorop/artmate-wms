@@ -47,7 +47,7 @@ export function putawayWork(
 }
 export function selectMovement(tasks: MovementDto[], employeeId: string) {
   if (!employeeId) return undefined;
-  return tasks
+  const own = tasks
     .filter(
       (t) =>
         t.employeeId === employeeId &&
@@ -58,6 +58,17 @@ export function selectMovement(tasks: MovementDto[], employeeId: string) {
         Number(b.status === "in_transit") - Number(a.status === "in_transit") ||
         oldest(a, b),
     )[0];
+  return (
+    own ??
+    tasks
+      .filter(
+        (task) =>
+          task.employeeId === null &&
+          task.status === "planned" &&
+          task.autoPurpose === "accessible_raw",
+      )
+      .sort(oldest)[0]
+  );
 }
 export function selectReceipt(receipts: ReceiptDto[]) {
   return receipts
@@ -126,5 +137,60 @@ export function workBlock(
     if (primary)
       return `Сначала поставьте сборку ${primary.code} на паузу в основном задании.`;
   }
+  return null;
+}
+
+/** A free task is claimed explicitly; this only explains server checks. */
+export function movementClaimBlock(
+  data: Pick<
+    WorkspaceDto,
+    "employees" | "tasks" | "movements" | "putawayTasks" | "shipments"
+  >,
+  employeeId: string,
+  movementId: string,
+) {
+  const block = workBlock(data, employeeId, "movement", movementId);
+  if (block) return block;
+  if (
+    data.movements.some(
+      (task) =>
+        task.id !== movementId &&
+        task.employeeId === employeeId &&
+        task.status === "planned",
+    )
+  )
+    return "Сначала завершите своё перемещение паллеты.";
+  if (
+    data.putawayTasks.some(
+      (task) => task.employeeId === employeeId && task.status === "claimed",
+    )
+  )
+    return "Сначала завершите размещение короба.";
+  if (
+    data.tasks.some(
+      (task) =>
+        task.employeeId === employeeId &&
+        task.status !== "completed" &&
+        (task.scannedUnits > 0 ||
+          task.boxCodeConfirmed ||
+          task.openBoxContents?.length > 0),
+    )
+  )
+    return "Сначала завершите открытый короб.";
+  if (
+    data.shipments.some(
+      (task) =>
+        task.employeeId === employeeId &&
+        task.status === "draft" &&
+        (task.scannedBoxIds?.length ?? 0) > 0,
+    )
+  )
+    return "Сначала завершите текущий отбор отгрузки.";
+  if (
+    data.tasks.some(
+      (task) => task.employeeId === employeeId && task.status === "active",
+    )
+  )
+    return "Сначала поставьте сборку на паузу.";
   return null;
 }

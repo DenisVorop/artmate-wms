@@ -43,6 +43,7 @@ import type {
   CreateRackLevelDto,
   UpdateSkuPackagingDto,
   CreateMovementDto,
+  ClaimMovementDto,
   ConfirmMovementDto,
   RetireEmptyPalletDto,
 } from "./generated/model";
@@ -162,6 +163,8 @@ export function useWarehouseCommands() {
       run(() => api.updateSkuPackaging(id, dto)),
     createMovement: (dto: CreateMovementDto) =>
       run(() => api.createMovement(dto)),
+    claimMovement: (id: string, dto: ClaimMovementDto) =>
+      run(() => api.claimMovement(id, dto)),
     takeMovement: (id: string, dto: ConfirmMovementDto) =>
       run(() => api.takeMovement(id, dto)),
     placeMovement: (id: string, dto: ConfirmMovementDto) =>

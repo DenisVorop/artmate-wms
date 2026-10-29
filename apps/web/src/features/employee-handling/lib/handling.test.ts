@@ -13,6 +13,7 @@ import {
   selectReceipt,
   workBlock,
   putawayWork,
+  movementClaimBlock,
 } from "./handling";
 const put = (
   id: string,
@@ -37,7 +38,7 @@ const put = (
 const move = (
   id: string,
   status: MovementDto["status"],
-  employeeId = "me",
+  employeeId: string | null = "me",
 ): MovementDto => ({
   id,
   code: id,
@@ -76,8 +77,9 @@ const receipt = (
 });
 const scope = (): Pick<
   WorkspaceDto,
-  "employees" | "tasks" | "movements" | "putawayTasks"
+  "employees" | "tasks" | "movements" | "putawayTasks" | "shipments"
 > => ({
+  shipments: [],
   employees: [
     {
       id: "me",
@@ -225,4 +227,56 @@ test("refresh resumes own server-confirmed carried box before zone selection; qu
   assert.equal(work.kind === "place" ? work.task.id : null, "mine");
   data.putawayTasks = data.putawayTasks.filter((task) => task.id !== "mine");
   assert.equal(putawayWork(data, "me").kind, "zone");
+});
+
+test("free automatic lowering follows own carrying and assigned work, excludes foreign and unmarked anonymous moves", () => {
+  const free = {
+    ...move("lower", "planned", null),
+    autoPurpose: "accessible_raw" as const,
+  };
+  const own = move("mine", "planned");
+  const carrying = move("carry", "in_transit");
+  const foreign = { ...free, id: "foreign", employeeId: "other" };
+  assert.equal(
+    selectMovement([free, own, carrying, foreign], "me")?.id,
+    "carry",
+  );
+  assert.equal(selectMovement([free, own, foreign], "me")?.id, "mine");
+  assert.equal(selectMovement([foreign, free], "me")?.id, "lower");
+  assert.equal(
+    selectMovement([move("legacy", "planned", null), foreign], "me"),
+    undefined,
+  );
+  assert.equal(selectMovement([free], ""), undefined);
+  assert.equal(
+    selectMovement([{ ...free, status: "cancelled" }], "me"),
+    undefined,
+  );
+});
+
+test("claim hints require shift and no own carry, claimed box or active assembly; paused assembly is allowed", () => {
+  const data = scope();
+  assert.equal(movementClaimBlock(data, "me", "free"), null);
+  data.employees[0].status = "off";
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /смену/);
+  data.employees[0].status = "working";
+  data.putawayTasks = [put("mine", "claimed", "me")];
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /размещение/);
+  data.putawayTasks = [];
+  data.movements = [move("other-job", "planned")];
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /перемещение/);
+  data.movements = [];
+  data.tasks = [
+    { employeeId: "me", status: "active" },
+  ] as WorkspaceDto["tasks"];
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /паузу/);
+  data.tasks[0].status = "paused";
+  assert.equal(movementClaimBlock(data, "me", "free"), null);
+  data.tasks[0].scannedUnits = 1;
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /открытый короб/);
+  data.tasks = [];
+  data.shipments = [
+    { employeeId: "me", status: "draft", scannedBoxIds: ["box"] },
+  ] as WorkspaceDto["shipments"];
+  assert.match(movementClaimBlock(data, "me", "free") ?? "", /отбор/);
 });
