@@ -8,6 +8,7 @@ import {
   rollPaperClass,
   RollLabel,
   LocationRollLabel,
+  WorkZoneRollLabel,
 } from "@/shared/ui";
 import { rollLabelFormats } from "@/shared/lib/label-paper";
 import { useLabel, type LabelType } from "../model/use-label";
@@ -25,7 +26,7 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
   const print = useLabelPrint(
     `${type}:${id}`,
     query.data?.svg,
-    type === "location" ? "120x75" : "75x120",
+    type === "location" || type === "work-zone" ? "120x75" : "75x120",
   );
   const backHref =
     type === "box"
@@ -73,7 +74,10 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
     );
   const label = query.data;
   return (
-    <div className={styles.page} data-print-ready={print.ready}>
+    <div
+      className={`${styles.page} ${rollPaperClass(print.format)}`}
+      data-print-ready={print.ready}
+    >
       <header className={`glass-panel ${styles.screenHeader}`}>
         <div>
           <Link href={backHref} className={styles.back}>
@@ -102,7 +106,9 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
         <div className={styles.printActions}>
           <RollLabelFormatSelect
             formats={
-              type === "location" ? ["120x75", "75x120", "100x70"] : undefined
+              type === "location" || type === "work-zone"
+                ? ["120x75", "75x120", "100x70"]
+                : undefined
             }
             value={print.format}
             onChange={print.setFormat}
@@ -147,6 +153,13 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
       <div className={styles.preview}>
         {type === "location" && print.format === "120x75" ? (
           <LocationRollLabel
+            label={label}
+            imageKey={print.key}
+            onLoad={print.markLoaded}
+            onError={print.markFailed}
+          />
+        ) : type === "work-zone" && print.format === "120x75" ? (
+          <WorkZoneRollLabel
             label={label}
             imageKey={print.key}
             onLoad={print.markLoaded}

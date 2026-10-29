@@ -257,6 +257,15 @@
     size: A4 portrait;
     margin: 10mm;
   }
+  .page[data-output="120x75"] {
+    page: wmsRoll120;
+  }
+  .page[data-output="75x120"] {
+    page: wmsRoll75;
+  }
+  .page[data-output="a4"] {
+    page: warehouseSigns;
+  }
   .page {
     max-width: none;
     margin: 0;

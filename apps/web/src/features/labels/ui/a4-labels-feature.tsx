@@ -12,7 +12,7 @@ import {
   LoadingState,
   rollPaperClass,
   LocationRollLabel,
-  RollLabel,
+  WorkZoneRollLabel,
 } from "@/shared/ui";
 import { a4LabelItems, a4Sheets, type A4LabelType } from "../lib/a4-labels";
 import { useA4Labels } from "../model/use-a4-labels";
@@ -354,11 +354,9 @@ function A4LabelsEditor({
                         {...qr}
                       />
                     ) : (
-                      <RollLabel
+                      <WorkZoneRollLabel
                         key={item.key}
                         label={item.label}
-                        format="120x75"
-                        caption={item.category}
                         {...qr}
                       />
                     );
