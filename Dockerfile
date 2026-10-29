@@ -6,7 +6,7 @@ COPY package.json yarn.lock .yarnrc ./
 COPY scripts/check-dependency-sources.mjs scripts/check-dependency-sources.mjs
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
     node scripts/check-dependency-sources.mjs && yarn install --frozen-lockfile --non-interactive
 
 FROM dependencies AS generated
@@ -28,7 +28,7 @@ WORKDIR /runtime
 COPY apps/api/package.json ./package.json
 COPY yarn.lock .yarnrc ./
 COPY scripts/check-dependency-sources.mjs scripts/check-dependency-sources.mjs
-RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn,sharing=locked \
     node scripts/check-dependency-sources.mjs && yarn install --production --frozen-lockfile --non-interactive
 
 FROM ${NODE_IMAGE} AS api

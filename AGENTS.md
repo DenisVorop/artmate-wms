@@ -248,3 +248,5 @@ ssh -i /Users/denis.voropayev/.ssh/artmate-wms-codex -o IdentitiesOnly=yes -o St
 ## Источники зависимостей
 
 `yarn.lock` содержит только публичные HTTPS tarball URLs npmjs.org/registry.yarnpkg.com; корпоративные proxy/Artifactory и credentials не переносить из глобальных настроек разработчика. Версии и integrity hashes фиксированы; при исправлении registry менять только resolved URL. `node scripts/check-dependency-sources.mjs` выполняется до установки в CI и обеих install-стадиях Docker. Не отключать TLS/проверку сертификатов для обхода ошибок registry. Чистая установка без локального кэша обязательна при изменении источников зависимостей.
+
+Yarn Classic cache mounts в Docker используют `sharing=locked`: workspace dependencies и production dependencies могут собираться параллельно и иначе повреждают общий extraction cache. Не отключать проверку integrity и не лечить гонку повторными установками.
