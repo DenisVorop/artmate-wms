@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { ValidationPipe } from "@nestjs/common";
 import { CreateSkuDto, WorkspaceDto } from "../src/dto";
 import { WarehouseService } from "../src/warehouse.service";
+import { DEFAULT_PACKAGING } from "../src/physical";
 import { createApp } from "../src/app";
 import { cookieName } from "../src/auth.controller";
 import { hashToken, randomToken } from "../src/auth-storage";
@@ -52,6 +53,8 @@ test("standalone SKU creation is atomic, deduplicates matching barcode metadata 
     assert.equal(sku.name, "Котики 2");
     assert.equal(sku.code, "CATS-2");
     assert.equal(sku.unitsPerBox, 20);
+    assert.deepEqual(sku.packaging, DEFAULT_PACKAGING);
+    assert.notEqual(sku.packaging, DEFAULT_PACKAGING);
     assert.equal(created.skus.length, before.skus.length + 1);
     assert.equal(created.activities[0].title, "Тематика создана");
     assert.deepEqual(stock(created), stock(before));

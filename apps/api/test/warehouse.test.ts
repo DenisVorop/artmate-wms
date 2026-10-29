@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { WarehouseService } from "../src/warehouse.service";
 import { WorkspaceDto } from "../src/dto";
 import { assemblyPressure } from "../src/work-automation/assembly-pressure";
+import { DEMO_PACKAGING } from "../src/physical";
 const req = () => ({ requestId: randomUUID() });
 let warehouse: WarehouseService;
 function inventory(s: WorkspaceDto, skuId: string) {
@@ -2825,6 +2826,12 @@ async function assemblyStock(tag: string, unitsPerBox = 2, quantity = 30) {
   ]);
   const p = receivedPallet(state, receipt.id);
   await warehouse.placeReceiptPallet(receipt.id, p.id, placeBody(p, cell));
+  // These legacy scenarios deliberately alter wooden bases and box geometry.
+  // Keep their explicit old fixture profile; new-SKU defaults are tested separately.
+  await warehouse.updateSkuPackaging(p.skuId!, {
+    ...req(),
+    packaging: { ...DEMO_PACKAGING },
+  });
   return { p, cell, skuId: p.skuId };
 }
 async function assemblyTask(
@@ -4852,5 +4859,42 @@ test("full warehouse trace including mixed-lot packing, movement, partial shippi
       [...lots.values()].every((q) => q === 0),
       true,
     );
+  }
+});
+
+test("inline receipt catalog products use the measured current packaging default without rewriting old SKUs", async () => {
+  const { DEFAULT_PACKAGING } = await import("../src/physical");
+  const previous = process.env.WMS_DATA_DIR;
+  process.env.WMS_DATA_DIR = "memory://";
+  const warehouse = new WarehouseService();
+  try {
+    const before = await warehouse.snapshot();
+    const result = await warehouse.createReceipt({
+      requestId: randomUUID(),
+      receivedAt: new Date().toISOString(),
+      pallets: [
+        {
+          newSku: {
+            name: "Measured new product",
+            barcode: "MEASURED-NEW-RECEIPT",
+          },
+          quantity: 1000,
+        },
+      ],
+    });
+    const sku = result.skus.find((s) => s.barcode === "MEASURED-NEW-RECEIPT")!;
+    assert.deepEqual(sku.packaging, DEFAULT_PACKAGING);
+    assert.notEqual(sku.packaging, DEFAULT_PACKAGING);
+    for (const old of before.skus)
+      assert.deepEqual(
+        result.skus.find((s) => s.id === old.id),
+        old,
+      );
+    assert.equal(result.pallets.find((p) => p.skuId === sku.id)!.widthMm, 1200);
+    assert.equal(result.pallets.find((p) => p.skuId === sku.id)!.depthMm, 800);
+  } finally {
+    await warehouse.onModuleDestroy();
+    if (previous === undefined) delete process.env.WMS_DATA_DIR;
+    else process.env.WMS_DATA_DIR = previous;
   }
 });

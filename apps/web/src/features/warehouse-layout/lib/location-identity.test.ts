@@ -100,10 +100,10 @@ test("Новая форма получает suggestion и положение, �
   assert.equal(values.name, identity.name);
   assert.equal(values.x, 4.27);
   assert.equal(values.y, 3.81);
-  assert.equal(values.width, 1.3);
+  assert.equal(values.width, 1.2);
   assert.equal(values.depth, 0.9);
   assert.equal(values.maxHeightMm, 1800);
-  assert.equal(values.maxBoxes, 18);
+  assert.equal(values.maxBoxes, 42);
 });
 
 test("Редактирование existing места и яруса никогда не подменяет вручную заданные код/имя или геометрию", () => {

@@ -318,8 +318,8 @@ function PalletFields({
         open={physicalError ? true : undefined}
       >
         <summary>
-          Габариты и масса · {row.widthCm || "—"} × {row.depthCm || "—"} ×{" "}
-          {row.heightCm || "—"} см
+          Груз с поддоном и масса · {row.widthCm || "—"} × {row.depthCm || "—"}{" "}
+          × {row.heightCm || "—"} см
         </summary>
         <div className={styles.physicalGrid}>
           {(["widthCm", "depthCm", "heightCm"] as const).map((name) => (

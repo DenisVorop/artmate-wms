@@ -1,5 +1,6 @@
 import type { WorkspaceDto } from "./generated/model";
 import { isAssemblyPressure } from "./work-automation-response";
+import { validWorkspaceLoadDimensions } from "./packaging-geometry-response";
 
 const legacyArrays = [
   "skus",
@@ -27,6 +28,7 @@ function validAutomationFields(value: unknown) {
   if (!value || typeof value !== "object") return false;
   const data = value as Record<string, unknown>;
   return (
+    validWorkspaceLoadDimensions(data) &&
     (data.assemblyPressure === undefined ||
       isAssemblyPressure(data.assemblyPressure)) &&
     Array.isArray(data.tasks) &&

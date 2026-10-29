@@ -83,6 +83,19 @@ export class ReservationDto extends LotContentDto {
   @ApiProperty({ type: String }) palletId!: string;
 }
 
+@ValidatorConstraint({ name: "loadDimensionAtLeastBase", async: false })
+export class LoadDimensionAtLeastBaseConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments) {
+    const base = (args.object as Record<string, unknown>)[args.constraints[0]];
+    return (
+      typeof value === "number" && typeof base === "number" && value >= base
+    );
+  }
+  defaultMessage() {
+    return "Габарит загруженной паллеты не может быть меньше поддона";
+  }
+}
+
 export class PackagingProfileDto {
   @ApiProperty({ type: Number })
   @IsInt()
@@ -109,6 +122,31 @@ export class PackagingProfileDto {
   @Min(100)
   @Max(5000)
   palletDepthMm!: number;
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: 100,
+    maximum: 5000,
+    description: "Полная ширина груза с поддоном; по умолчанию ширина поддона",
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(5000)
+  @Validate(LoadDimensionAtLeastBaseConstraint, ["palletWidthMm"])
+  loadWidthMm?: number;
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: 100,
+    maximum: 5000,
+    description:
+      "Полная глубина груза с поддоном; по умолчанию глубина поддона",
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(100)
+  @Max(5000)
+  @Validate(LoadDimensionAtLeastBaseConstraint, ["palletDepthMm"])
+  loadDepthMm?: number;
   @ApiProperty({ type: Number })
   @IsInt()
   @Min(1)

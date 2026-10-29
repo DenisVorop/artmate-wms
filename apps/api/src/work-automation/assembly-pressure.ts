@@ -1,5 +1,12 @@
 import type * as D from "../dto";
-import { assemblyMetrics, packagingError, placementError } from "../physical";
+import {
+  DEFAULT_PACKAGING,
+  samePackaging,
+  assemblyLayerMetrics,
+  assemblyMetrics,
+  packagingError,
+  placementError,
+} from "../physical";
 import { activeZoneLocation, canonicalAssemblyLocation } from "../work-zones";
 
 export interface AssemblyPressure {
@@ -20,6 +27,7 @@ interface Context {
   location: D.LocationDto;
   pallet: D.PalletDto | null;
   base: Profile;
+  ordinary: Profile;
   profiles: Profile[];
   boxes: number;
   committedBoxes: number;
@@ -170,14 +178,16 @@ function contextFor(
     if (problem) return reject(problem);
   }
   const fixedBase = base!;
+  const storedMetrics = assemblyMetrics(
+    fixedBase,
+    physicalBoxes.map((box) => box.packagingSnapshot),
+  );
   if (
     pallet &&
-    (pallet.widthMm !== fixedBase.palletWidthMm ||
-      pallet.depthMm !== fixedBase.palletDepthMm)
+    (pallet.widthMm !== storedMetrics.widthMm ||
+      pallet.depthMm !== storedMetrics.depthMm)
   )
-    return reject(
-      "Размеры общей паллеты не совпадают с её сохранённым профилем",
-    );
+    return reject("Размеры общей паллеты не совпадают с её сохранённым грузом");
   const baseProblemAtLocation = placementError(
     state,
     location,
@@ -185,10 +195,29 @@ function contextFor(
     pallet?.id,
   );
   if (baseProblemAtLocation) return reject(baseProblemAtLocation);
+  // A retained EMPTY wooden pallet must not force an obsolete box profile on
+  // future work after the catalog was measured. Prefer actual next work, then
+  // an existing SKU using the current default; never invent missing SKU data.
+  const currentDefault = [...state.skus]
+    .sort((a, b) => a.code.localeCompare(b.code))
+    .map((sku) => sku.packaging)
+    .find(
+      (profile) =>
+        !profileError(profile) && samePackaging(profile, DEFAULT_PACKAGING),
+    );
+  const candidateOrdinary = candidate ?? nextTaskProfile ?? currentDefault;
+  const ordinary =
+    physicalBoxes.length === 0 &&
+    incoming.length === 0 &&
+    candidateOrdinary &&
+    !profileError(candidateOrdinary)
+      ? candidateOrdinary
+      : fixedBase;
   result.context = {
     location,
     pallet,
     base: fixedBase,
+    ordinary,
     profiles: profiles as Profile[],
     boxes: physicalBoxes.length,
     committedBoxes: tasks.length,
@@ -233,19 +262,18 @@ function acceptanceProblem(
 /** Maximum TOTAL boxes preserving existing mixed profiles and adding this profile. */
 function capacity(context: Context, next: Profile): number | null {
   const profiles = [...context.profiles, next];
-  const width = Math.max(...profiles.map((profile) => profile.boxWidthMm));
-  const depth = Math.max(...profiles.map((profile) => profile.boxDepthMm));
-  const height = Math.max(...profiles.map((profile) => profile.boxHeightMm));
-  const grid = Math.max(
-    Math.floor(context.base.palletWidthMm / width) *
-      Math.floor(context.base.palletDepthMm / depth),
-    Math.floor(context.base.palletWidthMm / depth) *
-      Math.floor(context.base.palletDepthMm / width),
-  );
-  const perLayer = Math.min(
-    grid,
-    ...profiles.map((profile) => profile.boxesPerLayer),
-  );
+  const layout = assemblyLayerMetrics(context.base, profiles);
+  if (
+    !(
+      (layout.widthMm <= context.location.availableWidthMm &&
+        layout.depthMm <= context.location.availableDepthMm) ||
+      (layout.depthMm <= context.location.availableWidthMm &&
+        layout.widthMm <= context.location.availableDepthMm)
+    )
+  )
+    return 0;
+  const height = layout.boxHeightMm;
+  const perLayer = layout.boxesPerLayer;
   const layers = Math.min(
     Math.floor(
       (context.location.maxHeightMm - context.base.palletBaseHeightMm) / height,
@@ -287,7 +315,7 @@ export function assemblyPressure(state: D.WorkspaceDto): AssemblyPressure {
       capacityBoxes: null,
       message: error!,
     };
-  const capacityBoxes = capacity(context, context.base);
+  const capacityBoxes = capacity(context, context.ordinary);
   if (capacityBoxes === null)
     return {
       ...identity,
@@ -296,7 +324,7 @@ export function assemblyPressure(state: D.WorkspaceDto): AssemblyPressure {
       message:
         "Для места сборки с ограничением массы нужно указать массу коробов",
     };
-  const problem = acceptanceProblem(state, context, context.base);
+  const problem = acceptanceProblem(state, context, context.ordinary);
   if (problem)
     return {
       ...identity,
@@ -304,7 +332,9 @@ export function assemblyPressure(state: D.WorkspaceDto): AssemblyPressure {
       capacityBoxes,
       message:
         context.boxes === 0
-          ? "Все места заняты начатыми коробами. Дождитесь свободного места"
+          ? context.committedBoxes > 0
+            ? "Все места заняты начатыми коробами. Дождитесь свободного места"
+            : problem
           : "Общая паллета сборки заполнена. Сначала разместите готовые короба",
     };
   const nearFull =

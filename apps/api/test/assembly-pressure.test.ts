@@ -2,7 +2,11 @@ import "reflect-metadata";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type * as D from "../src/dto";
-import { assemblyMetrics, DEMO_PACKAGING } from "../src/physical";
+import {
+  assemblyMetrics,
+  DEMO_PACKAGING,
+  DEFAULT_PACKAGING,
+} from "../src/physical";
 import { seedWorkspace } from "../src/seed";
 import {
   assemblyAcceptanceError,
@@ -311,10 +315,7 @@ test("specific oversized SKU is rejected even if an ordinary box still fits", ()
     maxLayers: 1,
   };
   assert.equal(assemblyPressure(state).level, "normal");
-  assert.match(
-    assemblyAcceptanceError(state, "other")!,
-    /фиксированном поддоне/,
-  );
+  assert.match(assemblyAcceptanceError(state, "other")!, /габариты груза/);
   assert.equal(assemblyAcceptanceError(state, "cats"), null);
 });
 
@@ -383,4 +384,73 @@ test("legacy different base profiles cannot reserve incompatible boxes in either
     assert.ok(assemblyAcceptanceError(state, candidateSku));
     assert.equal(state.pallets.length, 0);
   }
+});
+
+test("pressure accounts for real42-box load, its overhang and remaining height without rewriting snapshots", () => {
+  const state = fixture(42);
+  const profile = {
+    ...DEMO_PACKAGING,
+    boxWidthMm: 450,
+    boxDepthMm: 350,
+    boxHeightMm: 200,
+    loadWidthMm: 1200,
+    loadDepthMm: 900,
+    boxesPerLayer: 6,
+    maxLayers: 7,
+  };
+  for (const sku of state.skus) sku.packaging = { ...profile };
+  state.pallets[0].packagingSnapshot = { ...profile };
+  state.locations[0].availableDepthMm = 900;
+  state.locations[0].maxHeightMm = 2200;
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyAcceptanceError(state, "cats"), null);
+  addBoxes(state, 41);
+  const before = JSON.stringify(state);
+  assert.equal(assemblyPressure(state).level, "near_full");
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyAcceptanceError(state, "cats"), null);
+  assert.equal(JSON.stringify(state), before);
+  assert.equal(state.pallets[0].widthMm, 1200);
+  assert.equal(state.pallets[0].depthMm, 900);
+  assert.equal(state.pallets[0].heightMm, 1550);
+  addBoxes(state, 1);
+  assert.equal(assemblyPressure(state).level, "full");
+  assert.match(assemblyAcceptanceError(state, "cats")!, /заполнена/);
+});
+test("an empty875mm address fits the wood but cannot start a900mm loaded accumulator", () => {
+  const state = fixture(42);
+  const p = {
+    ...DEMO_PACKAGING,
+    boxWidthMm: 450,
+    boxDepthMm: 350,
+    boxHeightMm: 200,
+    loadWidthMm: 1200,
+    loadDepthMm: 900,
+    boxesPerLayer: 6,
+    maxLayers: 7,
+  };
+  for (const sku of state.skus) sku.packaging = { ...p };
+  state.pallets[0].packagingSnapshot = { ...p };
+  state.locations[0].availableWidthMm = 875;
+  state.locations[0].availableDepthMm = 1250;
+  state.locations[0].maxHeightMm = 2200;
+  const pressure = assemblyPressure(state);
+  assert.equal(pressure.level, "full");
+  assert.equal(pressure.capacityBoxes, 0);
+  assert.match(pressure.message, /ширине и глубине/);
+  assert.doesNotMatch(pressure.message, /начатыми коробами/);
+  assert.match(assemblyAcceptanceError(state, "cats")!, /ширине и глубине/);
+});
+
+test("a retained empty legacy pallet uses measured current SKU packing without rewriting its old snapshot", () => {
+  const state = fixture(42);
+  state.locations[0].availableDepthMm = 900;
+  state.locations[0].maxHeightMm = 2200;
+  state.skus[0].packaging = { ...DEFAULT_PACKAGING };
+  const original = JSON.stringify(state.pallets[0]);
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyPressure(state).level, "normal");
+  assert.equal(assemblyAcceptanceError(state, "cats"), null);
+  assert.equal(JSON.stringify(state.pallets[0]), original);
+  assert.equal(state.pallets[0].packagingSnapshot!.boxHeightMm, 300);
 });

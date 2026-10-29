@@ -87,7 +87,7 @@ import {
   migrateAddressesAndMovements,
 } from "./migrations";
 import {
-  DEMO_PACKAGING,
+  DEFAULT_PACKAGING,
   packagingError,
   finishedMetrics,
   placementError,
@@ -1553,7 +1553,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       barcode,
       unitsPerBox,
       color: "#6ee7b7",
-      packaging: { ...DEMO_PACKAGING },
+      packaging: { ...DEFAULT_PACKAGING },
     };
     s.skus.push(sku);
     return sku;

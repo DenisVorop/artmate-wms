@@ -106,8 +106,8 @@ export function ReceiptDetails({
                 </Badge>
                 {pallet && (
                   <span className={styles.help}>
-                    {pallet.widthMm / 10} × {pallet.depthMm / 10} ×{" "}
-                    {pallet.heightMm / 10} см
+                    Груз с поддоном: {pallet.widthMm / 10} ×{" "}
+                    {pallet.depthMm / 10} × {pallet.heightMm / 10} см
                   </span>
                 )}
                 <Link

@@ -3,7 +3,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, Modal } from "@/shared/ui";
 import type { SkuDto } from "@/shared/api/generated/model";
-import { packagingSchema, type PackagingValues } from "../lib/packaging-form";
+import {
+  packagingSchema,
+  packagingDefaults,
+  type PackagingValues,
+} from "../lib/packaging-form";
 import { usePackaging } from "../model/use-packaging";
 export function PackagingForm({
   sku,
@@ -16,10 +20,11 @@ export function PackagingForm({
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<PackagingValues>({
     resolver: zodResolver(packagingSchema),
-    defaultValues: sku.packaging,
+    defaultValues: packagingDefaults(sku.packaging),
   });
   const dimensions: [keyof PackagingValues, string][] = [
     ["boxWidthMm", "Ширина короба, мм"],
@@ -27,6 +32,8 @@ export function PackagingForm({
     ["boxHeightMm", "Высота короба, мм"],
     ["palletWidthMm", "Ширина поддона, мм"],
     ["palletDepthMm", "Глубина поддона, мм"],
+    ["loadWidthMm", "Ширина загруженной паллеты, мм"],
+    ["loadDepthMm", "Глубина загруженной паллеты, мм"],
     ["palletBaseHeightMm", "Высота поддона, мм"],
     ["boxesPerLayer", "Коробов в слое"],
     ["maxLayers", "Максимум слоёв"],
@@ -53,15 +60,31 @@ export function PackagingForm({
               {label}
               <input
                 type="number"
-                min={1}
+                min={
+                  field === "loadWidthMm"
+                    ? watch("palletWidthMm")
+                    : field === "loadDepthMm"
+                      ? watch("palletDepthMm")
+                      : 1
+                }
+                readOnly={
+                  field === "palletWidthMm" || field === "palletDepthMm"
+                }
                 {...register(field, { valueAsNumber: true })}
               />
               {errors[field] && (
-                <span className="ops-field-error">Проверьте значение</span>
+                <span className="ops-field-error">
+                  {errors[field]?.message ?? "Проверьте значение"}
+                </span>
               )}
             </label>
           ))}
         </div>
+        <p className="ops-description">
+          Габариты загруженной паллеты включают поддон и выступающие короба. По
+          ним проверяется, поместится ли груз на адресе. Размер основания
+          поддона сохраняется отдельно.
+        </p>
         <fieldset>
           <legend>Масса для проверки грузоподъёмности</legend>
           <div className="ops-form-grid">

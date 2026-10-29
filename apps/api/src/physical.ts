@@ -11,21 +11,61 @@ export const DEMO_PACKAGING: D.PackagingProfileDto = {
   boxWeightKg: null,
   palletWeightKg: null,
 };
+/** Confirmed current default for newly created catalog products; legacy seed/migrations keep DEMO_PACKAGING. */
+export const DEFAULT_PACKAGING: D.PackagingProfileDto = {
+  boxWidthMm: 450,
+  boxDepthMm: 350,
+  boxHeightMm: 200,
+  palletWidthMm: 1200,
+  palletDepthMm: 800,
+  loadWidthMm: 1200,
+  loadDepthMm: 900,
+  palletBaseHeightMm: 150,
+  boxesPerLayer: 6,
+  maxLayers: 7,
+  boxWeightKg: null,
+  palletWeightKg: null,
+};
+
+/** The wooden base is immutable; these optional dimensions describe its loaded envelope. */
+export function loadedPalletFootprint(profile: D.PackagingProfileDto) {
+  return {
+    widthMm: profile.loadWidthMm ?? profile.palletWidthMm,
+    depthMm: profile.loadDepthMm ?? profile.palletDepthMm,
+  };
+}
 export function packagingError(p: D.PackagingProfileDto): string | null {
+  for (const [value, base] of [
+    [p.loadWidthMm, p.palletWidthMm],
+    [p.loadDepthMm, p.palletDepthMm],
+  ] as const) {
+    if (
+      value !== undefined &&
+      (!Number.isSafeInteger(value) ||
+        value < base ||
+        value < 100 ||
+        value > 5000)
+    )
+      return "Проверьте габариты загруженной паллеты: они не могут быть меньше поддона";
+  }
+  const load = loadedPalletFootprint(p);
   const straight =
-    Math.floor(p.palletWidthMm / p.boxWidthMm) *
-    Math.floor(p.palletDepthMm / p.boxDepthMm);
+    Math.floor(load.widthMm / p.boxWidthMm) *
+    Math.floor(load.depthMm / p.boxDepthMm);
   const rotated =
-    Math.floor(p.palletWidthMm / p.boxDepthMm) *
-    Math.floor(p.palletDepthMm / p.boxWidthMm);
+    Math.floor(load.widthMm / p.boxDepthMm) *
+    Math.floor(load.depthMm / p.boxWidthMm);
   return p.boxesPerLayer > Math.max(straight, rotated)
-    ? "Заявленный слой коробов не помещается на поддон при прямоугольной укладке"
+    ? "Заявленный слой коробов не помещается в габариты загруженной паллеты при прямоугольной укладке"
     : null;
 }
 export function finishedMetrics(profile: D.PackagingProfileDto, count: number) {
+  const load =
+    count > 0
+      ? loadedPalletFootprint(profile)
+      : { widthMm: profile.palletWidthMm, depthMm: profile.palletDepthMm };
   return {
-    widthMm: profile.palletWidthMm,
-    depthMm: profile.palletDepthMm,
+    ...load,
     heightMm:
       profile.palletBaseHeightMm +
       Math.ceil(count / profile.boxesPerLayer) * profile.boxHeightMm,
@@ -112,53 +152,79 @@ export function samePackaging(
   a: D.PackagingProfileDto | null,
   b: D.PackagingProfileDto,
 ) {
+  if (a === null) return false;
+  const left = loadedPalletFootprint(a),
+    right = loadedPalletFootprint(b);
   return (
-    a !== null &&
+    left.widthMm === right.widthMm &&
+    left.depthMm === right.depthMm &&
     (Object.keys(DEMO_PACKAGING) as Array<keyof D.PackagingProfileDto>).every(
       (key) => a[key] === b[key],
     )
   );
 }
 
-/** Conservative mixed-box grid on an immutable physical pallet base. */
+/** Conservative rectangular mixed-box grid on the fixed wooden base.
+ * Only explicit load dimensions permit overhang. A legacy profile's different
+ * implicit base must never enlarge the pallet that another box created first.
+ */
+export function assemblyLayerMetrics(
+  base: D.PackagingProfileDto,
+  profiles: D.PackagingProfileDto[],
+) {
+  const widthMm = Math.max(
+    base.palletWidthMm,
+    ...profiles.map((p) => p.loadWidthMm ?? base.palletWidthMm),
+  );
+  const depthMm = Math.max(
+    base.palletDepthMm,
+    ...profiles.map((p) => p.loadDepthMm ?? base.palletDepthMm),
+  );
+  if (!profiles.length)
+    return {
+      widthMm,
+      depthMm,
+      boxesPerLayer: base.boxesPerLayer,
+      maxLayers: base.maxLayers,
+      boxHeightMm: 0,
+    };
+  const width = Math.max(...profiles.map((p) => p.boxWidthMm));
+  const depth = Math.max(...profiles.map((p) => p.boxDepthMm));
+  const grid = Math.max(
+    Math.floor(widthMm / width) * Math.floor(depthMm / depth),
+    Math.floor(widthMm / depth) * Math.floor(depthMm / width),
+  );
+  return {
+    widthMm,
+    depthMm,
+    boxesPerLayer: Math.min(grid, ...profiles.map((p) => p.boxesPerLayer)),
+    maxLayers: Math.min(...profiles.map((p) => p.maxLayers)),
+    boxHeightMm: Math.max(...profiles.map((p) => p.boxHeightMm)),
+  };
+}
+
+/** Conservative mixed-box grid; the stored footprint includes declared overhang. */
 export function assemblyMetrics(
   base: D.PackagingProfileDto,
   profiles: D.PackagingProfileDto[],
 ) {
   const quantity = profiles.length;
-  if (!quantity)
-    return {
-      widthMm: base.palletWidthMm,
-      depthMm: base.palletDepthMm,
-      heightMm: base.palletBaseHeightMm,
-      weightKg: base.palletWeightKg,
-      quantity,
-      capacity: base.boxesPerLayer * base.maxLayers,
-      error: null as string | null,
-    };
-  const width = Math.max(...profiles.map((p) => p.boxWidthMm)),
-    depth = Math.max(...profiles.map((p) => p.boxDepthMm)),
-    height = Math.max(...profiles.map((p) => p.boxHeightMm));
-  const grid = Math.max(
-    Math.floor(base.palletWidthMm / width) *
-      Math.floor(base.palletDepthMm / depth),
-    Math.floor(base.palletWidthMm / depth) *
-      Math.floor(base.palletDepthMm / width),
-  );
-  const bpl = Math.min(grid, ...profiles.map((p) => p.boxesPerLayer));
-  const capacity = bpl * Math.min(...profiles.map((p) => p.maxLayers));
+  const layout = assemblyLayerMetrics(base, profiles);
+  const capacity = layout.boxesPerLayer * layout.maxLayers;
   const error =
-    bpl < 1
-      ? "Короб не помещается на фиксированном поддоне общей паллеты сборки"
+    layout.boxesPerLayer < 1
+      ? "Короб не помещается в габариты груза общей паллеты сборки"
       : quantity > capacity
         ? "Общая паллета сборки заполнена. Разместите короба через второстепенные задания"
         : null;
   return {
-    widthMm: base.palletWidthMm,
-    depthMm: base.palletDepthMm,
+    widthMm: layout.widthMm,
+    depthMm: layout.depthMm,
     heightMm:
       base.palletBaseHeightMm +
-      (bpl ? Math.ceil(quantity / bpl) * height : height),
+      (layout.boxesPerLayer
+        ? Math.ceil(quantity / layout.boxesPerLayer) * layout.boxHeightMm
+        : layout.boxHeightMm),
     weightKg:
       base.palletWeightKg === null ||
       profiles.some((p) => p.boxWeightKg === null)

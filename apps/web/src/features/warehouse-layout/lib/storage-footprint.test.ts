@@ -33,24 +33,26 @@ function newSection() {
   };
 }
 
-test("новые место и секция начинаются с 1,3 × 0,9 м, полезные миллиметры остаются 1300 × 900", () => {
+test("новые место и секция рассчитаны на груз 1,2 × 0,9 м на европаллете и до 42 коробов", () => {
   assert.deepEqual(DEFAULT_STORAGE_FOOTPRINT, {
-    width: 1.3,
+    width: 1.2,
     depth: 0.9,
     rotation: 0,
   });
   assert.equal(MIN_STORAGE_SIZE_METERS, 0.1);
   const location = locationSchema.parse(newLocation());
   const section = newSectionSchema.parse(newSection());
-  assert.deepEqual([location.width, location.depth], [1.3, 0.9]);
-  assert.deepEqual([section.width, section.depth], [1.3, 0.9]);
+  assert.equal(location.maxBoxes, 42);
+  assert.equal(section.levels[0]!.maxBoxes, 42);
+  assert.deepEqual([location.width, location.depth], [1.2, 0.9]);
+  assert.deepEqual([section.width, section.depth], [1.2, 0.9]);
   assert.deepEqual(
     [location.availableWidthMm, location.availableDepthMm],
-    [1300, 900],
+    [1200, 900],
   );
   assert.deepEqual(
     [section.levels[0]!.availableWidthMm, section.levels[0]!.availableDepthMm],
-    [1300, 900],
+    [1200, 900],
   );
 });
 
@@ -85,7 +87,7 @@ test("1,2 × 0,8, минимальные 0,1 м и точные дроби пр�
         );
       assert.deepEqual(
         [location.availableWidthMm, location.availableDepthMm],
-        [1300, 900],
+        [1200, 900],
       );
     }
   }

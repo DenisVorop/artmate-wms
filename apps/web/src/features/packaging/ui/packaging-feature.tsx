@@ -64,6 +64,13 @@ export function PackagingFeature() {
                   </strong>
                 </div>
                 <div>
+                  <span>Груз с поддоном, Ш × Г</span>
+                  <strong>
+                    {p.loadWidthMm ?? p.palletWidthMm} ×{" "}
+                    {p.loadDepthMm ?? p.palletDepthMm} мм
+                  </strong>
+                </div>
+                <div>
                   <span>Предельная высота</span>
                   <strong>
                     {p.palletBaseHeightMm + p.maxLayers * p.boxHeightMm} мм

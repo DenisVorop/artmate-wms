@@ -356,7 +356,8 @@ export function LocationDetails({
                   : pallet.code}
               </strong>
               <span>
-                {pallet.widthMm} × {pallet.depthMm} × {pallet.heightMm} мм ·{" "}
+                Груз с поддоном: {pallet.widthMm} × {pallet.depthMm} ×{" "}
+                {pallet.heightMm} мм ·{" "}
                 {pallet.weightKg === null
                   ? "масса неизвестна"
                   : `${pallet.weightKg} кг`}

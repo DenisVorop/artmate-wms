@@ -32,7 +32,7 @@ const name = z
   .max(100, "Не больше 100 символов");
 
 export const DEFAULT_STORAGE_FOOTPRINT = {
-  width: 1.3,
+  width: 1.2,
   depth: 0.9,
   rotation: 0,
 } as const;
@@ -97,8 +97,8 @@ export function profileDefaults(location?: LocationDto): LevelProfileValues {
     code: location?.code ?? "",
     name: location?.name ?? "",
     maxHeightMm: location?.maxHeightMm ?? 1800,
-    maxBoxes: location?.maxBoxes ?? 18,
-    availableWidthMm: location?.availableWidthMm ?? 1300,
+    maxBoxes: location?.maxBoxes ?? 42,
+    availableWidthMm: location?.availableWidthMm ?? 1200,
     availableDepthMm: location?.availableDepthMm ?? 900,
     maxWeightKg: location?.maxWeightKg ?? null,
     accessSides: location?.accessSides ?? 1,
