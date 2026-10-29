@@ -22,7 +22,10 @@ ssh-copy-id -i ~/.ssh/artmate-wms-codex.pub root@178.236.242.215
 `SHA256:8UJSoReEby9w+/Thy4oKJhvFkoGgNq7kFIwR3Gp96Z8`.
 Это закрепление первого доверенного входа (TOFU), не независимая аттестация
 через консоль провайдера. Не подменять эту процедуру blind ssh-keyscan.
-Последующие подключения используют StrictHostKeyChecking=yes. При изменении
+Публичная запись сверена с этим точным fingerprint и закреплена в
+`~/.ssh/artmate-wms-known_hosts` и GitHub `PRODUCTION_KNOWN_HOSTS`.
+Оба SSH aliases используют этот файл. Последующие подключения используют
+StrictHostKeyChecking=yes. При изменении
 fingerprint выяснить причину у провайдера, не удалять known_hosts автоматически.
 
 После входа оператор проверяет ОС, память, диск, отсутствие прикладных контейнеров
@@ -55,7 +58,8 @@ amd64, отказывается при существующих контейне
 
 После bootstrap проверить вход operator и `wms-deploy` по соответствующим ключам,
 Docker Compose, Node 24, swap, владельца каталогов и fingerprints. Host key,
-полученный через уже закреплённое SSH-соединение, сохранить в GitHub secret
+сверенный с явно зафиксированным пользователем fingerprint при первом входе
+или полученный через уже закреплённое SSH-соединение, сохранить в GitHub secret
 `PRODUCTION_KNOWN_HOSTS` как полную строку known_hosts. Не писать private keys,
 пароли, заполненный env или dump в документацию/коммиты/логи.
 

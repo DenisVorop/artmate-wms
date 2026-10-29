@@ -220,6 +220,7 @@ WMS отдельный Compose-проект/БД/ключи. Не изменят
 
 - Провайдер: Aeza; service `2020285`; location Moscow, тариф MSKs-1.
 - Host: `178.236.242.215`; SSH port: `22`; Ubuntu 26.04; 1 shared vCPU / 2 GB RAM / 30 GB NVMe.
+- Закреплённый known_hosts: `/Users/denis.voropayev/.ssh/artmate-wms-known_hosts`, та же публичная запись сохранена в GitHub `PRODUCTION_KNOWN_HOSTS`.
 - Host key первого входа, сообщённый пользователем: Ed25519 `SHA256:8UJSoReEby9w+/Thy4oKJhvFkoGgNq7kFIwR3Gp96Z8` (TOFU; затем проверять строго).
 - SSH operator: `root`; локальный приватный ключ `/Users/denis.voropayev/.ssh/artmate-wms-codex`.
 - Fingerprint operator public key: `SHA256:6zAX++zUpAUqNz0LiigxqZedzJT+5iG94PH5Ee4GMW4`.
@@ -231,7 +232,7 @@ WMS отдельный Compose-проект/БД/ключи. Не изменят
 - Точка входа подключения после первичной установки ключа:
 
 ```bash
-ssh -i /Users/denis.voropayev/.ssh/artmate-wms-codex -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes root@178.236.242.215
+ssh -i /Users/denis.voropayev/.ssh/artmate-wms-codex -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Users/denis.voropayev/.ssh/artmate-wms-known_hosts root@178.236.242.215
 ```
 
 Перед SSH-операциями нужна явная авторизация пользователя на соответствующую работу; запрос на подключение и настройку WMS разрешает необходимые команды в рамках этой задачи, без повторного вопроса для каждой команды. Не распространять это разрешение на сервер сайта Artmate. Новая выкладка приложения, перенос рабочей БД, изменение DNS, удаление данных или смена ключа шифрования требуют отдельного соответствующего запроса; настройка доступа и пайплайнов сама по себе их не разрешает.
