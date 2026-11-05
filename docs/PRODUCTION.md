@@ -364,3 +364,40 @@ Hash planning_stock_confirmations совпал до и после: дата и �
 не создавалась. Полный browser click-through не выполнен: IAB показывал вход;
 временная вкладка закрыта. Исправлена серверная проекция, которую читает прежний UI.
 См. уточнение ADR072 о готовом прогнозе со строками проверки.
+
+
+## Повторное восстановление плана и сохранение review — 2026-11-05
+
+После получасового обновления Ozon завершился failed, WB опубликовал новый snapshot,
+а forecast сначала ожидал новый ключ, затем успешно опубликовался. Прежний фикс
+требовал success у всех подключений и не сохранял review-проекцию; UI опять стал
+unavailable. Подтверждено SELECT-only диагностикой в23:03–23:06МСК.
+
+API9f1bf0939039dc40f1b33f64862bf50399cf3514 выложен напрямую23:11МСК:
+`/opt/artmate-wms/releases/9f1bf0939039dc40f1b33f64862bf50399cf3514-review-plan-20261105`.
+Image `artmate-wms-api:9f1bf0939039dc40f1b33f64862bf50399cf3514`, ID
+`sha256:3d7e99125ac9c00acc5de51e586febb52b31c5835773291cd3361a801b738d5a`.
+Base421adc6, web060d369 не пересоздавался. Из99compiledJS изменился только
+marketplaces/planning-presentation.js. Current-release.json сохраняет отдельный
+webArtifactManifest от060d369, ссылки на immutable bases и checksums.
+Backup: `/opt/artmate-wms/backups/before-review-plan-2026-11-05T20-10-44.245Z.dump`.
+Миграций нет, schema18, секреты и склад сохранены. Backup/lock/graceful stop API,
+readiness, web proxy и публичные HTTPS health успешны. Первые попытки остановились
+до backup/switch из-за неполной fixture предрелизного probe; после использования
+seedWorkspace/defaultSettings изолированный compiled probe прошёл обе ветки.
+
+Проверки:49 адресных API-тестов, API typecheck/build, FSDlint и формат успешны.
+Реальная manager-сессия в открытом Yandex через CUA: /planning после reload
+показал17товаров, причины проверки и форму уточнения остатка в Подробнее.
+Спиннер пересчёта исчез; DevTools закрыт, изменения форм не отправлялись.
+Единственная увиденная console error — прежний favicon404. Native driver не
+поддерживает network interception/viewport probes; они не объявляются пройденными.
+
+SELECT-only проверка с диагностическим cacheCurrent=false (без записи состояния)
+подтвердила durable previousPlan, state=refreshing/loading=false. Источник —
+сохранённый review от23:12МСК,17строк,0допущенныхк созданию задач.
+Hash planning_stock_confirmations остался тем же72ae1dd2daeb37caf95447b29fc4defc31ab4e0a6c48688a9415cdd7cf9f45d9.
+Обычная текущая GET-проекция может сохранять display cache, поэтому её проверили
+через настоящую авторизованную страницу; SELECT-only diagnostic отказывался
+выполнять эти записи, без обхода авторизации или фиктивной сессии.
+Evidence в task workspace: output/ui/planning-review-persistence-verification.json.
