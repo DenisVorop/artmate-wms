@@ -323,3 +323,44 @@ click-through и запрос карты из стенда не выполнял
 причину «Сначала нужна самая старая партия этой тематики». Тестовых заданий,
 перемещений товара и корректировок остатков на production не делалось.
 Правила добровольного автоспуска и разнообразия тематик описаны в ADR087.
+
+
+## Восстановление отображения плана — 2026-11-05
+
+Причина инцидента: forecast cache актуален (публикация22:36МСК), обе интеграции
+success с совпадающими версиями, но все17строк требуют проверки. У16тематик
+агрегатные остатки старше7дней, у маркеров количество приблизительное. После смены
+настроек display cache несовместим; требование хотя бы одной dataComplete строки
+возвращало unavailable, которое веб показывал как бесконечный пересчёт.
+
+Исправление API `421adc619a551fd5fe40e9687fbc3b91d3fd6fc4` развёрнуто напрямую
+по действующему разрешению пользователя. Web остался060d369 и не перезапускался.
+Directory:
+`/opt/artmate-wms/releases/421adc619a551fd5fe40e9687fbc3b91d3fd6fc4-review-plan-20261105`.
+API image `artmate-wms-api:421adc619a551fd5fe40e9687fbc3b91d3fd6fc4`, ID
+`sha256:9b74eb4c6b8be5158501b54c8930725215c16a2c32a80d06109e311150e6c386`.
+Mode=direct-api-update-user-requested; раздельные apiRevision/webRevision,
+immutable bases, image IDs и manifests записаны в current-release.json.
+
+Из99compiledJS изменился только marketplaces/planning-presentation.js;
+98остальных совпали с APIbase060d369. Зависимости, DTO, клиент, schema18,
+учёт и алгоритмы прогнозирования не менялись. До переключения проверены OCI,
+все checksum и compiled ready-review ветка с запретом записи в diagnostic tx.
+Backup:
+`/opt/artmate-wms/backups/before-review-plan-2026-11-05T19-55-47.479Z.dump`.
+Сохранены deploy.lock, protected env, graceful stop только API, readiness,
+web API proxy и публичные HTTPS проверки. Дампы на Mac не копировались.
+
+Проверки: 28адресных API, полный API601pass/2optional skip, web458pass,
+генерация контрактов, типы, FSDlint, формат и APIbuild прошли. Независимый
+read-only review не выявил нарушения прежних guards. Webbundle остался прежним.
+
+Одним и тем же SELECT-only diagnostic на рабочем состоянии сравнили до/после:
+22:54:31МСК cacheCurrent=true,17review rows,0executable, state=unavailable/loading=true;
+22:56:33МСК cacheCurrent=true,17review rows,0executable, state=current/loading=false,
+сообщение «Расчёт готов. Для планирования сборки проверьте данные товаров».
+Hash planning_stock_confirmations совпал до и после: дата и количество не обновлялись.
+Диагностика отказывалась выполнять INSERT/UPDATE/DELETE; фиктивная HTTP-сессия
+не создавалась. Полный browser click-through не выполнен: IAB показывал вход;
+временная вкладка закрыта. Исправлена серверная проекция, которую читает прежний UI.
+См. уточнение ADR072 о готовом прогнозе со строками проверки.
