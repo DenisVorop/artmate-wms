@@ -59,7 +59,10 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
   const ready = print.ready;
   const hasImageError = print.failed;
   return (
-    <div className={styles.page} data-print-ready={ready}>
+    <div
+      className={`${styles.page} ${rollPaperClass(print.format)}`}
+      data-print-ready={ready}
+    >
       <header className={`glass-panel ${styles.screenHeader}`}>
         <div>
           <Link href="/receiving" className={styles.back}>

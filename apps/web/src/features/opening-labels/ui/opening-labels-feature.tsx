@@ -59,7 +59,10 @@ export function OpeningLabelsFeature({
       />
     );
   return (
-    <div className={styles.page} data-print-ready={print.ready}>
+    <div
+      className={`${styles.page} ${rollPaperClass(print.format)}`}
+      data-print-ready={print.ready}
+    >
       <header className={`glass-panel ${styles.header}`}>
         <div>
           <Link

@@ -72,3 +72,23 @@
     page: wmsPalletA4;
   }
 }
+
+/* Name the root print page too: a named descendant alone creates a leading
+   anonymous A4 sheet in Chromium. Keep page context identical at every level. */
+@media print {
+  :global(body):has(.boxCompact) {
+    page: wmsBox58;
+  }
+  :global(body):has(.portrait) {
+    page: wmsRoll75;
+  }
+  :global(body):has(.landscape) {
+    page: wmsRoll100;
+  }
+  :global(body):has(.addressLandscape) {
+    page: wmsRoll120;
+  }
+  :global(body):has(.palletSheet) {
+    page: wmsPalletA4;
+  }
+}

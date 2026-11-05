@@ -90,7 +90,10 @@ function PalletLabelEditor({
   const historyPages = Math.max(1, Math.ceil((batches.data?.total ?? 0) / 10));
   const batch = labels.data?.batch;
   return (
-    <div className={styles.page} data-print-ready={ready}>
+    <div
+      className={`${styles.page} ${rollPaperClass(ui.format)}`}
+      data-print-ready={ready}
+    >
       <header className={`page-header ${styles.screenOnly}`}>
         <div>
           <Link href="/receiving" className={styles.back}>
