@@ -368,10 +368,11 @@ image IDs и backup читать из current-release.json/PRODUCTION.md. Нов
 
 ## Готовый план с замечаниями — 2026-11-05
 
-Не путать row.dataComplete с готовностью forecast cache. Если cacheCurrent===true,
-версии магазинов подтверждены и все enabled syncStatus=success, строгие review-строки
-показываются с planStatus=current даже при отсутствии полной строки; иначе UI скрывает
-доступную форму остатков под вечной загрузкой. Review display не сохранять поверх
-последнего полного cache. countedAt/units автоматически не подтверждать; canCreate,
-backlogCanCreate, unknown и прежние guards сохраняются. Реально pending forecast и
-неуспешный/идущий импорт используют прежние ветки. См. уточнение ADR072.
+Не путать row.dataComplete с готовностью forecast cache. Готовые review-строки
+не должны скрываться при следующем running/failed/partial импорте. При
+cacheCurrent===true и подтверждённых версиях магазинов сохранять их отдельно в
+marketplace_plan_review_display; последний полный marketplace_plan_display
+сохраняет приоритет и не перезаписывается. При worker key gap совместимая review
+проекция остаётся dated nonExecutable previousPlan. Compatibility/account guards,
+unknown, canCreate/backlogCanCreate и live формы остатков сохраняются.
+countedAt/units автоматически не подтверждать. См. уточнения ADR072.

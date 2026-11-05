@@ -353,7 +353,10 @@ test("missing primary data, unknown inbound, missing mapping, incomplete coverag
     const state = fixture();
     state.m.connections[0].syncStatus = "failed";
     mutate(state);
-    const result = await state.read();
+    const result = await state.read(now, {
+      ...state.forecast,
+      cacheCurrent: false,
+    });
     assert.equal(result.previousPlan, null);
     assert.equal(result.planStatus.state, "unavailable");
     assert.equal(state.writes(), 0);
@@ -462,8 +465,8 @@ test("completed forecasts with only stale or approximate stock show review rows 
     assert.match(result.planStatus.message, /Расчёт готов.*проверьте данные/);
     assert.equal(
       writes(),
-      1,
-      "review rows must not overwrite the last complete saved plan",
+      2,
+      "review is saved separately from the last complete quantities",
     );
     assert.deepEqual(data.get("marketplace_plan_display"), saved);
     assert.deepEqual(
@@ -474,8 +477,8 @@ test("completed forecasts with only stale or approximate stock show review rows 
     const pending = await read(now, { ...forecast, cacheCurrent: false });
     assert.equal(
       pending.planStatus.state,
-      "unavailable",
-      "a real settings recalculation must still wait for publication",
+      "refreshing",
+      "a real recalculation keeps the compatible dated review visible",
     );
   }
 });
@@ -489,4 +492,107 @@ test("a completed forecast with no mapped planning rows exposes the empty state 
   assert.equal(result.planStatus.state, "current");
   assert.match(result.planStatus.message, /Свяжите товары/);
   assert.equal(writes(), 0);
+});
+
+test("saved review survives imports, worker replacement and restart without renewing inventory", async () => {
+  const { w, m, forecast, tx, data, read, writes } = fixture();
+  m.planningStock = [
+    {
+      skuId: "sku-cats",
+      enabled: true,
+      units: 300,
+      accuracy: "exact",
+      note: "Physical count",
+      unitsPerBoxAtCount: 20,
+      trackedUnitsAtCount: 0,
+      countedAt: "2026-10-15T12:00:00Z",
+      actorAccountId: "manager",
+      revision: 1,
+      outboundSupplyKeys: [],
+    },
+  ];
+  const stock = structuredClone(m.planningStock);
+  await read();
+  const review = structuredClone(data.get("marketplace_plan_review_display"));
+  assert.ok(review);
+  assert.equal(data.has("marketplace_plan_display"), false);
+  assert.equal(writes(), 1);
+  await read(new Date(now.getTime() + 30_000));
+  assert.equal(
+    writes(),
+    1,
+    "unchanged review polling does not rewrite its timestamp",
+  );
+  for (const syncStatus of [
+    "running",
+    "failed",
+    "partial",
+    "success",
+  ] as const) {
+    m.connections[0].syncStatus = syncStatus;
+    m.connections[0].syncMode = "automatic";
+    const pending = { ...forecast, key: "replacement", cacheCurrent: false };
+    const later = new Date(now.getTime() + 60_000);
+    const result = await readPlanningPresentation(
+      tx,
+      w,
+      m,
+      later,
+      pending,
+      marketplacePlan(w, m, later, pending),
+    );
+    assert.equal(result.planStatus.state, "refreshing");
+    assert.ok(result.previousPlan);
+    assert.equal(result.previousPlan.generatedAt, now.toISOString());
+    assert.equal(result.previousPlan.rows[0].dataComplete, false);
+    assert.equal(result.previousPlan.rows[0].canCreate, false);
+    assert.equal(result.previousPlan.rows[0].backlogCanCreate, false);
+    assert.equal(result.previousPlan.rows[0].advice.state, "review");
+  }
+  assert.deepEqual(m.planningStock, stock);
+  assert.deepEqual(data.get("marketplace_plan_review_display"), review);
+  assert.equal(writes(), 1);
+  m.connections[0].version++;
+  const replaced = await read(now, { ...forecast, cacheCurrent: false });
+  assert.equal(replaced.previousPlan, null);
+  assert.equal(
+    replaced.planStatus.state,
+    "unavailable",
+    "review cannot cross accounts or versions",
+  );
+});
+
+test("a published all-review plan remains visible after a failed or active import", async () => {
+  for (const syncStatus of ["failed", "partial", "running"] as const) {
+    const { w, m, forecast, read, data } = fixture();
+    m.planningStock = [
+      {
+        skuId: "sku-cats",
+        enabled: true,
+        units: 300,
+        accuracy: "exact",
+        note: "Physical count",
+        unitsPerBoxAtCount: 20,
+        trackedUnitsAtCount: 0,
+        countedAt: "2026-10-15T12:00:00Z",
+        actorAccountId: "manager",
+        revision: 1,
+        outboundSupplyKeys: [],
+      },
+    ];
+    m.connections[0].syncStatus = syncStatus;
+    m.connections[0].syncMode = "manual";
+    const strict = marketplacePlan(w, m, now, forecast);
+    assert.equal(strict.rows[0].dataComplete, false);
+    assert.equal(strict.rows[0].canCreate, false);
+    const result = await read();
+    assert.equal(
+      result.planStatus.state,
+      syncStatus === "running" ? "refreshing" : "current",
+    );
+    assert.equal(result.previousPlan, null);
+    assert.match(result.planStatus.message, /проверьте данные/);
+    assert.equal(data.has("marketplace_plan_display"), false);
+    assert.ok(data.get("marketplace_plan_review_display"));
+  }
 });

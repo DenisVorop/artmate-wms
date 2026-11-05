@@ -29,6 +29,7 @@ export interface PlanningPresentation {
   };
 }
 const cacheId = "marketplace_plan_display";
+const reviewCacheId = "marketplace_plan_review_display";
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -110,6 +111,21 @@ function nonExecutable(plan: MarketplacePlanDto): MarketplacePlanDto {
   return previous;
 }
 
+/** Polling preserves the original calculation time until content changes. */
+async function savePresentation(
+  tx: Queryable,
+  id: string,
+  previous: SavedPlanningPresentation | undefined,
+  next: SavedPlanningPresentation,
+) {
+  const content = (entry: SavedPlanningPresentation) => ({
+    ...entry,
+    plan: { ...entry.plan, generatedAt: "" },
+  });
+  if (!previous || hash(content(previous)) !== hash(content(next)))
+    await putForecast(tx, "forecast_results", id, next);
+}
+
 /** Called only after manager authorization. No network, fitting, or warehouse writes. */
 export async function readPlanningPresentation(
   tx: Queryable,
@@ -140,38 +156,13 @@ export async function readPlanningPresentation(
     forecast.cacheCurrent !== false &&
     strictPlan.rows.some((row) => row.dataComplete);
   const dates = sourceDates(m);
-  // A completed forecast can yield only review rows (for example when every
-  // manual stock count has expired). That is actionable data, not computation.
-  // Show the strict rows without replacing the last complete saved projection.
-  if (
-    !current &&
-    verifiedSources &&
-    forecast.cacheCurrent === true &&
-    enabled.every((connection) => connection.syncStatus === "success")
-  )
-    return {
-      previousPlan: null,
-      planStatus: {
-        state: "current",
-        calculatedAt: strictPlan.generatedAt,
-        ...dates,
-        message: strictPlan.rows.length
-          ? "Расчёт готов. Для планирования сборки проверьте данные товаров."
-          : "Расчёт готов. Свяжите товары с тематиками для планирования сборки.",
-      },
-    };
   if (current) {
     const next: SavedPlanningPresentation = {
       compatibilityKey,
       plan: strictPlan,
       ...dates,
     };
-    const content = (entry: SavedPlanningPresentation) => ({
-      ...entry,
-      plan: { ...entry.plan, generatedAt: "" },
-    });
-    if (!saved || hash(content(saved)) !== hash(content(next)))
-      await putForecast(tx, "forecast_results", cacheId, next);
+    await savePresentation(tx, cacheId, saved, next);
     return {
       previousPlan: null,
       planStatus: {
@@ -199,6 +190,44 @@ export async function readPlanningPresentation(
         reconstructed = true;
       }
     }
+  }
+  // Review is an available result, including when a later import fails. Keep
+  // its dated projection separately so it survives the next worker key gap
+  // without replacing the last complete quantities or weakening row guards.
+  if (!saved && verifiedSources && forecast.cacheCurrent === true) {
+    if (strictPlan.rows.length) {
+      const priorReview = (
+        await tx.query<{ payload: SavedPlanningPresentation }>(
+          "SELECT payload FROM forecast_results WHERE id=$1",
+          [reviewCacheId],
+        )
+      ).rows[0]?.payload;
+      await savePresentation(tx, reviewCacheId, priorReview, {
+        compatibilityKey,
+        plan: strictPlan,
+        ...dates,
+      });
+    }
+    return {
+      previousPlan: null,
+      planStatus: {
+        state: running ? "refreshing" : "current",
+        calculatedAt: strictPlan.generatedAt,
+        ...dates,
+        message: strictPlan.rows.length
+          ? "Расчёт готов. Для планирования сборки проверьте данные товаров."
+          : "Расчёт готов. Свяжите товары с тематиками для планирования сборки.",
+      },
+    };
+  }
+  if (!saved) {
+    const review = (
+      await tx.query<{ payload: SavedPlanningPresentation }>(
+        "SELECT payload FROM forecast_results WHERE id=$1",
+        [reviewCacheId],
+      )
+    ).rows[0]?.payload;
+    if (review?.compatibilityKey === compatibilityKey) saved = review;
   }
   if (saved)
     return {
