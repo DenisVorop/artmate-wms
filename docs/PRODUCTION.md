@@ -453,3 +453,39 @@ QR зон/адресов сохраняют IDs. Импорт/ключи/mapping
 Оба аккаунта и их auth-данные подтверждены content hash, без нового входа под
 сотрудником. Контейнеры healthy, приложение/схема/версия релиза не менялись.
 Отчёт в task workspace: output/production-cleanup-result.json.
+
+
+## Предпечатанные паллетные этикетки — 2026-11-06
+
+API и web обновлены в 00:09 МСК до `03e84ecd357f98828a6fd1e45a308d82074722da`.
+Каталог: `/opt/artmate-wms/releases/03e84ecd357f98828a6fd1e45a308d82074722da-pallet-labels-20261106`.
+Прямая выкладка по разрешению пользователя, без ожидания пайплайнов; зависимости
+не менялись. Portable JS/Next standalone перенесены на закреплённые Linux bases:
+API9f1bf09 и web060d369. Все 102 API и 567 web runtime-файлов сверены по SHA256.
+
+- API image ID: `sha256:eb7351ae556efc69d21da3c7f7983b0ca5faf4ddb4ebfed74da4040091dd0622`.
+- Web image ID: `sha256:01695e7afc7d0c1cd67683daafab20eca46c18aa44125f36dbef91490f1d0406`.
+- Backup: `/opt/artmate-wms/backups/before-pallet-labels-2026-11-05T21-08-50.616Z.dump`.
+- Artifact manifest SHA256: `ca2df595f66f2532aceb46fd0379b46769d6e26b22cf5248f4baa2ad3b097487`.
+
+Миграция18→19 добавила три таблицы реестра без начальных данных. Перед миграцией
+API остановлен корректно, backup и deploy.lock сохранены. Сверены counts/content
+hashes 18 таблиц склада/авторизации/журнала/planningStock и warehouse metadata
+до миграции, после неё и после запуска. Ничего не изменилось: оба аккаунта,
+21 SKU, схема/QR, пустые товарные остатки и подтверждённые ранее суммарные запасы
+сохранены. Новые pallet_label_batches/preprinted_pallet_labels/pallet_label_commands
+пустые; тестовые комплекты и приёмки на production не создавались. Источники
+интеграций и шифровальный ключ не менялись, импорт и прогноз продолжаются в фоне.
+
+Проверки: API607pass/2optionalPGskip, web467pass, финальные receiving15pass,
+Swagger→Orval, typecheck/build обоих приложений, FSDlint и diffcheck успешны.
+На сервере новый API прошёл отдельный compiled smoke в memory:// без сети и ключей;
+production health/readiness/web proxy и все10 JS assets страницы отвечают200.
+Контейнеры API/web healthy, schema19, deploy.lock снят. Manager-сессия Yandex/CUA
+открыла `/labels/pallets`: новый комплект, количество100, пустой список без ошибок;
+DevTools закрыт. Изолированный стенд проверил выпуск2этикеток, QR и доступную печать;
+стенд остановлен. Аппаратная проверка нового сценария не проводилась.
+
+Порядок подготовки PDF и граница поддержки первичной инвентаризации описаны в
+`docs/OFFLINE_PRINTING.md` и ADR088. Отчёт без секретов в task workspace:
+`output/pallet-labels-production-release.json`.

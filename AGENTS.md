@@ -408,3 +408,9 @@ HTTP actor/working/foreign claim и namespace collisions проверять до
 не переводит новый экран. No free address блокирует второй шаг, не маркировку.
 Первичный ввод пока печатает собственные реальные ID после approval; не выдавать
 его за поддержку свободных паллетных кодов. См.ADR088 и docs/OFFLINE_PRINTING.md.
+
+
+Schema19 и `/labels/pallets` выложены на production2026-11-06 в API/web03e84ec.
+Активные directory/image IDs/backup всегда читать из current-release.json;
+реестр после выкладки пуст, тестовый товар не добавлялся. Оба аккаунта и hashes
+складских таблиц сохранены; подробности в docs/PRODUCTION.md.
