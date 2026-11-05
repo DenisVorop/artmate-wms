@@ -376,3 +376,16 @@ marketplace_plan_review_display; последний полный marketplace_pla
 проекция остаётся dated nonExecutable previousPlan. Compatibility/account guards,
 unknown, canCreate/backlogCanCreate и live формы остатков сохраняются.
 countedAt/units автоматически не подтверждать. См. уточнения ADR072.
+
+
+## Рабочая база после очистки тестов — 2026-11-05
+
+Пользователь согласовал удаление TEST-CATS-CAM/TEST-SPACE-CAM и связанных тестовых
+операций, оба аккаунта сохранены. С revision409 адресный товарный баланс0,
+реальных SKU21, PACK-01/QR/схема и реальные planningStock сохранены. В базе нет
+тестовых приёмок/партий/коробов/сборок/размещений/INV-0001. Не восстанавливать старые
+fixtures или тестовые остатки из локальных снимков. Начальный товар вводится
+через первичную инвентаризацию. Marker maintenance:test-cleanup:2026-11-05.
+При maintenance rebinding display cache допустим только при совместимости со
+старым текущим ключом до изменения; старый несовместимый план нельзя оживлять.
+Подробнее и backup — docs/PRODUCTION.md.
