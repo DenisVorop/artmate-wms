@@ -2268,3 +2268,44 @@ export class BoxLabelPageDto {
   @ApiProperty({ type: Number }) page!: number;
   @ApiProperty({ type: Number }) pageSize!: number;
 }
+
+export class CreatePalletLabelBatchDto extends CreateBoxLabelBatchDto {}
+export class PalletLabelBatchDto extends BoxLabelBatchDto {}
+export class PalletLabelBatchQueryDto extends BoxLabelBatchQueryDto {}
+export class PalletLabelQueryDto extends PalletLabelBatchQueryDto {
+  @ApiPropertyOptional({ enum: ["free", "assigned"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["free", "assigned"])
+  status?: "free" | "assigned";
+}
+export class PalletLabelBatchListDto {
+  @ApiProperty({ type: [PalletLabelBatchDto] }) items!: PalletLabelBatchDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}
+export class PalletLabelDto {
+  @ApiProperty({ type: Number, minimum: 1 }) ordinal!: number;
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) payload!: string;
+  @ApiProperty({ type: String }) svg!: string;
+  @ApiProperty({ enum: ["free", "assigned"] }) status!: "free" | "assigned";
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) receiptId!: string | null;
+}
+export class PalletLabelPageDto {
+  @ApiProperty({ type: PalletLabelBatchDto }) batch!: PalletLabelBatchDto;
+  @ApiProperty({ type: [PalletLabelDto] }) items!: PalletLabelDto[];
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+}
+export class BindReceiptPalletLabelDto extends CommandDto {
+  @ApiProperty({ type: String }) @IsString() @MinLength(1) employeeId!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  labelCode!: string;
+}

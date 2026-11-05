@@ -37,6 +37,10 @@ import {
   confirmBoxLabel,
   closeBoxLabels,
 } from "./box-label-storage";
+import {
+  initializePalletLabels,
+  bindPalletLabel,
+} from "./pallet-label-storage";
 import { initializeAuth } from "./auth-storage";
 import {
   initializeMarketplaceStorage,
@@ -345,6 +349,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         await tx.query(
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
           ["schema_version", "18"],
+        );
+      await initializePalletLabels(tx);
+      if (Number(version.rows[0]?.value ?? 1) < 19)
+        await tx.query(
+          "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
+          ["schema_version", "19"],
         );
     });
   }
@@ -757,7 +767,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         if (
           (
             await tx.query(
-              "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM automation_commands WHERE request_id=$1",
+              "SELECT request_id FROM stocktake_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM box_label_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM automation_commands WHERE request_id=$1 UNION ALL SELECT request_id FROM pallet_label_commands WHERE request_id=$1",
               [body.requestId],
             )
           ).rows.length
@@ -1690,6 +1700,34 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           `${ranked.reason} Можно вручную подтвердить физически подходящий адрес сканом.`
         : "Нет свободного подходящего адреса хранения по габаритам, высоте и массе",
     };
+  }
+  bindReceiptPalletLabel(
+    id: string,
+    palletId: string,
+    b: D.BindReceiptPalletLabelDto,
+  ) {
+    return this._command(
+      `bindReceiptPalletLabel/${id}/${palletId}`,
+      b,
+      async (s, tx) => {
+        const { pallet } = this._pendingReceiptPallet(s, id, palletId);
+        if (find(s.employees, b.employeeId, "Сотрудник").status !== "working")
+          fail("Для приёмки сотрудник должен быть на смене");
+        if (
+          s.warehouse.zoneWork.some(
+            (w) =>
+              w.jobKind === "receiving" &&
+              w.jobId === id &&
+              w.palletId === palletId &&
+              w.employeeId !== b.employeeId,
+          )
+        )
+          throw new ForbiddenException(
+            "Паллета приёмки уже взята другим сотрудником",
+          );
+        await bindPalletLabel(tx, id, pallet, b.labelCode);
+      },
+    );
   }
   placeReceiptPallet(id: string, palletId: string, b: D.PlaceReceiptPalletDto) {
     return this._command(`placeReceiptPallet/${id}/${palletId}`, b, (s) => {
@@ -3063,7 +3101,13 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fail("Для перемещения сотрудник должен быть на смене");
   }
   private _scanEntity(value: string, type: string, id: string, code: string) {
-    return value === code || value === `artmate-wms:${type}:${id}`;
+    return (
+      value === code ||
+      value === `artmate-wms:${type}:${id}` ||
+      (type === "pallet" &&
+        code.startsWith("PLT-PRE-") &&
+        value === `artmate-wms:pallet:${code}`)
+    );
   }
   createMovement(b: D.CreateMovementDto) {
     return this._command("createMovement", b, (s) => {

@@ -1,5 +1,6 @@
 "use client";
 import { Button, useEmployeeScanActivity } from "@/shared/ui";
+import { receiptPalletScan } from "../lib/receipt-pallet-scan";
 import { selectReceipt, workBlock } from "../lib/handling";
 import { useHandlingState } from "../lib/use-handling-state";
 import { useHandling } from "../model/use-handling";
@@ -155,6 +156,23 @@ export function EmployeeReceiving({
               type="pallet"
               id={pallet.id}
               code={pallet.code}
+              firstCodeLabel={
+                pallet.code.startsWith("PLT-PRE-")
+                  ? "Этикетка на этой паллете"
+                  : "Наклейте свободную этикетку"
+              }
+              prepareFirst={(value) => {
+                commands.clearError();
+                return receiptPalletScan(value, pallet, (labelCode) =>
+                  execute(() =>
+                    commands.bindReceiptPalletLabel(receipt.id, pallet.id, {
+                      requestId: crypto.randomUUID(),
+                      employeeId,
+                      labelCode,
+                    }),
+                  ),
+                );
+              }}
               addressCode={
                 suggested?.code ??
                 (options.data?.locations.length
@@ -171,7 +189,8 @@ export function EmployeeReceiving({
               phase="place"
               pending={commands.pending}
               error={commands.error}
-              disabled={!!block || !options.data?.locations.length}
+              disabled={!!block}
+              addressDisabled={!options.data?.locations.length}
               onProblem={onProblem}
               onConfirm={(palletCode, locationCode) =>
                 execute(

@@ -172,7 +172,7 @@ networks:
   );
   assert.equal(
     await sql("SELECT value FROM metadata WHERE key='schema_version'"),
-    "18",
+    "19",
   );
   const ledgerCount = await sql("SELECT count(*) FROM stock_ledger");
   await migrate();

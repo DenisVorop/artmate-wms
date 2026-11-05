@@ -86,7 +86,13 @@ export function matchesScan(
   code: string,
 ) {
   const scan = value.trim();
-  return scan === code || scan === `artmate-wms:${type}:${id}`;
+  return (
+    scan === code ||
+    scan === `artmate-wms:${type}:${id}` ||
+    (type === "pallet" &&
+      code.startsWith("PLT-PRE-") &&
+      scan === `artmate-wms:pallet:${code}`)
+  );
 }
 export function workBlock(
   data: Pick<

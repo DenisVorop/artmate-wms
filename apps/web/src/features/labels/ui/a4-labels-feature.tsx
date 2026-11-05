@@ -120,6 +120,9 @@ function A4LabelsEditor({
           <Link href="/labels/boxes" className={styles.back}>
             Запас этикеток коробов →
           </Link>
+          <Link href="/labels/pallets" className={styles.back}>
+            Запас этикеток паллет →
+          </Link>
           <h1 className="page-heading">Таблички склада</h1>
           <p className="page-description">
             Выберите зоны и места. Печатайте горизонтальные этикетки 120 × 75 мм

@@ -28,7 +28,7 @@ import {
 } from "../lib/box-labels";
 import { useBoxLabelState } from "../lib/use-box-label-state";
 import { useCreateLabelBatch } from "../model/use-create-label-batch";
-import styles from "./box-labels.module.css";
+import styles from "@/shared/ui/label-reserve.module.css";
 
 export function BoxLabelsFeature() {
   const session = useSession();
@@ -93,9 +93,14 @@ function BoxLabelEditor({
             отсканирует её после паллеты.
           </p>
         </div>
-        <Link href="/labels/a4" className="button button--secondary">
-          Зоны и места
-        </Link>
+        <div className={styles.links}>
+          <Link href="/labels/pallets" className="button button--secondary">
+            Этикетки паллет
+          </Link>
+          <Link href="/labels/a4" className="button button--secondary">
+            Зоны и места
+          </Link>
+        </div>
       </header>
       <div className={`${styles.layout} ${styles.screenOnly}`}>
         <aside className={`glass-panel ${styles.panel}`}>
@@ -359,9 +364,9 @@ function BoxLabelEditor({
                 Распечатать {ready ? items.length : "этикетки"}
               </Button>
               <p className={styles.help}>
-                Бумага {ui.format === "75x120" ? "75 × 120" : "100 × 70"} мм ·
-                масштаб 100% · без полей и колонтитулов. Закрытие окна печати не
-                меняет статус кода.
+                Бумага {ui.format.replace("x", " × ")} мм · масштаб 100% · без
+                полей и колонтитулов. Закрытие окна печати не меняет статус
+                кода.
               </p>
             </>
           )}

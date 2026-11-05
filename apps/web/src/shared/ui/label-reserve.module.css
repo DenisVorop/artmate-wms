@@ -264,3 +264,24 @@
     color: black;
   }
 }
+
+.links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.label[data-format="120x75"] {
+  display: grid;
+  grid-template-columns: 64mm minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: 3mm;
+}
+.label[data-format="120x75"] img {
+  grid-row: 1 / 4;
+  grid-column: 1;
+}
+.label[data-format="120x75"] h2,
+.label[data-format="120x75"] .code,
+.label[data-format="120x75"] .caption {
+  grid-column: 2;
+}

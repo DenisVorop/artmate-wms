@@ -12,6 +12,7 @@ import {
   isMarketplaceTaskResponse,
 } from "./marketplace-response";
 import { isBoxLabelBatchResponse } from "./box-label-response";
+import { isPalletLabelBatchResponse } from "./pallet-label-response";
 import { isWorkAutomationResponse } from "./work-automation-response";
 import { isStocktakeCommandResponse } from "./stocktake-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
@@ -86,6 +87,9 @@ export function createApiFetch(ports: Ports) {
           fingerprint: commandFingerprint,
           ...(/\/api\/box-label-batches(?:\?|$)/.test(url)
             ? { isResponseConfirmed: isBoxLabelBatchResponse }
+            : {}),
+          ...(/\/api\/pallet-label-batches(?:\?|$)/.test(url)
+            ? { isResponseConfirmed: isPalletLabelBatchResponse }
             : {}),
           ...(/\/api\/stocktakes(?:\/|\?|$)/.test(url)
             ? { isResponseConfirmed: isStocktakeCommandResponse }

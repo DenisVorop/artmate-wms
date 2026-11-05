@@ -23,6 +23,7 @@ import type {
   CreateSkuDto,
   CreateEmployeeDto,
   PlaceReceiptPalletDto,
+  BindReceiptPalletLabelDto,
   CreateTaskDto,
   ClaimTaskDto,
   ClaimPutawayTaskDto,
@@ -178,6 +179,11 @@ export function useWarehouseCommands() {
     updateLocation: (id: string, dto: UpdateLocationDto) =>
       run(() => api.updateLocation(id, dto)),
     createReceipt: (dto: CreateReceiptDto) => run(() => api.createReceipt(dto)),
+    bindReceiptPalletLabel: (
+      receiptId: string,
+      palletId: string,
+      dto: BindReceiptPalletLabelDto,
+    ) => run(() => api.bindReceiptPalletLabel(receiptId, palletId, dto)),
     createSku: (dto: CreateSkuDto) => run(() => api.createSku(dto)),
     placeReceiptPallet: (
       receiptId: string,

@@ -24,6 +24,10 @@ export const warehouseOperations = new Set([
   "updateMarketplaceSettings",
   "setMarketplaceTransit",
   "createMarketplaceTask",
+  "createPalletLabelBatch",
+  "getPalletLabelBatches",
+  "getPalletLabelBatch",
+  "getPalletLabelBatchLabels",
   "createBoxLabelBatch",
   "getBoxLabelBatches",
   "getBoxLabelBatch",
@@ -79,6 +83,7 @@ export const warehouseOperations = new Set([
   "updateLocation",
   "createSku",
   "createReceipt",
+  "bindReceiptPalletLabel",
   "placeReceiptPallet",
   "createEmployee",
   "createTask",
@@ -132,6 +137,7 @@ const workerWrites = new Set([
   "countStocktakeLocation",
   "refreshStocktakeLocation",
   "submitStocktake",
+  "bindReceiptPalletLabel",
   "placeReceiptPallet",
   "claimTask",
   "updateTaskStatus",
@@ -158,6 +164,7 @@ const actorWrites = new Set([
   "leaveZoneWork",
   "scanShipmentWork",
   "finishShipmentWork",
+  "bindReceiptPalletLabel",
   "placeReceiptPallet",
   "claimTask",
   "updateTaskStatus",
@@ -278,6 +285,7 @@ export async function authorizeWarehouse(
     if (
       [
         "startZoneWork",
+        "bindReceiptPalletLabel",
         "claimMovement",
         "scanShipmentWork",
         "finishShipmentWork",
@@ -298,7 +306,7 @@ export async function authorizeWarehouse(
     )
       throw new ForbiddenException("Отгрузка принадлежит другому сотруднику");
     if (
-      op === "placeReceiptPallet" &&
+      ["placeReceiptPallet", "bindReceiptPalletLabel"].includes(op) &&
       state.warehouse.zoneWork.some(
         (w) =>
           w.jobKind === "receiving" &&

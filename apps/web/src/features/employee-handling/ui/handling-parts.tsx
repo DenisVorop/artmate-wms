@@ -6,6 +6,7 @@ import {
   type WorkRouteRequest,
 } from "@/entities/warehouse-map";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
+import type { FirstScanDecision } from "../lib/receipt-pallet-scan";
 import { usePairScan } from "../lib/use-pair-scan";
 import { matchesScan } from "../lib/handling";
 import styles from "./handling.module.css";
@@ -80,6 +81,9 @@ export function PairScan({
   disabled,
   onConfirm,
   onProblem,
+  prepareFirst,
+  firstCodeLabel,
+  addressDisabled = false,
 }: {
   contextKey: string;
   type: "box" | "pallet";
@@ -97,11 +101,14 @@ export function PairScan({
   error: string | null;
   disabled: boolean;
   onConfirm: (code: string, address: string) => Promise<boolean>;
+  prepareFirst?: (value: string) => Promise<FirstScanDecision>;
+  firstCodeLabel?: string;
+  addressDisabled?: boolean;
   onProblem?: (message: string) => void;
 }) {
   const { pending: scanPending } = useEmployeeScanActivity();
   const scan = usePairScan(
-    (value) => matchesScan(value, type, id, code),
+    prepareFirst ?? ((value) => matchesScan(value, type, id, code)),
     onConfirm,
   );
   return (
@@ -128,7 +135,9 @@ export function PairScan({
           </>
         ) : (
           <>
-            <strong className={styles.palletCode}>{code}</strong>
+            <strong className={styles.palletCode}>
+              {firstCodeLabel ?? code}
+            </strong>
             <p>
               {phase === "take" ? "Где взять" : "Куда поставить"}:{" "}
               <b>{addressCode}</b>
@@ -152,7 +161,7 @@ export function PairScan({
         }
         onScan={scan.scan}
         pending={pending}
-        disabled={disabled}
+        disabled={disabled || (!!scan.first && addressDisabled)}
         error={scan.error ?? error}
         onProblem={onProblem}
       />

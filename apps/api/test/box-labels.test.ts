@@ -329,7 +329,7 @@ test("schema13 adds only registry tables and preserves warehouse, auth, ledger, 
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "18",
+        "19",
       );
     });
   } finally {

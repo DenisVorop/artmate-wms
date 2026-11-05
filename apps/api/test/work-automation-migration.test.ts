@@ -71,7 +71,7 @@ test("schema18 creates only automation storage and preserves warehouse, revision
             "SELECT value FROM metadata WHERE key='schema_version'",
           )
         ).rows[0].value,
-        "18",
+        "19",
       );
       for (const name of [
         "automation_commands",

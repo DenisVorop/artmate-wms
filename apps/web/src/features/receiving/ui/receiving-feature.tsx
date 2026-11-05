@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useSession } from "@/entities/session";
 import { ArrowDownLeft, Check, Plus, Search } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
@@ -68,7 +69,7 @@ export function ReceivingFeature() {
       state.setSelectedId(added?.id ?? null);
       state.setCompletedId(null);
       state.setNotice(
-        `Приёмка ${added?.code ?? ""} создана. Напечатайте этикетки и разместите каждую паллету, чтобы зачислить товар на баланс.`,
+        `Приёмка ${added?.code ?? ""} создана. Наклейте готовые этикетки и разместите каждую паллету, чтобы зачислить товар на баланс.`,
       );
     } catch {
       /* Mutation exposes the readable error; preserve the form. */
@@ -106,14 +107,20 @@ export function ReceivingFeature() {
           <p className="eyebrow">ВХОДЯЩИЕ ПОСТАВКИ</p>
           <h1 className="page-heading">Приёмка</h1>
           <p className="page-description">
-            Документ → этикетки → размещение паллет на баланс.
+            Создайте приёмку. Сотрудник наклеит готовые этикетки и разместит
+            паллеты.
           </p>
         </div>
         {isManager && (
-          <Button onClick={openCreate} disabled={commands.pending}>
-            <Plus size={16} />
-            Новая приёмка
-          </Button>
+          <div className={styles.headerActions}>
+            <Link href="/labels/pallets" className="button button--secondary">
+              Этикетки паллет
+            </Link>
+            <Button onClick={openCreate} disabled={commands.pending}>
+              <Plus size={16} />
+              Новая приёмка
+            </Button>
+          </div>
         )}
       </div>
       <div className={styles.stats}>

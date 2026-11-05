@@ -36,6 +36,8 @@ import {
   WorkZoneController,
   ShipmentWorkController,
 } from "./work-zone.controller";
+import { PalletLabelController } from "./pallet-label.controller";
+import { PalletLabelService } from "./pallet-label.service";
 import { BoxLabelController } from "./box-label.controller";
 import { BoxLabelService } from "./box-label.service";
 import { StocktakeController } from "./stocktake.controller";
@@ -272,6 +274,28 @@ export class WarehouseController {
     body: D.CreateReceiptDto,
   ) {
     return this.warehouse.createReceipt(body);
+  }
+  @Post("receipts/:id/pallets/:palletId/label")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "bindReceiptPalletLabel" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.BindReceiptPalletLabelDto })
+  @ApiParam({ name: "id", type: String })
+  @ApiParam({ name: "palletId", type: String })
+  bindReceiptPalletLabel(
+    @Param("id") id: string,
+    @Param("palletId") palletId: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.BindReceiptPalletLabelDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.BindReceiptPalletLabelDto,
+  ) {
+    return this.warehouse.bindReceiptPalletLabel(id, palletId, body);
   }
   @Post("receipts/:id/pallets/:palletId/place")
   @HttpCode(200)
@@ -1270,6 +1294,7 @@ class JsonExceptionFilter implements ExceptionFilter {
     WorkAutomationController,
     WarehouseController,
     BoxLabelController,
+    PalletLabelController,
     AuthController,
     StocktakeController,
     WorkZoneController,
@@ -1283,6 +1308,7 @@ class JsonExceptionFilter implements ExceptionFilter {
     WorkAutomationScheduler,
     WarehouseService,
     BoxLabelService,
+    PalletLabelService,
     AuthService,
     StocktakeService,
     MarketplaceService,
