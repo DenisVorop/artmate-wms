@@ -413,3 +413,80 @@ test("first pending forecast cannot seed a zero plan; a completed zero demand de
   assert.equal(completed.previousPlan, null);
   assert.equal(writes(), 1);
 });
+
+test("completed forecasts with only stale or approximate stock show review rows instead of indefinite computation", async () => {
+  for (const accuracy of ["exact", "approximate"] as const) {
+    const { w, m, forecast, data, read, writes } = fixture();
+    await read();
+    const saved = structuredClone(data.get("marketplace_plan_display"));
+    // Match the incident: settings changed since the last display, forecast is
+    // already published, and every stock confirmation needs a human review.
+    m.settings.horizonDays = 28;
+    m.settings.safetyDays = 0;
+    m.settings.leadDays = 5;
+    m.planningStock = [
+      {
+        skuId: "sku-cats",
+        enabled: true,
+        units: 300,
+        accuracy,
+        note: "Physical count",
+        unitsPerBoxAtCount: 20,
+        trackedUnitsAtCount: 0,
+        countedAt: "2026-10-15T12:00:00Z",
+        actorAccountId: "manager",
+        revision: 1,
+        outboundSupplyKeys: [],
+      },
+    ];
+    const stock = structuredClone(m.planningStock);
+    const strict = marketplacePlan(w, m, now, forecast);
+    assert.equal(strict.rows.length, 1);
+    const row = strict.rows[0];
+    assert.equal(row.dataComplete, false);
+    assert.equal(row.canCreate, false);
+    assert.equal(row.backlogCanCreate, false);
+    assert.equal(row.advice.state, "review");
+    assert.match(
+      row.blockers.join(" "),
+      accuracy === "exact" ? /недели/ : /примерно/,
+    );
+    const result = await read();
+    assert.equal(
+      result.planStatus.state,
+      "current",
+      "the browser must render the strict review list",
+    );
+    assert.equal(result.previousPlan, null);
+    assert.equal(result.planStatus.calculatedAt, strict.generatedAt);
+    assert.match(result.planStatus.message, /Расчёт готов.*проверьте данные/);
+    assert.equal(
+      writes(),
+      1,
+      "review rows must not overwrite the last complete saved plan",
+    );
+    assert.deepEqual(data.get("marketplace_plan_display"), saved);
+    assert.deepEqual(
+      m.planningStock,
+      stock,
+      "rendering must never renew or confirm inventory",
+    );
+    const pending = await read(now, { ...forecast, cacheCurrent: false });
+    assert.equal(
+      pending.planStatus.state,
+      "unavailable",
+      "a real settings recalculation must still wait for publication",
+    );
+  }
+});
+
+test("a completed forecast with no mapped planning rows exposes the empty state without saving a zero plan", async () => {
+  const { w, m, forecast, read, writes } = fixture();
+  m.mappings = [];
+  w.skus = [];
+  const result = await read(now, forecast);
+  assert.equal(result.previousPlan, null);
+  assert.equal(result.planStatus.state, "current");
+  assert.match(result.planStatus.message, /Свяжите товары/);
+  assert.equal(writes(), 0);
+});

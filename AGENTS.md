@@ -364,3 +364,14 @@ Movement: непустое raw с rack3+ → свободный rack1/2. Пол 
 Автоспуск выложен в API/web060d369 (direct runtime update); active directory,
 image IDs и backup читать из current-release.json/PRODUCTION.md. Новых миграций
 нет, schema18 сохранена. Старые 5-сборочная очередь и упаковочные габариты работают.
+
+
+## Готовый план с замечаниями — 2026-11-05
+
+Не путать row.dataComplete с готовностью forecast cache. Если cacheCurrent===true,
+версии магазинов подтверждены и все enabled syncStatus=success, строгие review-строки
+показываются с planStatus=current даже при отсутствии полной строки; иначе UI скрывает
+доступную форму остатков под вечной загрузкой. Review display не сохранять поверх
+последнего полного cache. countedAt/units автоматически не подтверждать; canCreate,
+backlogCanCreate, unknown и прежние guards сохраняются. Реально pending forecast и
+неуспешный/идущий импорт используют прежние ветки. См. уточнение ADR072.

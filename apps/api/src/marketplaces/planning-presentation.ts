@@ -140,6 +140,26 @@ export async function readPlanningPresentation(
     forecast.cacheCurrent !== false &&
     strictPlan.rows.some((row) => row.dataComplete);
   const dates = sourceDates(m);
+  // A completed forecast can yield only review rows (for example when every
+  // manual stock count has expired). That is actionable data, not computation.
+  // Show the strict rows without replacing the last complete saved projection.
+  if (
+    !current &&
+    verifiedSources &&
+    forecast.cacheCurrent === true &&
+    enabled.every((connection) => connection.syncStatus === "success")
+  )
+    return {
+      previousPlan: null,
+      planStatus: {
+        state: "current",
+        calculatedAt: strictPlan.generatedAt,
+        ...dates,
+        message: strictPlan.rows.length
+          ? "Расчёт готов. Для планирования сборки проверьте данные товаров."
+          : "Расчёт готов. Свяжите товары с тематиками для планирования сборки.",
+      },
+    };
   if (current) {
     const next: SavedPlanningPresentation = {
       compatibilityKey,
