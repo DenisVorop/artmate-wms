@@ -7,7 +7,7 @@ export function useBoxLabelState(scope: string) {
   const [historyPage, setHistoryPage] = useState(1);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
-  const [format, setFormat] = useState<RollLabelFormat>("75x120");
+  const [format, setFormat] = useState<RollLabelFormat>("58x40");
   const [attempt, setAttempt] = useState(0);
   const [images, setImages] = useState<Record<string, "loaded" | "failed">>({});
   const key = (item: PreprintedBoxLabelDto) =>

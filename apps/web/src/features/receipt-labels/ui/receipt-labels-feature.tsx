@@ -7,7 +7,13 @@ import {
   LoadingState,
   RollLabelFormatSelect,
   rollPaperClass,
+  StockLabel,
 } from "@/shared/ui";
+import {
+  palletLabelFormats,
+  palletPrintCode,
+  rollLabelFormats,
+} from "@/shared/lib/label-paper";
 import { useReceiptLabels } from "../model/use-receipt-labels";
 import { useReceiptPrint } from "../lib/use-receipt-print";
 import styles from "./receipt-labels.module.css";
@@ -66,12 +72,12 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
           </p>
           <p className={styles.hint}>
             Одна паллета на этикетке. Выберите в драйвере{" "}
-            {print.format === "75x120" ? "75 × 120 мм" : "100 × 70 мм"}, масштаб
-            100%, без колонтитулов.
+            {rollLabelFormats[print.format]}, масштаб 100%, без колонтитулов.
           </p>
         </div>
         <div className={styles.printActions}>
           <RollLabelFormatSelect
+            formats={palletLabelFormats}
             value={print.format}
             onChange={print.setFormat}
           />
@@ -118,57 +124,17 @@ export function ReceiptLabelsFeature({ id }: { id: string }) {
         {labels.map((label) => {
           const imageKey = print.key(label);
           return (
-            <article
-              className={`${styles.label} ${rollPaperClass(print.format)} ${label.title.length > 16 ? styles.mediumLabel : ""} ${label.title.length > 32 ? styles.longLabel : ""} ${label.title.length > 80 || label.code.length > 28 ? styles.denseLabel : ""}`}
-              data-format={print.format}
+            <StockLabel
+              kind="pallet"
+              format={print.format}
               key={label.palletId}
-              aria-label={`Паллета ${label.code}, ${label.title}, ${label.quantity} штук`}
-            >
-              <header className={styles.labelHeading}>
-                <strong
-                  className={
-                    label.code.length > 18 ? styles.longCode : undefined
-                  }
-                >
-                  {label.code}
-                </strong>
-                <span>{receiptCode}</span>
-              </header>
-              <div className={styles.labelBody}>
-                {/* SVG is displayed as an image and cannot execute scripts in the page. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  key={imageKey}
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(label.svg)}`}
-                  width={144}
-                  height={144}
-                  alt={`QR паллеты ${label.code}`}
-                  onLoad={() => print.markLoaded(imageKey)}
-                  onError={() => print.markFailed(imageKey)}
-                />
-                <div className={styles.labelText}>
-                  <h2
-                    className={
-                      label.title.length > 55
-                        ? styles.longTitle
-                        : label.title.length > 16
-                          ? styles.mediumTitle
-                          : undefined
-                    }
-                  >
-                    {label.title}
-                  </h2>
-                  <p className={styles.quantity}>
-                    {label.quantity.toLocaleString("ru-RU")} шт.
-                  </p>
-                  <p className={styles.date}>
-                    Поступление
-                    <br />
-                    {receiptDate(receivedAt)}
-                  </p>
-                </div>
-              </div>
-            </article>
+              code={label.code}
+              svg={label.svg}
+              imageKey={imageKey}
+              reference={palletPrintCode(label.code)}
+              onLoad={() => print.markLoaded(imageKey)}
+              onError={() => print.markFailed(imageKey)}
+            />
           );
         })}
       </div>

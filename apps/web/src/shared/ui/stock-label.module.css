@@ -1,0 +1,109 @@
+.label {
+  width: var(--roll-width);
+  height: var(--roll-height);
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5mm;
+  padding: 4mm;
+  background: white;
+  color: black;
+  border: 0;
+  outline: 1px solid oklch(0.86 0 0);
+  font-family: Arial, sans-serif;
+  text-align: center;
+  overflow: hidden;
+}
+.heading,
+.reference {
+  width: 100%;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+}
+.heading {
+  font-size: 25pt;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.reference {
+  font-size: 14pt;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.qr {
+  display: block;
+  width: 65mm;
+  height: 65mm;
+  padding: 0;
+  flex: none;
+  object-fit: contain;
+  background: white;
+}
+.label[data-kind="box"] .qr {
+  width: 67mm;
+  height: 67mm;
+}
+.label[data-format="58x40"] {
+  padding: 2mm;
+  gap: 0;
+}
+.label[data-format="58x40"] .qr {
+  width: 36mm;
+  height: 36mm;
+}
+.label[data-format="100x70"] .qr {
+  width: 44mm;
+  height: 44mm;
+}
+.label[data-kind="box"][data-format="100x70"] .qr {
+  width: 62mm;
+  height: 62mm;
+}
+.label[data-format="100x70"] {
+  gap: 2mm;
+  padding: 3mm;
+}
+.label[data-format="100x70"] .heading {
+  font-size: 18pt;
+}
+.label[data-format="100x70"] .reference {
+  font-size: 10pt;
+}
+.label[data-format="a4"] {
+  padding: 15mm;
+  gap: 14mm;
+}
+.label[data-format="a4"] .qr {
+  width: 180mm;
+  height: 180mm;
+}
+.label[data-format="a4"] .heading {
+  font-size: 48pt;
+}
+.label[data-format="a4"] .reference {
+  font-size: 24pt;
+}
+@media print {
+  .label {
+    outline: 0;
+    margin: 0;
+    break-inside: avoid;
+    break-after: page;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .label:last-child {
+    break-after: auto;
+  }
+}

@@ -47,3 +47,28 @@
     display: none !important;
   }
 }
+
+.boxCompact {
+  --roll-width: 58mm;
+  --roll-height: 40mm;
+}
+.palletSheet {
+  --roll-width: 210mm;
+  --roll-height: 297mm;
+}
+@media print {
+  @page wmsBox58 {
+    size: 58mm 40mm;
+    margin: 0;
+  }
+  @page wmsPalletA4 {
+    size: A4 portrait;
+    margin: 0;
+  }
+  .boxCompact {
+    page: wmsBox58;
+  }
+  .palletSheet {
+    page: wmsPalletA4;
+  }
+}

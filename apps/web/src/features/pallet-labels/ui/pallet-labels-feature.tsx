@@ -23,6 +23,7 @@ import {
   RollLabelFormatSelect,
   Select,
   rollPaperClass,
+  StockLabel,
 } from "@/shared/ui";
 import {
   palletLabelBatchSchema,
@@ -31,6 +32,7 @@ import {
 } from "../lib/pallet-labels";
 import { usePalletLabelState } from "../lib/use-pallet-label-state";
 import { useCreateLabelBatch } from "../model/use-create-label-batch";
+import { palletLabelFormats, rollLabelFormats } from "@/shared/lib/label-paper";
 import styles from "@/shared/ui/label-reserve.module.css";
 
 export function PalletLabelsFeature() {
@@ -279,6 +281,7 @@ function PalletLabelEditor({
               </p>
               <div className={styles.controls}>
                 <RollLabelFormatSelect
+                  formats={palletLabelFormats}
                   value={ui.format}
                   onChange={ui.setFormat}
                 />
@@ -376,9 +379,8 @@ function PalletLabelEditor({
                 Распечатать {ready ? items.length : "этикетки"}
               </Button>
               <p className={styles.help}>
-                Бумага {ui.format.replace("x", " × ")} мм · масштаб 100% · без
-                полей и колонтитулов. Закрытие окна печати не меняет статус
-                кода.
+                {rollLabelFormats[ui.format]} · масштаб 100% · без полей и
+                колонтитулов. Закрытие окна печати не меняет статус кода.
               </p>
             </>
           )}
@@ -394,21 +396,18 @@ function PalletLabelEditor({
           items.map((item) => {
             const key = ui.key(item);
             return (
-              <article
-                className={`${styles.label} ${rollPaperClass(ui.format)}`}
-                data-format={ui.format}
+              <StockLabel
+                kind="pallet"
+                format={ui.format}
                 key={key}
-                aria-label={`Этикетка ${item.code}`}
-              >
-                <h2>Паллета {String(item.ordinal).padStart(3, "0")}</h2>
-                <p className={styles.code}>{batch?.code}</p>
-                <img
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.svg)}`}
-                  alt={`QR ${item.code}`}
-                  onLoad={() => ui.loaded(key)}
-                  onError={() => ui.failed(key)}
-                />
-              </article>
+                imageKey={key}
+                code={item.code}
+                svg={item.svg}
+                title={`Паллета ${String(item.ordinal).padStart(3, "0")}`}
+                reference={batch?.code.replace(/^PALLET-LABELS-/, "№ ")}
+                onLoad={() => ui.loaded(key)}
+                onError={() => ui.failed(key)}
+              />
             );
           })}
       </div>

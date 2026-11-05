@@ -139,74 +139,6 @@
   margin-top: 28px;
   max-width: 100%;
 }
-.label {
-  width: var(--roll-width);
-  height: var(--roll-height);
-  padding: 3mm;
-  flex: none;
-  box-sizing: border-box;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  background: white;
-  color: black;
-  font-family: Arial, sans-serif;
-  border: 1px solid oklch(0.86 0 0);
-}
-.label h2 {
-  margin: 0 0 2mm;
-  font-size: 28pt;
-  line-height: 1;
-  font-weight: 700;
-}
-.code {
-  font-size: 15pt;
-  line-height: 1.15;
-  font-weight: 700;
-  margin: 0 0 3mm;
-  overflow-wrap: anywhere;
-}
-.label img {
-  display: block;
-  width: 64mm;
-  height: 64mm;
-  padding: 2mm;
-  box-sizing: border-box;
-  flex: none;
-  background: white;
-}
-.caption {
-  font-size: 13pt;
-  line-height: 1.2;
-  margin: 4mm 0 0;
-}
-.label[data-format="100x70"] {
-  display: grid;
-  grid-template-columns: 45mm 1fr;
-  grid-template-rows: auto auto 1fr;
-  column-gap: 3mm;
-  padding: 4mm;
-}
-.label[data-format="100x70"] img {
-  width: 45mm;
-  height: 45mm;
-  grid-row: 1/4;
-  grid-column: 1;
-}
-.label[data-format="100x70"] h2 {
-  font-size: 24pt;
-  grid-column: 2;
-}
-.label[data-format="100x70"] .code {
-  font-size: 11pt;
-  grid-column: 2;
-}
-.label[data-format="100x70"] .caption {
-  font-size: 10pt;
-  grid-column: 2;
-}
 .printNotice {
   display: none;
 }
@@ -245,17 +177,6 @@
     margin: 0;
     overflow: visible;
   }
-  .label {
-    border: 0;
-    margin: 0;
-    break-after: page;
-    break-inside: avoid;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-  .label:last-child {
-    break-after: auto;
-  }
   .page[data-print-ready="false"] .labels {
     display: none;
   }
@@ -269,19 +190,4 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-}
-.label[data-format="120x75"] {
-  display: grid;
-  grid-template-columns: 64mm minmax(0, 1fr);
-  grid-template-rows: auto auto 1fr;
-  column-gap: 3mm;
-}
-.label[data-format="120x75"] img {
-  grid-row: 1 / 4;
-  grid-column: 1;
-}
-.label[data-format="120x75"] h2,
-.label[data-format="120x75"] .code,
-.label[data-format="120x75"] .caption {
-  grid-column: 2;
 }

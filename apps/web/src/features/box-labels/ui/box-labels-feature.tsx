@@ -20,6 +20,7 @@ import {
   RollLabelFormatSelect,
   Select,
   rollPaperClass,
+  StockLabel,
 } from "@/shared/ui";
 import {
   boxLabelBatchSchema,
@@ -28,6 +29,7 @@ import {
 } from "../lib/box-labels";
 import { useBoxLabelState } from "../lib/use-box-label-state";
 import { useCreateLabelBatch } from "../model/use-create-label-batch";
+import { boxLabelFormats, rollLabelFormats } from "@/shared/lib/label-paper";
 import styles from "@/shared/ui/label-reserve.module.css";
 
 export function BoxLabelsFeature() {
@@ -267,6 +269,7 @@ function BoxLabelEditor({
               </p>
               <div className={styles.controls}>
                 <RollLabelFormatSelect
+                  formats={boxLabelFormats}
                   value={ui.format}
                   onChange={ui.setFormat}
                 />
@@ -364,9 +367,8 @@ function BoxLabelEditor({
                 Распечатать {ready ? items.length : "этикетки"}
               </Button>
               <p className={styles.help}>
-                Бумага {ui.format.replace("x", " × ")} мм · масштаб 100% · без
-                полей и колонтитулов. Закрытие окна печати не меняет статус
-                кода.
+                {rollLabelFormats[ui.format]} · масштаб 100% · без полей и
+                колонтитулов. Закрытие окна печати не меняет статус кода.
               </p>
             </>
           )}
@@ -382,26 +384,16 @@ function BoxLabelEditor({
           items.map((item) => {
             const key = ui.key(item);
             return (
-              <article
-                className={`${styles.label} ${rollPaperClass(ui.format)}`}
-                data-format={ui.format}
+              <StockLabel
+                kind="box"
+                format={ui.format}
                 key={key}
-                aria-label={`Этикетка ${item.code}`}
-              >
-                <h2>Короб</h2>
-                <p className={styles.code}>{item.code}</p>
-                <img
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.svg)}`}
-                  alt={`QR ${item.code}`}
-                  onLoad={() => ui.loaded(key)}
-                  onError={() => ui.failed(key)}
-                />
-                <p className={styles.caption}>
-                  Тема определяется
-                  <br />
-                  при сборке
-                </p>
-              </article>
+                imageKey={key}
+                code={item.code}
+                svg={item.svg}
+                onLoad={() => ui.loaded(key)}
+                onError={() => ui.failed(key)}
+              />
             );
           })}
       </div>

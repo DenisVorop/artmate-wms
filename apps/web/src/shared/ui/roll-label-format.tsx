@@ -5,11 +5,15 @@ import {
 } from "@/shared/lib/label-paper";
 import styles from "./roll-label-format.module.css";
 export function rollPaperClass(format: RollLabelFormat) {
-  return format === "120x75"
-    ? styles.addressLandscape
-    : format === "75x120"
-      ? styles.portrait
-      : styles.landscape;
+  return format === "58x40"
+    ? styles.boxCompact
+    : format === "a4"
+      ? styles.palletSheet
+      : format === "120x75"
+        ? styles.addressLandscape
+        : format === "75x120"
+          ? styles.portrait
+          : styles.landscape;
 }
 export function RollLabelFormatSelect({
   value,

@@ -6,10 +6,16 @@ import {
   Button,
   ErrorState,
   LoadingState,
-  RollLabel,
+  StockLabel,
+  Select,
   RollLabelFormatSelect,
   rollPaperClass,
 } from "@/shared/ui";
+import {
+  boxLabelFormats,
+  palletLabelFormats,
+  palletPrintCode,
+} from "@/shared/lib/label-paper";
 import { useOpeningPrint } from "../lib/use-opening-print";
 import styles from "./opening-labels.module.css";
 export function OpeningLabelsFeature({
@@ -20,13 +26,17 @@ export function OpeningLabelsFeature({
   locationId: string;
 }) {
   const [page, setPage] = useState(1);
+  const [kind, setKind] = useState<"pallet" | "box">("pallet");
   const doc = useStocktake(stocktakeId),
     query = useOpeningLabels(doc.data, locationId, page);
-  const labels = query.data?.labels ?? [];
+  const labels = (query.data?.labels ?? []).filter(
+    (item) => item.ref.type === kind,
+  );
   const print = useOpeningPrint(
-    `${stocktakeId}:${locationId}:${page}:${doc.data?.revision}`,
+    `${stocktakeId}:${locationId}:${page}:${doc.data?.revision}:${kind}`,
     labels,
     !!doc.data && !doc.isError && !query.isFetching && !query.isError,
+    kind,
   );
   if (!stocktakeId || !locationId)
     return (
@@ -68,7 +78,20 @@ export function OpeningLabelsFeature({
           </p>
         </div>
         <div>
+          <label className="field">
+            Что печатать
+            <Select
+              value={kind}
+              onChange={(event) =>
+                setKind(event.target.value as "pallet" | "box")
+              }
+            >
+              <option value="pallet">Паллеты</option>
+              <option value="box">Короба</option>
+            </Select>
+          </label>
           <RollLabelFormatSelect
+            formats={kind === "box" ? boxLabelFormats : palletLabelFormats}
             value={print.format}
             onChange={print.setFormat}
           />
@@ -106,7 +129,8 @@ export function OpeningLabelsFeature({
       )}
       {!labels.length && (
         <p className={styles.screenOnly}>
-          На этом адресе не было товара для маркировки.
+          На этой странице нет {kind === "pallet" ? "паллет" : "коробов"} для
+          печати.
         </p>
       )}
       <p className={`${styles.printNotice} ${rollPaperClass(print.format)}`}>
@@ -114,16 +138,14 @@ export function OpeningLabelsFeature({
       </p>
       <div className={styles.labels}>
         {labels.map((item) => (
-          <RollLabel
+          <StockLabel
+            kind={item.ref.type}
             key={`${item.ref.type}:${item.ref.id}`}
-            label={item.label}
+            code={item.label.code}
+            svg={item.label.svg}
+            reference={palletPrintCode(item.label.code)}
             format={print.format}
             imageKey={print.key(item)}
-            caption={
-              item.ref.type === "pallet"
-                ? "Этикетка паллеты"
-                : "Этикетка короба"
-            }
             onLoad={() => print.loaded(print.key(item))}
             onError={() => print.fail(print.key(item))}
           />

@@ -45,72 +45,6 @@
   flex-wrap: wrap;
   align-items: flex-start;
 }
-.label {
-  width: var(--roll-width);
-  height: var(--roll-height);
-  flex: none;
-  padding: 4mm 5mm;
-  overflow: hidden;
-  box-sizing: border-box;
-  color: #111;
-  background: white;
-  border: 1px solid oklch(0.88 0.01 160);
-  border-radius: 4px;
-  font-family: Arial, sans-serif;
-}
-.labelHeading {
-  display: flex;
-  flex-direction: column;
-  gap: 1mm;
-  margin-bottom: 2mm;
-}
-.labelHeading strong {
-  font-size: 15pt;
-  line-height: 1.05;
-  letter-spacing: 0.015em;
-  overflow-wrap: anywhere;
-}
-.labelHeading span {
-  font-size: 7pt;
-  color: #555;
-}
-.labelBody {
-  display: grid;
-  grid-template-columns: 38mm minmax(0, 1fr);
-  gap: 4mm;
-  align-items: center;
-}
-.labelBody img {
-  display: block;
-  width: 38mm;
-  height: 38mm;
-  background: white;
-}
-.labelText {
-  display: flex;
-  flex-direction: column;
-  gap: 2.5mm;
-  min-width: 0;
-}
-.labelText h2 {
-  font-size: 10pt;
-  line-height: 1.18;
-  letter-spacing: 0;
-  font-weight: 700;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.quantity {
-  font-size: 13pt;
-  line-height: 1.1;
-  font-weight: 700;
-  margin: 0;
-}
-.date {
-  font-size: 7.5pt;
-  line-height: 1.4;
-  margin: 0;
-}
 .error {
   padding: 32px;
   max-width: 680px;
@@ -163,92 +97,6 @@
 .printNotice {
   display: none;
 }
-.label[data-format="75x120"] {
-  padding: 3mm;
-}
-.label[data-format="75x120"] .labelHeading {
-  margin-bottom: 2mm;
-  gap: 1mm;
-  text-align: center;
-}
-.label[data-format="75x120"] .labelHeading strong {
-  font-size: 18pt;
-  line-height: 1.08;
-}
-.label[data-format="75x120"] .labelHeading strong.longCode {
-  font-size: 12pt;
-  line-height: 1.12;
-}
-.label[data-format="75x120"] .labelHeading span {
-  font-size: 7pt;
-  line-height: 1.2;
-}
-.label[data-format="75x120"] .labelBody {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5mm;
-  text-align: center;
-}
-.label[data-format="75x120"] .labelText {
-  display: contents;
-}
-.label[data-format="75x120"] .labelText h2 {
-  order: 0;
-  font-size: 24pt;
-  line-height: 1.12;
-  max-width: 100%;
-}
-.label[data-format="75x120"] .labelText h2.longTitle {
-  font-size: 12pt;
-  line-height: 1.15;
-}
-.label[data-format="75x120"] .labelBody img {
-  order: 1;
-  width: 60mm;
-  height: 60mm;
-  flex: none;
-}
-.label[data-format="75x120"] .quantity {
-  order: 2;
-  font-size: 13pt;
-  line-height: 1.1;
-}
-.label[data-format="75x120"] .date {
-  order: 3;
-  font-size: 7.5pt;
-  line-height: 1.3;
-}
-
-.label[data-format="75x120"] .labelText h2.mediumTitle {
-  font-size: 18pt;
-}
-.label.mediumLabel[data-format="75x120"] .labelBody img {
-  width: 56mm;
-  height: 56mm;
-}
-.label.longLabel[data-format="75x120"] .labelText h2.mediumTitle {
-  font-size: 12pt;
-}
-.label.longLabel[data-format="75x120"] .labelBody img {
-  width: 50mm;
-  height: 50mm;
-}
-.label.denseLabel[data-format="75x120"] .labelBody img {
-  width: 46mm;
-  height: 46mm;
-}
-.label.denseLabel[data-format="75x120"] .labelText h2.longTitle {
-  font-size: 11pt;
-}
-
-.label[data-format="100x70"] .labelHeading strong.longCode {
-  font-size: 9pt;
-}
-.label[data-format="100x70"] .labelText h2.longTitle {
-  font-size: 8pt;
-}
-
 @media print {
   .screenHeader,
   .screenOnly,
@@ -266,22 +114,6 @@
     padding: 0;
     overflow: visible;
     max-width: none;
-  }
-  .label {
-    width: var(--roll-width);
-    height: var(--roll-height);
-    border: 0;
-    border-radius: 0;
-    margin: 0;
-    break-inside: avoid;
-    break-after: page;
-    page-break-after: always;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-  .label:last-child {
-    break-after: auto;
-    page-break-after: auto;
   }
 }
 

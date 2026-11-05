@@ -7,10 +7,16 @@ import {
   RollLabelFormatSelect,
   rollPaperClass,
   RollLabel,
+  StockLabel,
   LocationRollLabel,
   WorkZoneRollLabel,
 } from "@/shared/ui";
-import { rollLabelFormats } from "@/shared/lib/label-paper";
+import {
+  boxLabelFormats,
+  palletLabelFormats,
+  palletPrintCode,
+  rollLabelFormats,
+} from "@/shared/lib/label-paper";
 import { useLabel, type LabelType } from "../model/use-label";
 import { useLabelPrint } from "../lib/use-label-print";
 import styles from "./label.module.css";
@@ -26,7 +32,11 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
   const print = useLabelPrint(
     `${type}:${id}`,
     query.data?.svg,
-    type === "location" || type === "work-zone" ? "120x75" : "75x120",
+    type === "location" || type === "work-zone"
+      ? "120x75"
+      : type === "box"
+        ? "58x40"
+        : "75x120",
   );
   const backHref =
     type === "box"
@@ -108,7 +118,9 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
             formats={
               type === "location" || type === "work-zone"
                 ? ["120x75", "75x120", "100x70"]
-                : undefined
+                : type === "box"
+                  ? boxLabelFormats
+                  : palletLabelFormats
             }
             value={print.format}
             onChange={print.setFormat}
@@ -151,7 +163,18 @@ export function LabelFeature({ type, id }: { type: LabelType; id: string }) {
         Дождитесь загрузки QR перед печатью.
       </p>
       <div className={styles.preview}>
-        {type === "location" && print.format === "120x75" ? (
+        {type === "box" || type === "pallet" ? (
+          <StockLabel
+            kind={type}
+            format={print.format}
+            code={label.code}
+            svg={label.svg}
+            imageKey={print.key}
+            reference={palletPrintCode(label.code)}
+            onLoad={print.markLoaded}
+            onError={print.markFailed}
+          />
+        ) : type === "location" && print.format === "120x75" ? (
           <LocationRollLabel
             label={label}
             imageKey={print.key}

@@ -6,10 +6,16 @@ export function useOpeningPrint(
   identity: string,
   labels: { ref: { type: string; id: string }; label: LabelDto }[],
   enabled: boolean,
+  kind: "pallet" | "box",
 ) {
-  const [format, setFormat] = useState<RollLabelFormat>("75x120"),
+  const [formats, setFormats] = useState<
+      Record<"pallet" | "box", RollLabelFormat>
+    >({ pallet: "75x120", box: "58x40" }),
     [attempt, setAttempt] = useState(0),
     [images, setImages] = useState<Record<string, "loaded" | "failed">>({});
+  const format = formats[kind];
+  const setFormat = (value: RollLabelFormat) =>
+    setFormats((current) => ({ ...current, [kind]: value }));
   const key = (item: (typeof labels)[number]) =>
     JSON.stringify([
       identity,

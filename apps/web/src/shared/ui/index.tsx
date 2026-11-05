@@ -209,3 +209,5 @@ export { RollLabelFormatSelect, rollPaperClass } from "./roll-label-format";
 export { RollLabel } from "./roll-label";
 export { LocationRollLabel } from "./location-roll-label";
 export { WorkZoneRollLabel } from "./work-zone-roll-label";
+
+export { StockLabel } from "./stock-label";
