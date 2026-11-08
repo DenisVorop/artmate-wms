@@ -152,8 +152,18 @@ test("opening stocktake uses existing HTTP lifecycle with strict nested observat
         ).status,
         400,
       );
-    const counted = await call("POST", `/${doc.id}/rows/${address.id}/count`, {
+    const countPath = `/${doc.id}/rows/${address.id}/count`;
+    const wrongAddress = await call("POST", countPath, {
       ...countBody,
+      ...req(),
+      locationCode: `Artmate-wms:location:${recountAddress.id}`,
+      openingPallet,
+    });
+    assert.equal(wrongAddress.status, 400);
+    assert.equal(wrongAddress.body.message, "Отсканирован другой адрес");
+    const counted = await call("POST", countPath, {
+      ...countBody,
+      locationCode: ` Artmate-wms:location:${address.id.toUpperCase()} `,
       openingPallet,
     });
     assert.equal(counted.status, 200, JSON.stringify(counted.body));

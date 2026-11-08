@@ -71,9 +71,9 @@ function codeValue(value: string, type: string) {
     : v;
 }
 export function locationMatches(s: D.WorkspaceDto, id: string, value: string) {
-  const v = codeValue(value, "location"),
+  const v = codeValue(value.toLowerCase(), "location"),
     l = s.locations.find((l) => l.id === id);
-  return l && (v === l.id || v === l.code);
+  return l && (v === l.id.toLowerCase() || v === l.code.toLowerCase());
 }
 export function stocktakePlan(
   s: D.WorkspaceDto,
