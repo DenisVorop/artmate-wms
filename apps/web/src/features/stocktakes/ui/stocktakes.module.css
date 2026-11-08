@@ -758,3 +758,44 @@
   align-items: end;
   gap: 12px;
 }
+
+.numberEntry {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 480px) {
+  .numberEntry {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.numberEntry > button,
+.keypad > button {
+  min-height: 44px;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.keypad output {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 8px 12px;
+  text-align: right;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.keypad > button {
+  width: 100%;
+  font-size: 18px;
+}
+
+.keypad > button:global(.button--ghost) {
+  font-size: 14px;
+}

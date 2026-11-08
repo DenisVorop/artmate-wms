@@ -124,7 +124,12 @@ export function Modal({
           <h2 id={titleId}>{title}</h2>
           {description && <p>{description}</p>}
         </div>
-        <button className="icon-button" aria-label="Закрыть" onClick={onClose}>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Закрыть"
+          onClick={onClose}
+        >
           <X size={20} />
         </button>
       </header>

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { Button, Input, Select } from "@/shared/ui";
 import type { CountLocationForm } from "./count-location-form";
+import { StocktakeNumberField } from "./stocktake-number-field";
 import {
   openingCountSchema,
   openingCountDefaults,
@@ -60,6 +61,18 @@ export function OpeningLocationForm({
   const sku = data.skus.find((s) => s.id === values.skuId);
   const marker = !!sku && /маркер/i.test(sku.name);
   const errs = form.formState.errors;
+  const numberField = (
+    name:
+      | "unitsPerBox"
+      | "heightCm"
+      | "weightKg"
+      | `batches.${number}.quantity`,
+  ) => ({
+    registration: form.register(name),
+    value: form.getValues(name),
+    onApply: (value: string) =>
+      form.setValue(name, value, { shouldDirty: true, shouldValidate: true }),
+  });
   return (
     <form
       className={`${styles.form} ${compact ? styles.compactForm : ""}`}
@@ -186,11 +199,7 @@ export function OpeningLocationForm({
               ] as const
             ).map(([v, label]) => (
               <label className={styles.radio} key={v}>
-                <input
-                  type="radio"
-                  value={v}
-                  {...form.register("kind")}
-                />
+                <input type="radio" value={v} {...form.register("kind")} />
                 {label}
               </label>
             ))}
@@ -231,10 +240,10 @@ export function OpeningLocationForm({
             Один адрес — одна европаллета 120 × 80 см, одна тематика. Дата
             поступления определяет FIFO.
           </p>
-          {values.kind === "finished" && (
-            <label className="field" htmlFor={`${id}-units`}>
-              {marker ? "Наборов маркеров в коробе" : "Раскрасок в коробе"}
-              {marker ? (
+          {values.kind === "finished" &&
+            (marker ? (
+              <label className="field" htmlFor={`${id}-units`}>
+                Наборов маркеров в коробе
                 <Select
                   id={`${id}-units`}
                   disabled={disabled}
@@ -244,25 +253,27 @@ export function OpeningLocationForm({
                   <option value="4">4 набора</option>
                   <option value="8">8 наборов</option>
                 </Select>
-              ) : (
-                <Input
-                  id={`${id}-units`}
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  step="1"
-                  disabled={disabled}
-                  {...form.register("unitsPerBox")}
-                />
-              )}
-              <small>Укажите фактическую комплектацию найденных коробов.</small>
-              {errs.unitsPerBox && (
-                <span role="alert" className={styles.fieldError}>
-                  {errs.unitsPerBox.message}
-                </span>
-              )}
-            </label>
-          )}
+                <small>
+                  Укажите фактическую комплектацию найденных коробов.
+                </small>
+                {errs.unitsPerBox && (
+                  <span role="alert" className={styles.fieldError}>
+                    {errs.unitsPerBox.message}
+                  </span>
+                )}
+              </label>
+            ) : (
+              <StocktakeNumberField
+                id={`${id}-units`}
+                label="Раскрасок в коробе"
+                min={1}
+                max={1000}
+                disabled={disabled}
+                hint="Укажите фактическую комплектацию найденных коробов."
+                error={errs.unitsPerBox?.message}
+                {...numberField("unitsPerBox")}
+              />
+            ))}
           {batches.fields.map((field, index) => (
             <div className={styles.openingBatch} key={field.id}>
               <label className="field" htmlFor={`${id}-date-${index}`}>
@@ -281,25 +292,17 @@ export function OpeningLocationForm({
                   </span>
                 )}
               </label>
-              <label className="field" htmlFor={`${id}-quantity-${index}`}>
-                {values.kind === "raw" ? "Найдено, штук" : "Найдено, коробов"}
-                <Input
-                  id={`${id}-quantity-${index}`}
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  step="1"
-                  max={values.kind === "raw" ? 100000000 : 2000}
-                  disabled={disabled}
-                  {...form.register(`batches.${index}.quantity`)}
-                  aria-invalid={!!errs.batches?.[index]?.quantity}
-                />
-                {errs.batches?.[index]?.quantity && (
-                  <span role="alert" className={styles.fieldError}>
-                    {errs.batches[index]?.quantity?.message}
-                  </span>
-                )}
-              </label>
+              <StocktakeNumberField
+                id={`${id}-quantity-${index}`}
+                label={
+                  values.kind === "raw" ? "Найдено, штук" : "Найдено, коробов"
+                }
+                min={1}
+                max={values.kind === "raw" ? 100000000 : 2000}
+                disabled={disabled}
+                error={errs.batches?.[index]?.quantity?.message}
+                {...numberField(`batches.${index}.quantity`)}
+              />
               {index > 0 && (
                 <Button
                   variant="ghost"
@@ -329,41 +332,29 @@ export function OpeningLocationForm({
           )}
           {values.kind === "raw" && (
             <div className={styles.openingBatch}>
-              <label className="field" htmlFor={`${id}-height`}>
-                Полная высота с поддоном, см
-                <Input
-                  id={`${id}-height`}
-                  type="number"
-                  inputMode="decimal"
-                  min="15"
-                  step="0.1"
-                  disabled={disabled}
-                  {...form.register("heightCm")}
-                />
-                {errs.heightCm && (
-                  <span role="alert" className={styles.fieldError}>
-                    {errs.heightCm.message}
-                  </span>
-                )}
-              </label>
-              <label className="field" htmlFor={`${id}-weight`}>
-                Масса с поддоном, кг{" "}
-                {location?.maxWeightKg == null && "· если известна"}
-                <Input
-                  id={`${id}-weight`}
-                  type="number"
-                  inputMode="decimal"
-                  min="0.1"
-                  step="0.1"
-                  disabled={disabled}
-                  {...form.register("weightKg")}
-                />
-                {errs.weightKg && (
-                  <span role="alert" className={styles.fieldError}>
-                    {errs.weightKg.message}
-                  </span>
-                )}
-              </label>
+              <StocktakeNumberField
+                id={`${id}-height`}
+                label="Полная высота с поддоном, см"
+                min={15}
+                max={1000}
+                decimal
+                disabled={disabled}
+                error={errs.heightCm?.message}
+                {...numberField("heightCm")}
+              />
+              <StocktakeNumberField
+                id={`${id}-weight`}
+                label="Масса с поддоном, кг"
+                hint={
+                  location?.maxWeightKg == null ? "Если известна" : undefined
+                }
+                min={0.1}
+                max={100000}
+                decimal
+                disabled={disabled}
+                error={errs.weightKg?.message}
+                {...numberField("weightKg")}
+              />
             </div>
           )}
         </>

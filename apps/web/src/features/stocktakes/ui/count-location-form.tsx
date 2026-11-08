@@ -17,6 +17,7 @@ import {
   toStocktakeCount,
   type StocktakeCountValues,
 } from "../lib/count-form";
+import { StocktakeNumberField } from "./stocktake-number-field";
 import styles from "./stocktakes.module.css";
 
 export function CountLocationForm({
@@ -250,29 +251,24 @@ export function CountLocationForm({
                     </span>
                   )}
                 </label>
-                <label className="field">
-                  Найдено, шт.
-                  <Input
-                    inputMode="numeric"
-                    type="number"
-                    step="1"
-                    min="0"
-                    max="100000000"
-                    disabled={disabled || !rawValues[index]?.present}
-                    {...form.register(`rawPallets.${index}.quantity`)}
-                    aria-invalid={
-                      !!form.formState.errors.rawPallets?.[index]?.quantity
-                    }
-                  />
-                  {form.formState.errors.rawPallets?.[index]?.quantity && (
-                    <span role="alert" className={styles.fieldError}>
-                      {
-                        form.formState.errors.rawPallets[index]?.quantity
-                          ?.message
-                      }
-                    </span>
-                  )}
-                </label>
+                <StocktakeNumberField
+                  id={`${id}-raw-quantity-${index}`}
+                  label="Найдено, шт."
+                  min={0}
+                  max={100000000}
+                  disabled={disabled || !rawValues[index]?.present}
+                  registration={form.register(`rawPallets.${index}.quantity`)}
+                  value={rawValues[index]?.quantity ?? ""}
+                  onApply={(value) =>
+                    form.setValue(`rawPallets.${index}.quantity`, value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  error={
+                    form.formState.errors.rawPallets?.[index]?.quantity?.message
+                  }
+                />
                 {!known && (
                   <Button
                     size="sm"
