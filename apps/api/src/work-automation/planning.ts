@@ -3,14 +3,14 @@ import type {
   MarketplacePlanDto,
   MarketplacePlanRowDto,
 } from "../marketplaces/dto";
-import { planningBacklog } from "../marketplaces/planning-backlog";
+import { assemblyStorageCapacity } from "../marketplaces/planning-backlog";
 import type {
   AutomaticTaskIntent,
   AutomaticTaskOrigin,
   AutomaticTaskPurpose,
 } from "./types";
 export const ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU = 5;
-export const AUTOMATIC_QUEUE_MAX_TASKS = 5;
+export const ASSEMBLY_QUEUE_MAX_TASKS = 100;
 export const AUTOMATIC_RUN_MAX_INTENTS = 20;
 export function untouchedAutomaticTask(
   task: TaskDto,
@@ -37,37 +37,6 @@ export function automaticPlanningWorkspace(
     ...w,
     tasks: w.tasks.filter((task) => !untouchedAutomaticTask(task, origins)),
   };
-}
-function placeholderTask(skuId: string, boxesTarget: number): TaskDto {
-  return {
-    id: `automatic-capacity:${skuId}`,
-    code: "",
-    createdAt: null,
-    skuId,
-    boxesTarget,
-    boxesCompleted: 0,
-    unitsPerBox: 1,
-    status: "queued",
-    employeeId: null,
-    scannedUnits: 0,
-    sourcePalletId: null,
-    openBoxCode: "",
-    boxCodeConfirmed: false,
-    reservations: [],
-    openBoxContents: [],
-  };
-}
-/** Reuse the same physical reservation guards as one-box backlog planning. */
-function storageFits(w: WorkspaceDto, row: MarketplacePlanRowDto) {
-  const probe = {
-    ...row,
-    recommendedBoxes: 0,
-    recommendedUnits: 0,
-    backlogCanCreate: false,
-    backlogBoxes: 0,
-  };
-  planningBacklog(w, [probe], { [row.skuId]: 1 });
-  return probe.backlogCapacityKnown && probe.backlogCanCreate;
 }
 function urgentBoxAllowed(row: MarketplacePlanRowDto) {
   if (row.canCreate) return true;
@@ -101,7 +70,7 @@ export function automaticTaskIntents(
   // untouched automatic work may be replaced by the latest priorities.
   const availableSlots = Math.max(
     0,
-    AUTOMATIC_QUEUE_MAX_TASKS -
+    ASSEMBLY_QUEUE_MAX_TASKS -
       base.tasks.filter((task) => task.status !== "completed").length,
   );
   // Rotate only themes that have actually entered work. Pending automatic
@@ -126,12 +95,16 @@ export function automaticTaskIntents(
       ),
     );
   }
-  const simulation = { ...base, tasks: [...base.tasks] };
   const desired = new Map<
     string,
     { count: number; purpose: AutomaticTaskPurpose; hash: string }
   >();
-  if (!assemblyBlocked) {
+  if (
+    !assemblyBlocked &&
+    availableSlots > 0 &&
+    base.skus.every((sku) => sku.packaging)
+  ) {
+    const capacity = assemblyStorageCapacity(base);
     const ranked = [...plan.rows].sort(
       (a, b) =>
         Number(lastServedAt.has(a.skuId)) - Number(lastServedAt.has(b.skuId)) ||
@@ -161,6 +134,8 @@ export function automaticTaskIntents(
             !sku ||
             !row.dataComplete ||
             !row.backlogCapacityKnown ||
+            (row.averageDailyUnits <= 0 &&
+              row.localAfterAssemblyUnits >= row.unitsPerBox) ||
             !Number.isSafeInteger(sku.unitsPerBox) ||
             sku.unitsPerBox < 1 ||
             (urgent ? !urgentBoxAllowed(row) : !row.backlogCanCreate)
@@ -175,14 +150,19 @@ export function automaticTaskIntents(
             Math.floor(row.rawAvailableUnits / sku.unitsPerBox),
             urgent ? row.recommendedBoxes : Math.max(0, 1 - existing),
           );
-          if (alreadyPlanned >= limit || !storageFits(simulation, row))
+          if (
+            alreadyPlanned >= limit ||
+            !capacity.reserve({
+              skuId: sku.id,
+              packagingSnapshot: sku.packaging,
+            })
+          )
             continue;
           desired.set(sku.id, {
             count: alreadyPlanned + 1,
             purpose,
             hash: row.proposalHash,
           });
-          simulation.tasks.push(placeholderTask(sku.id, 1));
           remainingSlots--;
         }
       }

@@ -1,5 +1,8 @@
 import { assemblyQueueOrder } from "./assembly-queue";
-import { ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU } from "./work-automation/planning";
+import {
+  ASSEMBLY_QUEUE_MAX_TASKS,
+  ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU,
+} from "./work-automation/planning";
 import { reconcileOpeningStock } from "./marketplaces/opening-stock-reconciliation";
 import { initializeWorkAutomationStorage } from "./work-automation/storage";
 import {
@@ -1883,17 +1886,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   createTask(b: D.CreateTaskDto) {
     return this._command("createTask", b, (s) => {
-      const open = s.tasks.filter(
-        (task) => task.skuId === b.skuId && task.status !== "completed",
-      ).length;
-      if (
-        !Number.isSafeInteger(b.boxesTarget) ||
-        b.boxesTarget < 1 ||
-        b.boxesTarget + open > ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU
-      )
-        fail(
-          "По тематике может быть не больше пяти незавершённых заданий сборки",
-        );
+      if (!Number.isSafeInteger(b.boxesTarget) || b.boxesTarget < 1)
+        fail("Укажите целое положительное количество коробов");
+      this._assertAssemblyQueueCapacity(s, b.skuId, b.boxesTarget);
       for (let index = 0; index < b.boxesTarget; index++)
         this._createAssemblyTask(s, { ...b, boxesTarget: 1 });
     });
@@ -1906,14 +1901,26 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   ): Promise<string> {
     if (requestAuth.getStore())
       await authorizeWarehouse(tx, "createTask", body, state);
-    const open = state.tasks.filter(
-      (task) => task.skuId === body.skuId && task.status !== "completed",
-    ).length;
-    if (open >= ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU)
-      fail("По тематике уже есть пять незавершённых заданий сборки");
+    this._assertAssemblyQueueCapacity(state, body.skuId, 1);
     const taskId = this._createAssemblyTask(state, { ...body, boxesTarget: 1 });
     await this._commitState(tx, before, state, "createTask", body);
     return taskId;
+  }
+  private _assertAssemblyQueueCapacity(
+    state: D.WorkspaceDto,
+    skuId: string,
+    addedTasks: number,
+  ) {
+    const open = state.tasks.filter((task) => task.status !== "completed");
+    if (open.length + addedTasks > ASSEMBLY_QUEUE_MAX_TASKS)
+      fail(
+        `В очереди сборки может быть не больше ${ASSEMBLY_QUEUE_MAX_TASKS} незавершённых заданий`,
+      );
+    const forSku = open.filter((task) => task.skuId === skuId).length;
+    if (forSku + addedTasks > ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU)
+      fail(
+        "По тематике может быть не больше пяти незавершённых заданий сборки",
+      );
   }
   private _assemblyReservations(
     s: D.WorkspaceDto,

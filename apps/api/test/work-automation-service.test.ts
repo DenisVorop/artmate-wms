@@ -362,7 +362,7 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
   }
 });
 
-test("concurrent runs preserve the five-task budget through withdrawal, claim and completion", async () => {
+test("concurrent runs reconcile only planned work through withdrawal, claim and completion", async () => {
   const previousDir = process.env.WMS_DATA_DIR;
   process.env.WMS_DATA_DIR = "memory://";
   let warehouse: WarehouseService | undefined;
@@ -442,12 +442,22 @@ test("concurrent runs preserve the five-task budget through withdrawal, claim an
           goals: {},
           minimumBoxes: {},
         }),
-        plan: () =>
+        plan: (effective) =>
           ({
             rows: [
-              row("sku-space", 1, completedSpace ? 0 : 1),
-              row("sku-dinos", completedSpace ? 0 : 2),
-              row("sku-flowers", 3),
+              row(
+                "sku-space",
+                1,
+                completedSpace ||
+                  effective.tasks.some(
+                    (task) =>
+                      task.skuId === "sku-space" && task.status === "active",
+                  )
+                  ? 0
+                  : 1,
+              ),
+              row("sku-dinos", 2, completedSpace ? 1 : 0),
+              row("sku-flowers", 3, 0),
             ],
           }) as MarketplacePlanDto,
       });

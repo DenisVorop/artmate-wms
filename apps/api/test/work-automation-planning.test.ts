@@ -12,7 +12,7 @@ import {
   automaticTaskIntents,
   automaticPlanningWorkspace,
   untouchedAutomaticTask,
-  AUTOMATIC_QUEUE_MAX_TASKS,
+  ASSEMBLY_QUEUE_MAX_TASKS,
   AUTOMATIC_RUN_MAX_INTENTS,
 } from "../src/work-automation/planning";
 import type { AutomaticTaskOrigin } from "../src/work-automation/types";
@@ -79,7 +79,7 @@ function fixture() {
     ({ rows }) as MarketplacePlanDto;
   return { w, row, task, origin, plan };
 }
-test("urgent demand creates individual boxes up to the queue limit without mutating input", () => {
+test("urgent demand fills its thematic limit before backlog without mutating input", () => {
   const { w, row, plan } = fixture();
   const before = JSON.stringify(w);
   const intents = automaticTaskIntents(
@@ -92,7 +92,10 @@ test("urgent demand creates individual boxes up to the queue limit without mutat
     intents.map((i) =>
       i.kind === "create" ? [i.skuId, i.boxesTarget, i.purpose] : [],
     ),
-    Array.from({ length: 5 }, () => ["sku-cats", 1, "urgent"]),
+    [
+      ...Array.from({ length: 5 }, () => ["sku-cats", 1, "urgent"]),
+      ["sku-space", 1, "backlog"],
+    ],
   );
   assert.equal(JSON.stringify(w), before);
 });
@@ -289,26 +292,55 @@ function wideFixture(count = 100) {
     ...f.row(sku.id, 1),
     backlogRank: index + 1,
   }));
+  const address = f.w.locations.find((location) => location.kind === "rack")!;
+  assert.ok(address);
+  f.w.locations.push(
+    ...rows.map((row, index) => ({
+      ...address,
+      id: row.skuId,
+      code: `TEST-${index}`,
+      kind: "floor",
+      sectionId: null,
+      blocked: false,
+      archived: false,
+      availableWidthMm: 1600,
+      availableDepthMm: 1600,
+      maxHeightMm: 2200,
+      maxWeightKg: null,
+    })),
+  );
   return { ...f, rows };
 }
-test("one hundred eligible themes create only five tasks in the existing urgent/backlog priority order", () => {
-  const { w, rows, plan } = wideFixture();
-  rows[0].recommendedBoxes = 0;
-  rows[0].backlogCanCreate = true;
-  const intents = automaticTaskIntents(w, plan(...rows.reverse()), [], false);
-  assert.equal(intents.length, AUTOMATIC_QUEUE_MAX_TASKS);
-  assert.deepEqual(
-    intents.map((intent) => intent.kind === "create" && intent.skuId),
-    ["sku-001", "sku-002", "sku-003", "sku-004", "sku-005"],
-  );
+test("the total queue stops at 100 across runs, with no more than 20 new tasks per pass", () => {
+  const { w, rows, plan, task, origin } = wideFixture(105);
+  const origins: AutomaticTaskOrigin[] = [];
+  for (
+    let count = 0;
+    count < ASSEMBLY_QUEUE_MAX_TASKS;
+    count += AUTOMATIC_RUN_MAX_INTENTS
+  ) {
+    const intents = automaticTaskIntents(w, plan(...rows), origins, false);
+    assert.equal(intents.length, AUTOMATIC_RUN_MAX_INTENTS);
+    for (const intent of intents) {
+      assert.equal(intent.kind, "create");
+      assert.equal(intent.boxesTarget, 1);
+      const id = `auto-${intent.skuId}`;
+      w.tasks.push(task(id, intent.skuId, 1));
+      origins.push({ ...origin(id, intent.skuId), boxesTarget: 1 });
+    }
+  }
+  assert.equal(w.tasks.length, 100);
+  assert.equal(new Set(w.tasks.map((entry) => entry.skuId)).size, 100);
+  assert.deepEqual(automaticTaskIntents(w, plan(...rows), origins, false), []);
 });
-test("claiming a task keeps its queue slot; completion allows one fresh highest-priority theme", () => {
-  const { w, rows, task, origin, plan } = wideFixture(8);
-  w.tasks = rows
-    .slice(0, 5)
-    .map((row, index) => task(`auto-${index}`, row.skuId, 1));
-  const origins = w.tasks.map((task) => ({
-    ...origin(task.id, task.skuId),
+test("claiming a task keeps its thematic slot and completion permits a replacement", () => {
+  const { w, rows, task, origin, plan } = wideFixture(1);
+  rows[0].recommendedBoxes = 5;
+  w.tasks = Array.from({ length: 5 }, (_, index) =>
+    task(`auto-${index}`, rows[0].skuId, 1),
+  );
+  const origins = w.tasks.map((entry) => ({
+    ...origin(entry.id, entry.skuId),
     boxesTarget: 1,
   }));
   w.tasks[0].status = "active";
@@ -316,13 +348,10 @@ test("claiming a task keeps its queue slot; completion allows one fresh highest-
   assert.deepEqual(automaticTaskIntents(w, plan(...rows), origins, false), []);
   w.tasks[0].status = "completed";
   w.tasks[0].boxesCompleted = 1;
-  rows[0].recommendedBoxes = 0;
-  rows[0].backlogCanCreate = false;
-  rows[7].backlogRank = 0;
   const intents = automaticTaskIntents(w, plan(...rows), origins, false);
   assert.deepEqual(
     intents.map((intent) => intent.kind === "create" && intent.skuId),
-    ["sku-007"],
+    [rows[0].skuId],
   );
 });
 test("manual, assigned, paused and partially completed work occupy slots and are never reconciled", () => {
@@ -338,6 +367,7 @@ test("manual, assigned, paused and partially completed work occupy slots and are
   const origins = w.tasks
     .filter((task) => task.id !== "manual")
     .map((task) => origin(task.id, task.skuId));
+  for (const row of rows) row.dataComplete = false;
   const before = structuredClone(w.tasks);
   assert.deepEqual(automaticTaskIntents(w, plan(...rows), origins, false), [
     {
@@ -370,16 +400,16 @@ test("an oversized legacy queue withdraws safely in bounded runs before any repl
     second.filter((intent) => intent.kind === "withdraw").length,
     10,
   );
-  assert.equal(second.filter((intent) => intent.kind === "create").length, 5);
+  assert.equal(second.filter((intent) => intent.kind === "create").length, 10);
   let live = w.tasks.length;
   for (const intent of second) {
     if (intent.kind === "withdraw") live--;
     if (intent.kind === "create") {
       live++;
-      assert.ok(live <= AUTOMATIC_QUEUE_MAX_TASKS);
+      assert.ok(live <= ASSEMBLY_QUEUE_MAX_TASKS);
     }
   }
-  assert.equal(live, AUTOMATIC_QUEUE_MAX_TASKS);
+  assert.equal(live, 10);
 });
 test("duplicate plan rows cannot spend queue capacity twice for the same theme", () => {
   const { w, rows, plan } = wideFixture(8);
@@ -389,11 +419,11 @@ test("duplicate plan rows cannot spend queue capacity twice for the same theme",
     [],
     false,
   );
-  assert.equal(intents.length, AUTOMATIC_QUEUE_MAX_TASKS);
+  assert.equal(intents.length, rows.length);
   assert.equal(
     new Set(intents.map((intent) => intent.kind === "create" && intent.skuId))
       .size,
-    AUTOMATIC_QUEUE_MAX_TASKS,
+    rows.length,
   );
 });
 
@@ -413,19 +443,21 @@ test("a hundred-box demand rotates to another urgent theme after a batch and ret
   w.tasks[0].status = "completed";
   w.tasks[0].boxesCompleted = 10;
   const next = automaticTaskIntents(w, plan(...rows), origins, false);
-  assert.deepEqual(
-    next.map((intent) => intent.kind === "create" && intent.skuId),
-    ["sku-005"],
-  );
-  w.tasks.push(task("auto-5", rows[5].skuId, 1));
-  origins.push(origin("auto-5", rows[5].skuId));
+  assert.equal(next[0].kind === "create" && next[0].skuId, "sku-005");
+  assert.equal(next[1].kind === "create" && next[1].skuId, "sku-000");
+  for (const [index, intent] of next.entries()) {
+    assert.equal(intent.kind, "create");
+    const id = `new-${index}`;
+    w.tasks.push(task(id, intent.skuId, 1));
+    origins.push({ ...origin(id, intent.skuId), boxesTarget: 1 });
+  }
   assert.deepEqual(automaticTaskIntents(w, plan(...rows), origins, false), []);
   // Every alternative theme has now had a real batch. Oldest served goes first.
   w.tasks.forEach((task, index) => {
     task.status = "completed";
     task.boxesCompleted = task.boxesTarget;
     origins[index].createdAt =
-      `2026-10-27T${String(10 + index).padStart(2, "0")}:00:00Z`;
+      `2026-10-27T${String(10 + Number(task.skuId.slice(4))).padStart(2, "0")}:00:00Z`;
   });
   const round = automaticTaskIntents(w, plan(...rows), origins, false);
   assert.equal(round[0].kind === "create" && round[0].skuId, "sku-000");

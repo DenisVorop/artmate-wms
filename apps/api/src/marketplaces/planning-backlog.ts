@@ -41,6 +41,46 @@ export function planningBacklog(
     });
     return "Чтобы рассчитать свободные места, укажите размеры упаковки.";
   }
+  const capacity = assemblyStorageCapacity(w);
+  let fits = true;
+  const reserve = capacity.reserve;
+  for (const row of rows) {
+    const sku = w.skus.find((item) => item.id === row.skuId)!;
+    for (let i = 0; fits && i < row.recommendedBoxes; i++)
+      fits = reserve({ skuId: sku.id, packagingSnapshot: sku.packaging });
+  }
+  for (const row of order) {
+    row.backlogCapacityKnown = true;
+    if (!row.dataComplete)
+      row.backlogReason = "Сначала уточните данные для расчёта.";
+    else if (row.recommendedBoxes > 0)
+      row.backlogReason = "Сначала соберите объём к ближайшей отправке.";
+    else if (row.rawAvailableUnits < row.unitsPerBox)
+      row.backlogReason =
+        "Для следующего короба нужно принять и разместить товар.";
+    else if (
+      !fits ||
+      !reserve({
+        skuId: row.skuId,
+        packagingSnapshot: w.skus.find((sku) => sku.id === row.skuId)!
+          .packaging,
+      })
+    )
+      row.backlogReason =
+        "Свободных мест недостаточно. Сначала разместите готовые короба или освободите хранение.";
+    else {
+      row.backlogBoxes = 1;
+      row.backlogUnits = row.unitsPerBox;
+      row.backlogCanCreate = true;
+      row.backlogReason =
+        "Следующий короб в запас. После сборки очередь пересчитается по спросу и свободным местам.";
+    }
+  }
+  return "Следующая работа — по одному коробу: приоритет пересчитывается после сборки. При полном хранении сначала размещение и приёмка.";
+}
+
+/** Account for committed warehouse work once, then reserve new boxes in priority order. */
+export function assemblyStorageCapacity(w: W.WorkspaceDto) {
   const simulation: W.WorkspaceDto = {
     ...w,
     pallets: structuredClone(w.pallets),
@@ -56,34 +96,31 @@ export function planningBacklog(
           ?.locationId ?? null),
     storage.map((location) => location.id),
   );
+  const reachable = storage.filter(
+    (location) => routes.get(location.id)?.status !== "unreachable",
+  );
   let inspected = 0;
   function reserve(box: Pick<W.BoxDto, "skuId" | "packagingSnapshot">) {
     if (++inspected > 10000 || !box.packagingSnapshot) return false;
-    const candidates = simulation.locations
-      .filter(
-        (location) =>
-          ["rack", "floor"].includes(location.kind) &&
-          routes.get(location.id)?.status !== "unreachable",
-      )
-      .sort(
-        (a, b) =>
+    const candidates = [...reachable].sort(
+      (a, b) =>
+        Number(
+          simulation.pallets.some(
+            (p) =>
+              p.status === "stored" &&
+              p.locationId === b.id &&
+              p.skuId === box.skuId,
+          ),
+        ) -
           Number(
             simulation.pallets.some(
               (p) =>
                 p.status === "stored" &&
-                p.locationId === b.id &&
+                p.locationId === a.id &&
                 p.skuId === box.skuId,
             ),
-          ) -
-            Number(
-              simulation.pallets.some(
-                (p) =>
-                  p.status === "stored" &&
-                  p.locationId === a.id &&
-                  p.skuId === box.skuId,
-              ),
-            ) || a.code.localeCompare(b.code),
-      );
+          ) || a.code.localeCompare(b.code),
+    );
     const location = candidates.find(
       (candidate) =>
         !putawayPlacementError(simulation, candidate, box as W.BoxDto),
@@ -144,37 +181,8 @@ export function planningBacklog(
     for (let i = 0; fits && i < remaining; i++)
       fits = reserve({ skuId: sku.id, packagingSnapshot: sku.packaging });
   }
-  for (const row of rows) {
-    const sku = w.skus.find((item) => item.id === row.skuId)!;
-    for (let i = 0; fits && i < row.recommendedBoxes; i++)
-      fits = reserve({ skuId: sku.id, packagingSnapshot: sku.packaging });
-  }
-  for (const row of order) {
-    row.backlogCapacityKnown = true;
-    if (!row.dataComplete)
-      row.backlogReason = "Сначала уточните данные для расчёта.";
-    else if (row.recommendedBoxes > 0)
-      row.backlogReason = "Сначала соберите объём к ближайшей отправке.";
-    else if (row.rawAvailableUnits < row.unitsPerBox)
-      row.backlogReason =
-        "Для следующего короба нужно принять и разместить товар.";
-    else if (
-      !fits ||
-      !reserve({
-        skuId: row.skuId,
-        packagingSnapshot: w.skus.find((sku) => sku.id === row.skuId)!
-          .packaging,
-      })
-    )
-      row.backlogReason =
-        "Свободных мест недостаточно. Сначала разместите готовые короба или освободите хранение.";
-    else {
-      row.backlogBoxes = 1;
-      row.backlogUnits = row.unitsPerBox;
-      row.backlogCanCreate = true;
-      row.backlogReason =
-        "Следующий короб в запас. После сборки очередь пересчитается по спросу и свободным местам.";
-    }
-  }
-  return "Следующая работа — по одному коробу: приоритет пересчитывается после сборки. При полном хранении сначала размещение и приёмка.";
+  return {
+    reserve: (box: Pick<W.BoxDto, "skuId" | "packagingSnapshot">) =>
+      fits && reserve(box),
+  };
 }
