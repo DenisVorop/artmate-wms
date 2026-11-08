@@ -159,6 +159,9 @@ export function OpeningLocationForm({
           id={`${id}-address`}
           autoFocus={compact}
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           disabled={disabled}
           {...form.register("locationCode")}
           aria-invalid={!!errs.locationCode}

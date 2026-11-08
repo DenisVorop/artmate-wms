@@ -186,6 +186,9 @@ export function CountLocationForm({
           id={`${id}-address`}
           autoFocus={compact}
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           placeholder="Введите или отсканируйте код адреса"
           disabled={disabled}
           {...form.register("locationCode")}
@@ -235,6 +238,9 @@ export function CountLocationForm({
                   Код паллеты
                   <Input
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     readOnly={!!known && !compact}
                     disabled={disabled}
                     {...form.register(`rawPallets.${index}.palletCode`)}
@@ -344,6 +350,9 @@ export function CountLocationForm({
                 : "Другой найденный короб: введите код"
             }
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={boxCode}
             disabled={disabled || boxes.length >= 2000}
             onChange={(event) => {
