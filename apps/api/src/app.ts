@@ -990,6 +990,44 @@ export class WarehouseController {
   ) {
     return this.warehouse.updateEntrance(id, body);
   }
+  @Post("locations/:id/consumables")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "changeConsumables" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.ChangeConsumablesDto })
+  @ApiParam({ name: "id", type: String })
+  changeConsumables(
+    @Param("id") id: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.ChangeConsumablesDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.ChangeConsumablesDto,
+  ) {
+    return this.warehouse.changeConsumables(id, body);
+  }
+  @Post("consumables/enable")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "enableConsumables" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.CommandDto })
+  enableConsumables(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.CommandDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.CommandDto,
+  ) {
+    return this.warehouse.enableConsumables(body);
+  }
   @Post("locations/:id/delete")
   @HttpCode(200)
   @ApiOperation({ operationId: "deleteLocation" })

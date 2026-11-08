@@ -9,6 +9,7 @@ import type {
   ScanShipmentWorkDto,
   FinishShipmentWorkDto,
   AdjustStockDto,
+  ChangeConsumablesDto,
   CreateSpaceDto,
   UpdateSpaceDto,
   ResizeSpaceDto,
@@ -160,6 +161,10 @@ export function useWarehouseCommands() {
       run(() => api.updateRackSection(id, dto)),
     createRackLevel: (id: string, dto: CreateRackLevelDto) =>
       run(() => api.createRackLevel(id, dto)),
+    changeConsumables: (id: string, dto: ChangeConsumablesDto) =>
+      run(() => api.changeConsumables(id, dto)),
+    enableConsumables: (dto: CommandDto) =>
+      run(() => api.enableConsumables(dto)),
     updateSkuPackaging: (id: string, dto: UpdateSkuPackagingDto) =>
       run(() => api.updateSkuPackaging(id, dto)),
     createMovement: (dto: CreateMovementDto) =>

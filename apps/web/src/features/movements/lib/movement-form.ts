@@ -67,7 +67,8 @@ export function targetHint(
   data: Pick<
     WorkspaceDto,
     "locations" | "pallets" | "movements" | "putawayTasks" | "addressHolds"
-  >,
+  > &
+    Partial<Pick<WorkspaceDto, "warehouse">>,
   locationId: string,
   pallet?: PalletDto,
   kind?: string,
@@ -91,6 +92,8 @@ export function targetHint(
     return "для удерживаемого адреса выберите возврат";
   if (location.archived) return "адрес удалён с плана";
   if (location.blocked) return "адрес закрыт";
+  if (data.warehouse?.consumables?.some((row) => row.locationId === locationId))
+    return "занято упаковкой";
   if (location.id === pallet.locationId) return "исходный адрес";
   if (
     kind === "lower" &&

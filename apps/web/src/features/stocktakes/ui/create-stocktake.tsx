@@ -43,10 +43,15 @@ export function CreateStocktake({
     },
   });
   const values = form.watch();
-  const locations =
+  const packagingLocations = new Set(
+    snapshot.warehouse.consumables?.map((row) => row.locationId),
+  );
+  const locations = stocktakeLocations(
     values.mode === "opening"
       ? openingStocktakeLocations(snapshot)
-      : stocktakeLocations(snapshot.locations);
+      : snapshot.locations,
+    packagingLocations,
+  );
   const selected = resolveStocktakeScope(
     values.scope,
     values.scopeId,
@@ -60,9 +65,7 @@ export function CreateStocktake({
       values.scope,
       values.scopeId,
       values.locationIds,
-      values.mode === "opening"
-        ? openingStocktakeLocations(snapshot)
-        : snapshot.locations,
+      locations,
       snapshot.sections,
       snapshot.warehouse.spaces,
     );

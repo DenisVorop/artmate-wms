@@ -511,3 +511,37 @@ test("rotation preserves urgent priority over backlog and handles unknown legacy
     first,
   );
 });
+
+test("automatic queue shares the available packaging kits across themes", () => {
+  const { w, row, plan } = fixture();
+  w.warehouse = {
+    name: "Склад",
+    width: 30,
+    depth: 25,
+    layoutMode: "rectangle",
+    spaces: [],
+    workZones: [],
+    zoneWork: [],
+    consumablesEnabled: true,
+  };
+  w.aisles = [];
+  w.entrances = [];
+  const demand = plan(row("sku-cats", 10), row("sku-space", 10));
+  assert.deepEqual(automaticTaskIntents(w, demand, [], false), []);
+  w.warehouse.consumables = [
+    { item: "individual_box", locationId: "loc-10", quantity: 59 },
+    { item: "transport_carton", locationId: "loc-11", quantity: 3 },
+  ];
+  const intents = automaticTaskIntents(w, demand, [], false);
+  assert.equal(intents.length, 2);
+  assert.ok(
+    intents.every(
+      (intent) => intent.kind === "create" && intent.boxesTarget === 1,
+    ),
+  );
+  assert.equal(
+    new Set(intents.map((intent) => ("skuId" in intent ? intent.skuId : "")))
+      .size,
+    2,
+  );
+});

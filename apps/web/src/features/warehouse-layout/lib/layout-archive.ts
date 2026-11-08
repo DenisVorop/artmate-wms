@@ -6,6 +6,8 @@ export function archiveReasons(
 ): string[] {
   const ids = new Set(addressIds);
   const reasons: string[] = [];
+  if (data.warehouse.consumables?.some((row) => ids.has(row.locationId)))
+    reasons.push("На адресе хранится упаковка. Сначала освободите место.");
   const pallets = data.pallets.filter(
     (pallet) =>
       pallet.status === "stored" &&

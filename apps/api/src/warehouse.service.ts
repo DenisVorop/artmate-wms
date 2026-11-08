@@ -23,6 +23,15 @@ import {
 import { createDatabase, Database, Queryable } from "./database";
 import { requestAuth, projectWorkspace } from "./auth-context";
 import {
+  consumableKey,
+  consumableNames,
+  consumeReservedPackaging,
+  hasConsumables,
+  needsConsumables,
+  reserveConsumables,
+  reservedConsumables,
+} from "./consumables";
+import {
   initializeWorkforce,
   workforceBefore,
   recordWorkforce,
@@ -1053,6 +1062,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return location;
   }
   private _archiveAddressGuard(s: D.WorkspaceDto, id: string) {
+    if (hasConsumables(s, id)) fail("Сначала освободите адрес от упаковки");
     if (this._incomingPutaway(s, id).length)
       fail("Адрес зарезервирован размещением коробов");
     if (s.pallets.some((p) => p.status === "stored" && p.locationId === id))
@@ -1264,6 +1274,77 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       activity(s, "Вход обновлён", entrance.name, "layout");
     });
   }
+  changeConsumables(id: string, b: D.ChangeConsumablesDto) {
+    return this._command(`changeConsumables/${id}`, b, async (s, tx) => {
+      const location = this._activeLocation(s, id);
+      if (!["rack", "floor"].includes(location.kind) || location.blocked)
+        fail("Выберите доступное место хранения");
+      if (
+        !D.consumableItems.includes(b.item) ||
+        !["count", "receive"].includes(b.mode) ||
+        !Number.isSafeInteger(b.quantity) ||
+        b.quantity < 0 ||
+        (b.mode === "receive" && b.quantity === 0)
+      )
+        fail("Укажите вид упаковки и корректное целое количество");
+      const rows = s.warehouse.consumables ?? [];
+      const identity = { locationId: id, item: b.item };
+      const entry = rows.find(
+        (row) => row.locationId === id && row.item === b.item,
+      );
+      const previous = entry?.quantity ?? 0;
+      if (b.mode === "count" && b.expectedQuantity !== previous)
+        throw new ConflictException(
+          "Остаток изменился. Обновите данные и пересчитайте упаковку",
+        );
+      const quantity =
+        b.mode === "receive" ? previous + b.quantity : b.quantity;
+      if (quantity > 1_000_000_000)
+        fail("Количество превышает допустимый предел");
+      const reserved = reservedConsumables(s).get(consumableKey(identity)) ?? 0;
+      if (quantity < reserved)
+        fail(
+          `На этом адресе для сборки уже зарезервировано ${reserved} шт. упаковки`,
+        );
+      if (quantity === previous) return;
+      if (!hasConsumables(s, id)) {
+        await this._assertAddressesOutsideStocktake(tx, [id]);
+        this._archiveAddressGuard(s, id);
+      }
+      s.warehouse.consumables = rows.filter((row) => row !== entry);
+      if (quantity) s.warehouse.consumables.push({ ...identity, quantity });
+      activity(
+        s,
+        b.mode === "receive" ? "Упаковка принята" : "Упаковка пересчитана",
+        `${location.code} · ${consumableNames[b.item]} · ${previous} → ${quantity} шт.`,
+        "consumables",
+      );
+    });
+  }
+  enableConsumables(b: D.CommandDto) {
+    return this._command("enableConsumables", b, (s) => {
+      if (s.warehouse.consumablesEnabled) return;
+      const tasks = s.tasks.filter(
+        (task) =>
+          task.status !== "completed" && needsConsumables(task.unitsPerBox),
+      );
+      if (tasks.some((task) => task.status !== "queued"))
+        fail("Перед включением завершите начатую сборку раскрасок");
+      s.warehouse.consumablesEnabled = true;
+      for (const task of tasks)
+        task.consumableReservations = reserveConsumables(
+          s,
+          task.unitsPerBox,
+          task.boxesTarget - task.boxesCompleted,
+        );
+      activity(
+        s,
+        "Учёт упаковки включён",
+        "Сборка раскрасок резервирует упаковку по адресам",
+        "consumables",
+      );
+    });
+  }
   deleteLocation(id: string, b: D.CommandDto) {
     return this._command(`deleteLocation/${id}`, b, (s) => {
       const location = find(s.locations, id, "Адрес");
@@ -1458,7 +1539,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (
         (protectedPallets.length ||
           targetMoves.length ||
-          incomingPutaways.length) &&
+          incomingPutaways.length ||
+          hasConsumables(s, id)) &&
         ((b.kind && b.kind !== l.kind) || b.blocked === true)
       )
         fail(
@@ -2003,6 +2085,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           find(state.skus, task.skuId, "Тематика"),
           intent.boxesTarget,
         );
+        const packaging = reserveConsumables(
+          state,
+          task.unitsPerBox,
+          intent.boxesTarget,
+        );
+        if (packaging) task.consumableReservations = packaging;
         task.boxesTarget = intent.boxesTarget;
         task.autoPurpose = intent.purpose;
         state.tasks.push(task);
@@ -2039,6 +2127,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       ? find(s.employees, b.employeeId, "Сотрудник")
       : null;
     const reservations = this._assemblyReservations(s, sku, b.boxesTarget);
+    const packaging = reserveConsumables(s, sku.unitsPerBox, b.boxesTarget);
     const taskId = randomUUID();
     s.tasks.push({
       id: taskId,
@@ -2057,6 +2146,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       openBoxCode: nextCode("BOX"),
       reservations,
       openBoxContents: [],
+      ...(packaging ? { consumableReservations: packaging } : {}),
     });
     activity(
       s,
@@ -2279,6 +2369,23 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fail(
         `Нужно ${task.unitsPerBox} раскрасок, отсканировано ${task.scannedUnits}`,
       );
+    if (s.warehouse.consumablesEnabled && needsConsumables(task.unitsPerBox)) {
+      const { remaining, used } = consumeReservedPackaging(
+        s,
+        task.consumableReservations ?? [],
+      );
+      task.consumableReservations = remaining;
+      const details = used.map(
+        (row) =>
+          `${find(s.locations, row.locationId, "Адрес").code} · ${consumableNames[row.item]} · ${row.quantity} шт.`,
+      );
+      activity(
+        s,
+        "Упаковка списана",
+        `${task.openBoxCode} · ${details.join(" / ")}`,
+        "consumables",
+      );
+    }
     const profile = find(s.skus, task.skuId, "Тематика").packaging;
     let pallet = s.pallets.find(
       (p) =>
@@ -2363,6 +2470,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (task.autoPurpose && task.boxesCompleted < task.boxesTarget) {
       task.boxesTarget = task.boxesCompleted;
       task.reservations = [];
+      if (task.consumableReservations) task.consumableReservations = [];
     }
     if (task.boxesCompleted === task.boxesTarget) {
       task.status = "completed";
@@ -3203,7 +3311,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       "movement",
     );
   }
-  private async _automaticMovementCountGuard(
+  private async _assertAddressesOutsideStocktake(
     tx: Queryable,
     locationIds: string[],
   ) {
@@ -3261,7 +3369,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           intent.toLocationId,
         );
         if (problem) fail(problem);
-        await this._automaticMovementCountGuard(tx, [
+        await this._assertAddressesOutsideStocktake(tx, [
           pallet.locationId!,
           intent.toLocationId,
         ]);
@@ -3326,7 +3434,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         movement.id,
       );
       if (problem) fail(problem);
-      await this._automaticMovementCountGuard(tx, [
+      await this._assertAddressesOutsideStocktake(tx, [
         movement.fromLocationId,
         movement.toLocationId,
       ]);
@@ -3346,7 +3454,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           m.id,
         );
         if (problem) fail(problem);
-        await this._automaticMovementCountGuard(tx, [
+        await this._assertAddressesOutsideStocktake(tx, [
           m.fromLocationId,
           m.toLocationId,
         ]);

@@ -34,7 +34,13 @@ export function StocktakesFeature({
   );
   const working = employee?.status === "working";
   const canCreate =
-    !!workspace.data && stocktakeLocations(workspace.data.locations).length > 0;
+    !!workspace.data &&
+    stocktakeLocations(
+      workspace.data.locations,
+      new Set(
+        workspace.data.warehouse.consumables?.map((row) => row.locationId),
+      ),
+    ).length > 0;
   const busy = !!commands.pending;
   const success = (message: string) => ui.setNotice(message);
   return (

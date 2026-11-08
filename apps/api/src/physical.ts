@@ -1,4 +1,5 @@
 import * as D from "./dto";
+import { hasConsumables } from "./consumables";
 export const DEMO_PACKAGING: D.PackagingProfileDto = {
   boxWidthMm: 400,
   boxDepthMm: 400,
@@ -93,6 +94,7 @@ export function placementError(
   )
     return "Адрес находится в архиве";
   if (l.blocked) return "Место заблокировано";
+  if (hasConsumables(s, l.id)) return "На адресе хранится упаковка";
   if (
     s.pallets.some(
       (other) =>

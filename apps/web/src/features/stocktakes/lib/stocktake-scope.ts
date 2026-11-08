@@ -22,11 +22,15 @@ export function locationInsideSpace(
   );
 }
 
-export function stocktakeLocations(locations: LocationDto[]): LocationDto[] {
+export function stocktakeLocations(
+  locations: LocationDto[],
+  packagingLocations: ReadonlySet<string> = new Set(),
+): LocationDto[] {
   return locations
     .filter(
       (location) =>
         !location.archived &&
+        !packagingLocations.has(location.id) &&
         (location.kind === "rack" || location.kind === "floor"),
     )
     .sort((a, b) => a.code.localeCompare(b.code, "ru", { numeric: true }));

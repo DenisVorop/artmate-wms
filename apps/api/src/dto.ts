@@ -211,7 +211,21 @@ export class ZoneWorkDto {
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
   @ApiProperty({ type: String }) message!: string;
 }
+export const consumableItems = ["individual_box", "transport_carton"] as const;
+export type ConsumableItem = (typeof consumableItems)[number];
+
+export class ConsumableQuantityDto {
+  @ApiProperty({ type: String }) locationId!: string;
+  @ApiProperty({ type: String, enum: consumableItems }) item!: ConsumableItem;
+  @ApiProperty({ type: Number }) quantity!: number;
+}
+
 export class WarehousePlanDto {
+  @ApiPropertyOptional({ type: Boolean })
+  consumablesEnabled?: boolean;
+  @ApiPropertyOptional({ type: [ConsumableQuantityDto] })
+  consumables?: ConsumableQuantityDto[];
+
   @ApiProperty({ type: [WorkZoneDto] }) workZones!: WorkZoneDto[];
   @ApiProperty({ type: [ZoneWorkDto] }) zoneWork!: ZoneWorkDto[];
   @ApiProperty({ type: String, enum: ["rectangle", "spaces"] })
@@ -362,6 +376,9 @@ export class BoxDto {
   status!: string;
 }
 export class TaskDto {
+  @ApiPropertyOptional({ type: [ConsumableQuantityDto] })
+  consumableReservations?: ConsumableQuantityDto[];
+
   @ApiPropertyOptional({ type: String, enum: ["urgent", "backlog"] })
   autoPurpose?: "urgent" | "backlog";
   @ApiProperty({ type: String, nullable: true }) createdAt!: string | null;
@@ -592,6 +609,28 @@ export class CommandDto {
   @MaxLength(150)
   requestId!: string;
 }
+export class ChangeConsumablesDto extends CommandDto {
+  @ApiProperty({ type: String, enum: consumableItems })
+  @IsIn(consumableItems)
+  item!: ConsumableItem;
+
+  @ApiProperty({ type: String, enum: ["count", "receive"] })
+  @IsIn(["count", "receive"])
+  mode!: "count" | "receive";
+
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  quantity!: number;
+
+  @ApiProperty({ type: Number })
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  expectedQuantity!: number;
+}
+
 export class PhysicalAddressDto extends CommandDto {
   @ApiProperty({ type: Number })
   @IsInt()

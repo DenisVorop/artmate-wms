@@ -3,6 +3,7 @@ import type {
   MarketplacePlanDto,
   MarketplacePlanRowDto,
 } from "../marketplaces/dto";
+import { consumableTaskCapacity, needsConsumables } from "../consumables";
 import { assemblyStorageCapacity } from "../marketplaces/planning-backlog";
 import type {
   AutomaticTaskIntent,
@@ -118,6 +119,7 @@ export function automaticTaskIntents(
     );
     const rows = [...new Map(ranked.map((row) => [row.skuId, row])).values()];
     let remainingSlots = availableSlots;
+    let remainingPackaging = consumableTaskCapacity(base);
     for (const purpose of ["urgent", "backlog"] as const) {
       // One turn per theme before the next round within the same priority.
       for (
@@ -150,8 +152,10 @@ export function automaticTaskIntents(
             Math.floor(row.rawAvailableUnits / sku.unitsPerBox),
             urgent ? row.recommendedBoxes : Math.max(0, 1 - existing),
           );
+          const usesPackaging = needsConsumables(sku.unitsPerBox);
           if (
             alreadyPlanned >= limit ||
+            (usesPackaging && remainingPackaging <= 0) ||
             !capacity.reserve({
               skuId: sku.id,
               packagingSnapshot: sku.packaging,
@@ -164,6 +168,7 @@ export function automaticTaskIntents(
             hash: row.proposalHash,
           });
           remainingSlots--;
+          if (usesPackaging) remainingPackaging--;
         }
       }
     }

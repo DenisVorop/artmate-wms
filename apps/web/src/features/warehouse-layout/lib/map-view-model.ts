@@ -113,14 +113,18 @@ export function addressInventory(data: WorkspaceDto, ids: string[]) {
               (item) => item.returnLocationId === hold.locationId,
             )),
   );
+  const consumables = (data.warehouse.consumables ?? []).filter((row) =>
+    ids.includes(row.locationId),
+  );
   return {
     pallets,
     boxes,
+    consumables,
     incoming,
     incomingPutaways,
     additionalHolds,
     returnPallets,
-    occupied: pallets.length > 0 || boxes.length > 0,
+    occupied: pallets.length > 0 || boxes.length > 0 || consumables.length > 0,
     reserved:
       additionalHolds.length > 0 ||
       incoming.length > 0 ||
@@ -135,6 +139,7 @@ export function addressAvailability(
   const inventory = addressInventory(data, [address.id]);
   if (address.archived) return "В корзине";
   if (address.blocked) return "Закрыто";
+  if (inventory.consumables.length) return "Занято упаковкой";
   if (inventory.occupied)
     return inventory.pallets.some((pallet) => pallet.quantity === 0)
       ? "Паллета на месте"

@@ -1,4 +1,5 @@
 "use client";
+import { consumableNames } from "@/shared/lib/consumables";
 import Link from "next/link";
 import {
   ArrowDownToLine,
@@ -106,6 +107,7 @@ export function LocationDetails({
 
   function levelStatus(level: LocationDto) {
     const content = addressInventory(data, [level.id]);
+    if (content.consumables.length) return "Занято упаковкой";
     const raw = content.pallets
       .filter((pallet) => pallet.kind === PalletDtoKind.raw)
       .reduce((sum, pallet) => sum + pallet.quantity, 0);
@@ -275,6 +277,16 @@ export function LocationDetails({
               <strong>{address.accessSides}</strong>
             </div>
           </div>
+          {inventory.consumables.length > 0 && (
+            <div className={styles.reservationNotice}>
+              {inventory.consumables.map((row) => (
+                <p key={row.item}>
+                  {consumableNames[row.item]} ·{" "}
+                  {row.quantity.toLocaleString("ru-RU")} шт.
+                </p>
+              ))}
+            </div>
+          )}
           {inventory.reserved && (
             <div className={styles.reservationNotice}>
               {inventory.additionalHolds.map((hold) => (

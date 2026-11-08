@@ -59,6 +59,8 @@ export const warehouseOperations = new Set([
   "refreshStocktakeLocation",
   "submitStocktake",
   "adjustStock",
+  "changeConsumables",
+  "enableConsumables",
   "updateWarehousePlan",
   "createSpace",
   "updateSpace",

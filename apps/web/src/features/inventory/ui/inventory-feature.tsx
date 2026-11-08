@@ -44,6 +44,11 @@ export function InventoryFeature({
             Инвентаризация
           </Link>
           {isManager && (
+            <a href="#consumables" className="button button--secondary">
+              Расходники
+            </a>
+          )}
+          {isManager && (
             <Link href="/stock-ledger" className="button button--secondary">
               Журнал учёта
             </Link>

@@ -1,0 +1,35 @@
+.totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 14px 0;
+}
+.totals dt,
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+.totals dd {
+  margin: 4px 0 0;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+.form {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-top: 16px;
+}
+.form fieldset {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+.form p {
+  margin: 0;
+}
+.form .hint {
+  margin-bottom: 10px;
+}

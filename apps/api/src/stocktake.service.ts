@@ -1,3 +1,4 @@
+import { hasConsumables } from "./consumables";
 import {
   Injectable,
   Inject,
@@ -313,6 +314,10 @@ export class StocktakeService {
         throw new BadRequestException("Адреса не должны повторяться");
       for (const id of b.locationIds) {
         const l = s.locations.find((l) => l.id === id);
+        if (hasConsumables(s, id))
+          throw new BadRequestException(
+            "Упаковку пересчитывают отдельно в разделе остатков",
+          );
         if (
           !l ||
           l.archived ||

@@ -4,6 +4,7 @@ import { MapPin, PackageCheck, Pause, Play, Printer } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { LocationMapButton } from "@/entities/warehouse-map";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
+import { consumableNames, packagingForNextBox } from "@/shared/lib/consumables";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import {
   employeeAssemblyScanContext,
@@ -265,6 +266,20 @@ export function EmployeeAssembly({
                       ? "Подготовьте 2 упаковки по 10"
                       : `Подготовьте ${task.unitsPerBox} раскрасок`}
                   </h3>
+                  {packagingForNextBox(task.consumableReservations ?? []).map(
+                    (row) => (
+                      <p key={`${row.locationId}/${row.item}`}>
+                        {consumableNames[row.item]} · {row.quantity} шт. ·{" "}
+                        <strong>
+                          {
+                            data.locations.find(
+                              (address) => address.id === row.locationId,
+                            )?.code
+                          }
+                        </strong>
+                      </p>
+                    ),
+                  )}
                   <p>
                     Промаркируйте раскраски. Возьмите готовую этикетку, наклейте
                     на короб и отсканируйте QR.
