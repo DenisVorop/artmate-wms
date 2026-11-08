@@ -197,8 +197,8 @@ export function OpeningLocationForm({
             <legend>Товар на паллете</legend>
             {(
               [
-                ["raw", "Нерасфасованный товар"],
-                ["finished", "Готовые короба"],
+                ["raw", "Поштучно, без транспортных коробов"],
+                ["finished", "В транспортных коробах"],
               ] as const
             ).map(([v, label]) => (
               <label className={styles.radio} key={v}>
@@ -298,7 +298,16 @@ export function OpeningLocationForm({
               <StocktakeNumberField
                 id={`${id}-quantity-${index}`}
                 label={
-                  values.kind === "raw" ? "Найдено, штук" : "Найдено, коробов"
+                  values.kind === "finished"
+                    ? "Найдено, коробов"
+                    : marker
+                      ? "Найдено, наборов"
+                      : "Найдено, штук"
+                }
+                hint={
+                  values.kind === "raw" && marker
+                    ? "Один набор маркеров считается одной штукой."
+                    : undefined
                 }
                 min={1}
                 max={values.kind === "raw" ? 100000000 : 2000}
