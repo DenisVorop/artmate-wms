@@ -42,7 +42,7 @@ function valid(rectangle: MapRectangle) {
     rectangle.depth > 0
   );
 }
-function contains(outer: MapRectangle, inner: MapRectangle) {
+export function mapContains(outer: MapRectangle, inner: MapRectangle) {
   const epsilon = 1e-6;
   return (
     inner.x >= outer.x - epsilon &&
@@ -77,7 +77,7 @@ function union(rectangles: MapRectangle[]): MapRectangle {
 /** Door offsets are local to their room, while all rendered coordinates are global. */
 export function mapEntrance(
   entrance: EntranceDto,
-  data: LocationMapData,
+  data: Pick<LocationMapData, "warehouse">,
 ): MapLine | null {
   if (
     entrance.archived ||
@@ -156,7 +156,7 @@ export function createLocationMap(
         ].filter(valid);
   const room =
     spaces
-      .filter((space) => contains(space, target))
+      .filter((space) => mapContains(space, target))
       .sort((a, b) => a.width * a.depth - b.width * b.depth)
       .find(() => true) ?? null;
   const shapes: MapShape[] = [

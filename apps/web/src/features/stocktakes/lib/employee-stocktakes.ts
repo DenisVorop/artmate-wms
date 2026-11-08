@@ -23,18 +23,31 @@ export function employeeStocktakeJobs(
       );
     });
 }
+export function lastCountedStocktakeRow(rows: StocktakeDto["rows"]) {
+  return rows.reduce<StocktakeDto["rows"][number] | undefined>(
+    (last, row) =>
+      row.count &&
+      row.countedAt &&
+      (!last?.countedAt || row.countedAt > last.countedAt)
+        ? row
+        : last,
+    undefined,
+  )?.locationId;
+}
+
 export function employeeStocktakeNextRow(
   doc: Pick<StocktakeDto, "rows">,
   afterId?: string,
 ) {
-  const rows = doc.rows,
-    start = afterId
-      ? Math.max(0, rows.findIndex((r) => r.locationId === afterId) + 1)
-      : 0;
+  const rows = doc.rows;
+  const lastCounted = afterId ?? lastCountedStocktakeRow(rows);
+  const start = lastCounted
+    ? Math.max(0, rows.findIndex((r) => r.locationId === lastCounted) + 1)
+    : 0;
   const ordered = [...rows.slice(start), ...rows.slice(0, start)];
   return (
-    ordered.find((r) => r.stale && !r.busyReasons.length)?.locationId ??
-    ordered.find((r) => !r.count && !r.busyReasons.length)?.locationId ??
+    ordered.find((r) => (r.stale || !r.count) && !r.busyReasons.length)
+      ?.locationId ??
     ordered.find((r) => r.stale || !r.count)?.locationId ??
     ""
   );

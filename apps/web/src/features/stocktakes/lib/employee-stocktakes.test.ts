@@ -77,6 +77,17 @@ test("one-cell progression skips saved cells, loops to stale cells and returns c
   rows[0] = { ...rows[0], stale: true };
   assert.equal(employeeStocktakeNextRow({ rows }, "c"), "a");
 });
+test("resuming starts after the latest count and does not jump to a distant stale row", () => {
+  const rows = [
+    row("older-room", { count: counted, stale: true }),
+    row("current", { count: counted, countedAt: "2026-11-08T16:00:00Z" }),
+    row("neighbor"),
+  ];
+  assert.equal(employeeStocktakeNextRow({ rows }), "neighbor");
+  assert.equal(employeeStocktakeNextRow({ rows }, "current"), "neighbor");
+  rows[2] = { ...rows[2], count: counted };
+  assert.equal(employeeStocktakeNextRow({ rows }, "neighbor"), "older-room");
+});
 test("busy cells stay visible for recovery but available cells are selected first; dirty navigation requires explicit discard", () => {
   const rows = [row("busy", { busyReasons: ["Перемещение"] }), row("free")];
   assert.equal(employeeStocktakeNextRow({ rows }), "free");

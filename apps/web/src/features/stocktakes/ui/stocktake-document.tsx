@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { openingCompletionSchema } from "../lib/opening-count-form";
@@ -17,6 +17,7 @@ import {
   stocktakeStatus,
   stocktakeCancelDescription,
 } from "../lib/stocktake-view";
+import { stocktakeWalk } from "@/entities/warehouse-map";
 import { StocktakeRow } from "./stocktake-row";
 import { StocktakePreview } from "./stocktake-preview";
 import { ReasonAction } from "./reason-action";
@@ -40,7 +41,7 @@ export function StocktakeDocument({
   onCancel,
 }: {
   doc: StocktakeDto;
-  data?: Pick<WorkspaceDto, "skus" | "locations">;
+  data?: Pick<WorkspaceDto, "skus" | "locations" | "warehouse" | "entrances">;
   isManager: boolean;
   ownEmployeeId: string;
   working: boolean;
@@ -93,6 +94,7 @@ export function StocktakeDocument({
         : undefined
       : doc.preview;
   const previewReady = !!preview && preview.revision === doc.revision;
+  const rows = useMemo(() => stocktakeWalk(doc.rows, data), [doc.rows, data]);
   const busy = !!pending;
   const own = doc.employeeId === ownEmployeeId;
   const openReason = (action: "approve" | "cancel") => {
@@ -351,7 +353,7 @@ export function StocktakeDocument({
           </span>
         </div>
         <div className={styles.rows}>
-          {doc.rows.map((row) => (
+          {rows.map((row) => (
             <StocktakeRow
               key={row.locationId}
               doc={doc}

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
@@ -15,8 +15,9 @@ import {
   employeeStocktakeJobs,
   employeeStocktakeNextRow,
   employeeStocktakeCanLeave,
-  employeeStocktakeSelection,
+  lastCountedStocktakeRow,
 } from "../lib/employee-stocktakes";
+import { stocktakeWalk } from "@/entities/warehouse-map";
 import { useStocktakesState } from "../lib/use-stocktakes-state";
 import { useStocktakeCommands } from "../model/use-stocktake-commands";
 import { StocktakeRow } from "./stocktake-row";
@@ -65,11 +66,23 @@ export function EmployeeStocktakes({
   );
   const selected =
     doc && doc.id === ui.selectedId && doc.employeeId === user?.employeeId;
-  const effectiveRowId = doc ? employeeStocktakeSelection(doc, rowId) : "",
-    row = doc?.rows.find((r) => r.locationId === effectiveRowId);
+  const rows = useMemo(
+    () => stocktakeWalk(doc?.rows ?? [], workspace.data),
+    [doc?.rows, workspace.data],
+  );
+  const nextRow = (
+    source: typeof rows,
+    afterId = lastCountedStocktakeRow(source),
+  ) =>
+    employeeStocktakeNextRow(
+      { rows: stocktakeWalk(source, workspace.data, afterId) },
+      afterId,
+    );
+  const effectiveRowId = rowId ?? (doc ? nextRow(doc.rows) : ""),
+    row = rows.find((r) => r.locationId === effectiveRowId);
   useEffect(() => {
-    if (doc && rowId === null) setRowId(employeeStocktakeNextRow(doc));
-  }, [doc, rowId]);
+    if (doc && workspace.data && rowId === null) setRowId(effectiveRowId);
+  }, [doc, rowId, effectiveRowId, workspace.data]);
   const problemRef = useRef(onProblem);
   problemRef.current = onProblem;
   useEffect(() => {
@@ -276,7 +289,7 @@ export function EmployeeStocktakes({
                 onClick={async () => {
                   const result = await commands.claim(doc);
                   if (result) {
-                    setRowId(employeeStocktakeNextRow(result));
+                    setRowId(null);
                     ui.setNotice("Документ взят. Начните с указанной ячейки.");
                   }
                 }}
@@ -309,7 +322,7 @@ export function EmployeeStocktakes({
                   останется в истории.
                 </p>
                 <div className={styles.employeeCells}>
-                  {doc.rows.map((r) => (
+                  {rows.map((r) => (
                     <Button
                       key={r.locationId}
                       variant="secondary"
@@ -340,7 +353,7 @@ export function EmployeeStocktakes({
                     }
                   >
                     <option value="">Выбрать ячейку</option>
-                    {doc.rows.map((r) => (
+                    {rows.map((r) => (
                       <option key={r.locationId} value={r.locationId}>
                         {r.locationCode} ·{" "}
                         {r.stale
@@ -397,9 +410,7 @@ export function EmployeeStocktakes({
                       );
                       if (result) {
                         ui.setRowDirty(r.locationId, false);
-                        setRowId(
-                          employeeStocktakeNextRow(result, r.locationId),
-                        );
+                        setRowId(nextRow(result.rows, r.locationId));
                         setReviewRow(false);
                         ui.setNotice(`Ячейка ${r.locationCode} сохранена.`);
                       }
