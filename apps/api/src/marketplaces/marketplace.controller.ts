@@ -96,16 +96,6 @@ export class MarketplaceController {
   ) {
     return this.service.updateMarketplaceSettings(b);
   }
-  @Post("transit")
-  @HttpCode(200)
-  @ApiOperation({ operationId: "setMarketplaceTransit" })
-  @ApiBody({ type: D.SetMarketplaceTransitDto })
-  @ApiOkResponse({ type: D.MarketplaceOverviewDto })
-  setMarketplaceTransit(
-    @Body(pipe(D.SetMarketplaceTransitDto)) b: D.SetMarketplaceTransitDto,
-  ) {
-    return this.service.setMarketplaceTransit(b);
-  }
   @Post("tasks")
   @HttpCode(200)
   @ApiOperation({ operationId: "createMarketplaceTask" })

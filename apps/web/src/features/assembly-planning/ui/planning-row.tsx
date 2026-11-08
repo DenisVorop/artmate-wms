@@ -1,12 +1,8 @@
 "use client";
-import { useEffect, useId, useState } from "react";
 import Link from "next/link";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
-import { Badge, Button, Input } from "@/shared/ui";
-import { transitSchema, type TransitValues } from "../lib/planning-form";
+import { Badge, Button } from "@/shared/ui";
 import { boxesLabel, packagedLabel, dispatchLabel } from "../lib/planning-view";
 import styles from "./assembly-planning.module.css";
 const number = (value: number | null, digits = 0) =>
@@ -23,39 +19,15 @@ const status = {
 };
 export function PlanningRow({
   row,
-  currentRow = row,
   previous = false,
   pending,
   onCreate,
-  onTransit,
 }: {
   row: MarketplacePlanRowDto;
-  currentRow?: MarketplacePlanRowDto;
   previous?: boolean;
   pending: boolean;
   onCreate: () => Promise<void>;
-  onTransit: (units: number) => Promise<boolean>;
 }) {
-  const id = useId();
-  const [expanded, setExpanded] = useState(false),
-    [manual, setManual] = useState(false);
-  const form = useForm<TransitValues>({
-    resolver: zodResolver(transitSchema),
-    defaultValues:
-      currentRow.inTransitUnits == null
-        ? {}
-        : { inTransitUnits: currentRow.inTransitUnits },
-  });
-  const transitDirty = form.formState.isDirty;
-  const resetTransit = form.reset;
-  useEffect(() => {
-    if (!transitDirty)
-      resetTransit(
-        currentRow.inTransitUnits == null
-          ? {}
-          : { inTransitUnits: currentRow.inTransitUnits },
-      );
-  }, [currentRow.inTransitUnits, transitDirty, resetTransit]);
   const { state, action, message } = row.advice;
   const needsAssembly =
     row.dataComplete && (state === "ready" || state === "raw_shortage");
@@ -148,35 +120,17 @@ export function PlanningRow({
               Открыть приёмку
             </Link>
           )}
-          {action === "integrations" && (
+          {(action === "integrations" || action === "transit") && (
             <Link className="button button--ghost" href="/integrations">
               Проверить данные
             </Link>
-          )}
-          {action === "transit" && (
-            <Button
-              variant="secondary"
-              aria-expanded={expanded && manual}
-              aria-controls={`${id}-details`}
-              onClick={() => {
-                setExpanded(true);
-                setManual(true);
-              }}
-            >
-              Уточнить поставки
-            </Button>
           )}
         </div>
       </div>
       {(state === "review" || state === "raw_shortage") && (
         <p className={styles.reason}>{message}</p>
       )}
-      <details
-        className={styles.detail}
-        id={`${id}-details`}
-        open={expanded}
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
-      >
+      <details className={styles.detail}>
         <summary>Подробнее</summary>
         <h3 className={styles.forecastHeading}>
           Сколько ожидаем продать по неделям
@@ -337,61 +291,6 @@ export function PlanningRow({
         >
           Посмотреть поставки →
         </Link>
-        <details
-          className={styles.manual}
-          open={manual}
-          onToggle={(event) => setManual(event.currentTarget.open)}
-        >
-          <summary>Уточнить товар в пути</summary>
-          <form
-            noValidate
-            className={styles.transit}
-            onSubmit={form.handleSubmit(async (values) => {
-              if (!pending && (await onTransit(values.inTransitUnits)))
-                form.reset(values);
-            })}
-          >
-            <label className="field" htmlFor={`${id}-transit`}>
-              Товар в пути на маркетплейсы, шт.
-              <Input
-                id={`${id}-transit`}
-                type="number"
-                min={0}
-                max={100000000}
-                {...form.register("inTransitUnits", { valueAsNumber: true })}
-                disabled={pending}
-                placeholder="Укажите количество"
-                aria-invalid={!!form.formState.errors.inTransitUnits}
-                aria-describedby={
-                  form.formState.errors.inTransitUnits
-                    ? `${id}-error`
-                    : `${id}-help`
-                }
-              />
-            </label>
-            <Button
-              type="submit"
-              variant="secondary"
-              size="sm"
-              disabled={
-                pending ||
-                (row.inTransitUnits != null && !form.formState.isDirty)
-              }
-            >
-              Сохранить количество
-            </Button>
-            {form.formState.errors.inTransitUnits && (
-              <span id={`${id}-error`} className={styles.error} role="alert">
-                {form.formState.errors.inTransitUnits.message}
-              </span>
-            )}
-          </form>
-          <p className={styles.help} id={`${id}-help`}>
-            Укажите весь отправленный товар, который ещё не приняли
-            маркетплейсы. Уточнение заменит автоматическое количество до
-            следующего обновления данных.
-          </p>
-        </details>
       </details>
     </article>
   );

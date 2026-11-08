@@ -40,7 +40,8 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
       }
     });
     let mode: "complete" | "partial" | "fail" = "complete",
-      calls = 0;
+      calls = 0,
+      inboundUnits = 0;
     const service = MarketplaceService.forTesting(
       w,
       new MarketplaceSecrets({ path: join(dir, "key") }),
@@ -67,7 +68,7 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
               warehouseName: "FBO",
               availableUnits: 0,
               reservedUnits: 0,
-              inboundUnits: null,
+              inboundUnits,
             },
           ],
           demand: [
@@ -92,7 +93,7 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
             catalog: true,
             stocks: true,
             demand: mode !== "partial",
-            inbound: false,
+            inbound: true,
           },
           supplies: [
             {
@@ -195,13 +196,6 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     const reloaded = await as("manager", () => service.getMarketplaces());
     assert.equal(reloaded.supplies[0].items[0].skuId, "sku-cats");
-    await as("manager", () =>
-      service.setMarketplaceTransit({
-        ...req(),
-        skuId: "sku-cats",
-        inTransitUnits: 0,
-      }),
-    );
     // A saved display requires an actually published forecast, never a pending fallback.
     await new ForecastService(w).runForecastComputation();
     const beforeRefresh = await as("manager", () => service.getMarketplaces());
@@ -251,18 +245,9 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     const refreshed = await as("manager", () =>
       service.syncMarketplace({ ...req(), provider: "wildberries" }),
     );
-    assert.equal(
-      refreshed.plan.rows.find((r) => r.skuId === "sku-cats")!.inTransitUnits,
-      null,
-    );
-    const confirmed = await as("manager", () =>
-      service.setMarketplaceTransit({
-        ...req(),
-        skuId: "sku-cats",
-        inTransitUnits: 0,
-      }),
-    );
-    const proposal = confirmed.plan.rows.find((r) => r.skuId === "sku-cats")!;
+    const proposal = refreshed.plan.rows.find((r) => r.skuId === "sku-cats")!;
+    assert.equal(proposal.inTransitUnits, 0);
+    assert.equal(proposal.inboundSource, "api");
     assert.equal(proposal.dataComplete, true);
     assert.equal(
       proposal.canCreate,
@@ -351,12 +336,9 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     );
     // Optional work is an explicit one-box command with independent purpose,
     // fresh capacity checks and the same transactional replay protection.
+    inboundUnits = 100000;
     const covered = await as("manager", () =>
-      service.setMarketplaceTransit({
-        ...req(),
-        skuId: "sku-cats",
-        inTransitUnits: 100000,
-      }),
+      service.syncMarketplace({ ...req(), provider: "wildberries" }),
     );
     const optional = covered.plan.rows.find((row) => row.skuId === "sku-cats")!;
     assert.equal(optional.recommendedBoxes, 0);

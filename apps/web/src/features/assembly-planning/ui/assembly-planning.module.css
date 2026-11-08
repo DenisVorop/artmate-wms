@@ -213,20 +213,17 @@
   font-size: 13px;
   line-height: 1.7;
 }
-.detail,
-.manual {
+.detail {
   font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
 }
-.detail > summary,
-.manual > summary {
+.detail > summary {
   cursor: pointer;
   width: fit-content;
   color: var(--muted);
 }
-.detail[open] > summary,
-.manual[open] > summary {
+.detail[open] > summary {
   color: var(--text);
 }
 .metrics {
@@ -258,22 +255,6 @@
   color: var(--text);
   margin-top: 12px;
   font-size: 12px;
-}
-.manual {
-  margin-top: 18px;
-}
-.transit {
-  display: flex;
-  align-items: end;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 18px;
-}
-.transit label {
-  max-width: 300px;
-}
-.transit .error {
-  flex-basis: 100%;
 }
 @media (max-width: 1100px) {
   .fields {
@@ -323,8 +304,7 @@
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .fields input,
-  .transit input {
+  .fields input {
     font-size: 16px;
   }
   .filter,

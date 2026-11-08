@@ -315,16 +315,8 @@ export function AssemblyPlanningFeature() {
               <PlanningRow
                 key={row.skuId}
                 row={row}
-                currentRow={
-                  query.data.plan.rows.find(
-                    (item) => item.skuId === row.skuId,
-                  ) ?? row
-                }
                 previous={isPrevious}
                 pending={actions.pending}
-                onTransit={async (units) =>
-                  !!(await actions.transit(row.skuId, units))
-                }
                 onCreate={async () => {
                   const result = await actions.create(
                     row.skuId,

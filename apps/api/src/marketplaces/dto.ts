@@ -189,18 +189,6 @@ export class UpdateMarketplaceSettingsDto extends MarketplaceSettingsDto {
   @MaxLength(200)
   requestId!: string;
 }
-export class SetMarketplaceTransitDto extends MarketplaceCommandDto {
-  @ApiProperty({ type: String })
-  @IsString()
-  @MinLength(1)
-  @MaxLength(200)
-  skuId!: string;
-  @ApiProperty({ type: Number, minimum: 0, maximum: 100000000 })
-  @IsInt()
-  @Min(0)
-  @Max(100000000)
-  inTransitUnits!: number;
-}
 export class CreateMarketplaceTaskDto extends MarketplaceCommandDto {
   @ApiPropertyOptional({
     enum: ["urgent", "backlog"],

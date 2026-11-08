@@ -172,6 +172,9 @@ export function marketplacePlan(
       }
       const minimumUnits =
         (forecast?.minimumBoxes[sku.id] ?? 0) * sku.unitsPerBox;
+      const providerNames = [
+        ...new Set(mappings.map((mapping) => mapping.provider)),
+      ];
       const inboundSources: MarketplaceInboundSourceDto[] =
         snapshots.flatMap<MarketplaceInboundSourceDto>((snapshot) => {
           const related = mappings.filter(
@@ -254,44 +257,26 @@ export function marketplacePlan(
             },
           ];
         });
-      const loadedInbound =
-        inboundSources.length &&
+      const inTransitUnits =
+        inboundSources.length > 0 &&
+        inboundSources.length === providerNames.length &&
         inboundSources.every((source) => source.units !== null)
           ? inboundSources.reduce((sum, source) => sum + source.units!, 0)
           : null;
-      const inTransitUnits = m.transit[sku.id] ?? loadedInbound;
       const inboundSource =
-        m.transit[sku.id] !== undefined
-          ? ("manual" as const)
-          : loadedInbound !== null
-            ? ("api" as const)
-            : ("unknown" as const);
+        inTransitUnits === null ? ("unknown" as const) : ("api" as const);
       warnings.push(
         ...inboundSources.flatMap((source) =>
           source.warnings.map((warning) => `${source.provider}: ${warning}`),
         ),
       );
       warnings.push(
-        m.transit[sku.id] !== undefined
-          ? "Товар в пути подтверждён вручную суммарно по маркетплейсам; актуальность проверяет руководитель"
-          : loadedInbound !== null
-            ? "Товар в пути получен из API"
-            : "API не сообщает весь товар в пути",
+        inTransitUnits !== null
+          ? "Товар в пути получен из API"
+          : "API не сообщает весь товар в пути",
       );
       if (inTransitUnits === null)
-        blockers.push(
-          "Подтвердите количество товара в пути на маркетплейсы, в том числе ноль",
-        );
-      const providerNames = [
-        ...new Set(mappings.map((mapping) => mapping.provider)),
-      ];
-      const manual = m.transit[sku.id];
-      const unallocatedTransit =
-        manual !== undefined && manual > 0 && providerNames.length > 1;
-      if (unallocatedTransit) {
-        blockers.push("Суммарный товар в пути не распределён между площадками");
-        reviewMessage ??= "Уточните товар в пути отдельно по WB и Ozon.";
-      }
+        blockers.push("Нет полных данных маркетплейсов о товаре в пути");
       const sourceInput = {
         asOf: to,
         generatedAt,
@@ -468,12 +453,9 @@ export function marketplacePlan(
                 0,
               )
             : null;
-          const inbound = unallocatedTransit
-            ? null
-            : manual !== undefined
-              ? manual
-              : (inboundSources.find((item) => item.provider === provider)
-                  ?.units ?? null);
+          const inbound =
+            inboundSources.find((item) => item.provider === provider)?.units ??
+            null;
           const providerBlock =
             global.some((reason) => reason.startsWith(`${provider}:`)) ||
             !snapshot ||
@@ -670,8 +652,9 @@ export function marketplacePlan(
         : inTransitUnits === null
           ? {
               state: "review",
-              message: "Проверьте количество товара в пути.",
-              action: "transit",
+              message:
+                "Маркетплейсы ещё не передали полные данные о товаре в пути.",
+              action: "integrations",
             }
           : dataComplete &&
               recommendedBoxes > 0 &&
@@ -705,6 +688,7 @@ export function marketplacePlan(
             skuId: sku.id,
             m: {
               ...m,
+              transit: undefined,
               planningStock: (m.planningStock ?? [])
                 .filter((entry) => !entry.enabled)
                 .map((entry) => entry.skuId)

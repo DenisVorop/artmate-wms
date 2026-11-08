@@ -21,7 +21,6 @@ export const warehouseOperations = new Set([
   "syncMarketplace",
   "mapMarketplaceProduct",
   "updateMarketplaceSettings",
-  "setMarketplaceTransit",
   "createMarketplaceTask",
   "createPalletLabelBatch",
   "getPalletLabelBatches",

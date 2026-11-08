@@ -31,11 +31,3 @@ export const planningDefaults: PlanningValues = {
   safetyDays: 3,
   leadDays: 7,
 };
-export const transitSchema = z.object({
-  inTransitUnits: z
-    .number({ invalid_type_error: "Укажите количество товара" })
-    .int("Только целое количество")
-    .min(0, "Не меньше нуля")
-    .max(100000000, "Слишком большое количество"),
-});
-export type TransitValues = z.infer<typeof transitSchema>;

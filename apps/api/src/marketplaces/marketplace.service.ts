@@ -630,22 +630,6 @@ export class MarketplaceService {
       },
     );
   }
-  setMarketplaceTransit(b: D.SetMarketplaceTransitDto) {
-    return this._command(
-      "setMarketplaceTransit",
-      D.SetMarketplaceTransitDto,
-      b,
-      async (tx) => {
-        const w = await this.warehouse.stocktakeState(tx);
-        if (!w.skus.some((s) => s.id === b.skuId))
-          throw new BadRequestException("Тематика не найдена");
-        await put(tx, "marketplace_transit", b.skuId, {
-          skuId: b.skuId,
-          units: b.inTransitUnits,
-        });
-      },
-    );
-  }
   private _connection(m: MarketplaceState, provider: MarketplaceProvider) {
     const c = m.connections.find((c) => c.provider === provider);
     if (!c) throw new BadRequestException("Сначала подключите маркетплейс");

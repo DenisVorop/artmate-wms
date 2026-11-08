@@ -194,7 +194,7 @@ test("manual counts add no stock for either assembly or dispatch", () => {
   m.planningStock![0].accuracy = "approximate";
   assert.deepEqual(marketplacePlan(w, m, now, context).rows[0], row);
 });
-test("unknown quantities block full recommendations; aggregate positive manual transit cannot be allocated", () => {
+test("partial marketplace transit stays unknown despite legacy manual entries", () => {
   const { w, m, context } = fixture();
   m.snapshots[0].inbound![0].units = null;
   let row = marketplacePlan(w, m, now, context).rows[0];
@@ -202,13 +202,16 @@ test("unknown quantities block full recommendations; aggregate positive manual t
   assert.equal(row.canCreate, false);
   assert.equal(row.providers[0].dataComplete, false);
   assert.equal(row.providers[1].dataComplete, true);
-  m.transit["sku-cats"] = 25;
+  const incomplete = row;
+  for (const units of [0, 25]) {
+    m.transit["sku-cats"] = units;
+    assert.deepEqual(marketplacePlan(w, m, now, context).rows[0], incomplete);
+  }
+  m.snapshots[0].inbound![0].units = 0;
   row = marketplacePlan(w, m, now, context).rows[0];
-  assert.equal(row.dataComplete, false);
-  assert.equal(row.providers[0].inTransitUnits, null);
-  assert.match(row.advice.message, /отдельно/);
-  m.transit["sku-cats"] = 0;
-  assert.equal(marketplacePlan(w, m, now, context).rows[0].dataComplete, true);
+  assert.equal(row.dataComplete, true);
+  assert.equal(row.inTransitUnits, 0);
+  assert.equal(row.inboundSource, "api");
 });
 test("dispatch schedule uses Moscow calendar and target includes waiting plus arrival time", () => {
   assert.deepEqual(dispatchSchedule(new Date("2026-10-30T21:05:00Z"), 6), {

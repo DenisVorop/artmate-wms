@@ -39,7 +39,7 @@ const snapshot = (
       warehouseName: "x",
       availableUnits: 5,
       reservedUnits: 0,
-      inboundUnits: null,
+      inboundUnits: 0,
     },
   ],
   demand: [
@@ -60,7 +60,7 @@ const snapshot = (
       soldUnits: 0,
     },
   ],
-  coverage: { catalog: true, stocks: true, demand: true, inbound: false },
+  coverage: { catalog: true, stocks: true, demand: true, inbound: true },
   warnings: [],
 });
 function fixture() {
@@ -85,7 +85,7 @@ function fixture() {
         unitsPerItem: 2,
       },
     ],
-    transit: { "sku-cats": 0 },
+    transit: {},
     settings: { ...defaultSettings, dispatchWeekday: 0 },
   };
   return { w, m };
@@ -175,12 +175,12 @@ test("aggregate WB and Ozon multipacks in internal units, round boxes and count 
 });
 test("unknown/stale/incomplete/unmapped data blocks publication; unplaced raw is never capacity", () => {
   const { w, m } = fixture();
-  delete m.transit["sku-cats"];
+  m.snapshots[0].coverage.inbound = false;
   let row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.inTransitUnits, null);
   assert.equal(row.canCreate, false);
-  assert.match(row.blockers.join(" "), /Подтвердите/);
-  m.transit["sku-cats"] = 0;
+  assert.match(row.blockers.join(" "), /данных маркетплейсов о товаре в пути/);
+  m.snapshots[0].coverage.inbound = true;
   m.snapshots[0].asOf = "2026-10-23T10:00:00Z";
   assert.match(
     marketplacePlan(w, m, now).rows[0].blockers.join(" "),
@@ -206,7 +206,7 @@ test("unknown/stale/incomplete/unmapped data blocks publication; unplaced raw is
   assert.equal(marketplacePlan(w, m, now).rows[0].rawAvailableUnits, 0);
 });
 
-test("forecast uses completed Moscow days across UTC midnight and known API transit before a manual override", () => {
+test("forecast uses completed Moscow days across UTC midnight and API transit even with a legacy manual override", () => {
   const { w, m } = fixture();
   m.connections = [connection("ozon")];
   m.snapshots = [snapshot("ozon")];
@@ -217,11 +217,7 @@ test("forecast uses completed Moscow days across UTC midnight and known API tran
   let row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.inTransitUnits, 14, "API inbound respects unitsPerItem");
   m.transit["sku-cats"] = 0;
-  assert.equal(
-    marketplacePlan(w, m, now).rows[0].inTransitUnits,
-    0,
-    "explicit manual zero overrides API",
-  );
+  assert.deepEqual(marketplacePlan(w, m, now).rows[0], row);
   const afterMoscowMidnight = new Date("2026-10-25T21:30:00Z");
   m.snapshots[0].asOf = afterMoscowMidnight.toISOString();
   row = marketplacePlan(w, m, afterMoscowMidnight).rows[0];
@@ -269,11 +265,11 @@ test("missing data never claims no demand; confirmed zero demand remains a valid
     ];
     s.stocks[0].availableUnits = 0;
   });
-  delete m.transit["sku-cats"];
+  m.snapshots[0].coverage.inbound = false;
   let row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.dataComplete, false);
   assert.ok(!row.blockers.some((reason) => reason.includes("не требуется")));
-  m.transit["sku-cats"] = 0;
+  m.snapshots[0].coverage.inbound = true;
   row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.dataComplete, true);
   assert.equal(row.recommendedBoxes, 0);
@@ -320,10 +316,7 @@ test("persistent per-product supplies override legacy counters without double co
     ),
   );
   m.transit["sku-cats"] = 0;
-  row = marketplacePlan(w, m, now).rows[0];
-  assert.equal(row.inTransitUnits, 0);
-  assert.equal(row.inboundSource, "manual");
-  assert.equal(row.dataComplete, true);
+  assert.deepEqual(marketplacePlan(w, m, now).rows[0], row);
 });
 
 test("known API zero supplies need no manual confirmation", () => {
@@ -346,27 +339,27 @@ test("known API zero supplies need no manual confirmation", () => {
   assert.equal(row.dataComplete, true);
 });
 
-test("business advice keeps unknown transit unknown and manual confirmation actionable", () => {
+test("missing data sends the manager to integrations and only the marketplace can supply zero", () => {
   const { w, m } = fixture();
   w.sections = [];
   w.movements = [];
   w.pallets.forEach((p) => {
     p.status = "stored";
   });
-  delete m.transit["sku-cats"];
+  m.snapshots[0].coverage.inbound = false;
   let row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.inTransitUnits, null);
   assert.equal(row.dataComplete, false);
   assert.equal(row.canCreate, false);
   assert.deepEqual(row.advice, {
     state: "review",
-    message: "Проверьте количество товара в пути.",
-    action: "transit",
+    message: "Маркетплейсы ещё не передали полные данные о товаре в пути.",
+    action: "integrations",
   });
-  m.transit["sku-cats"] = 0;
+  m.snapshots[0].coverage.inbound = true;
   row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.inTransitUnits, 0);
-  assert.equal(row.inboundSource, "manual");
+  assert.equal(row.inboundSource, "api");
   assert.equal(row.canCreate, true);
   assert.equal(row.advice.state, "ready");
   assert.equal(row.advice.action, "create");
@@ -428,7 +421,6 @@ test("business advice prioritizes incomplete marketplace data over transit and r
   ];
   for (const entry of cases) {
     const { w, m } = fixture();
-    delete m.transit["sku-cats"];
     w.pallets = [];
     entry.setup(m);
     const row = marketplacePlan(w, m, now).rows[0];
@@ -490,12 +482,12 @@ test("business advice distinguishes covered demand from unknown quantities witho
     message: "Запаса и текущей сборки достаточно.",
     action: "none",
   });
-  delete m.transit["sku-cats"];
+  m.snapshots[0].coverage.inbound = false;
   row = marketplacePlan(w, m, now).rows[0];
   assert.equal(row.inTransitUnits, null);
   assert.equal(row.dataComplete, false);
   assert.equal(row.advice.state, "review");
-  assert.equal(row.advice.action, "transit");
+  assert.equal(row.advice.action, "integrations");
 });
 
 test("large recommendations still allow an individual box task", () => {
@@ -579,7 +571,7 @@ test("seasonal goals preserve stock deductions, unknown blockers and invalidate 
     marketplacePlan(w, m, now, fallback).rows[0].proposalHash,
     "publishing cached model invalidates fallback proposal even under same input key",
   );
-  delete m.transit["sku-cats"];
+  m.snapshots[0].coverage.inbound = false;
   const incomplete = marketplacePlan(w, m, now, context).rows[0];
   assert.equal(incomplete.dataComplete, false);
   assert.equal(incomplete.canCreate, false);

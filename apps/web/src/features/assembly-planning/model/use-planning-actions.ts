@@ -63,16 +63,6 @@ export function usePlanningActions() {
           }),
         "Не удалось сохранить настройки плана.",
       ),
-    transit: (skuId: string, inTransitUnits: number) =>
-      run(
-        () =>
-          api.setMarketplaceTransit({
-            requestId: crypto.randomUUID(),
-            skuId,
-            inTransitUnits,
-          }),
-        "Не удалось подтвердить товар в пути.",
-      ),
     resolution: (values: Omit<SetMarketplaceResolutionDto, "requestId">) =>
       run(
         () =>
