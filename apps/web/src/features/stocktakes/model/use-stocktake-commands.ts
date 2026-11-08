@@ -109,18 +109,11 @@ export function useStocktakeCommands() {
       ),
     submit: (doc: StocktakeDto) =>
       run("submit", () => api.submitStocktake(doc.id, command(doc))),
-    approve: (
-      doc: StocktakeDto,
-      reason: string,
-      openingCompleteSkuIds?: string[],
-    ) =>
+    approve: (doc: StocktakeDto, reason: string) =>
       run("approve", () =>
         api.approveStocktake(doc.id, {
           ...command(doc),
           reason,
-          ...(doc.mode === "opening" && openingCompleteSkuIds !== undefined
-            ? { openingCompleteSkuIds }
-            : {}),
         }),
       ),
     cancel: (doc: StocktakeDto, reason: string) =>

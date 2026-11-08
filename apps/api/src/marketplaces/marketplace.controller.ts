@@ -47,16 +47,6 @@ export class MarketplaceController {
   ) {
     return this.service.setMarketplaceResolution(body);
   }
-  @Post("planning-stock")
-  @HttpCode(200)
-  @ApiOperation({ operationId: "confirmPlanningStock" })
-  @ApiBody({ type: D.ConfirmPlanningStockDto })
-  @ApiOkResponse({ type: D.MarketplaceOverviewDto })
-  confirmPlanningStock(
-    @Body(pipe(D.ConfirmPlanningStockDto)) b: D.ConfirmPlanningStockDto,
-  ) {
-    return this.service.confirmPlanningStock(b);
-  }
   @Post("connections")
   @HttpCode(200)
   @ApiOperation({ operationId: "connectMarketplace" })

@@ -1,10 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
 import {
-  IsArray,
-  ArrayMinSize,
-  ArrayMaxSize,
-  ValidateNested,
   ValidateIf,
   IsBoolean,
   IsIn,
@@ -100,15 +95,6 @@ export class MarketplaceResolutionDto {
   @ApiProperty({ type: String }) confirmedAt!: string;
   @ApiProperty({ type: String, nullable: true }) expiresAt!: string | null;
   @ApiProperty({ type: Number }) revision!: number;
-}
-export class ConfirmPlanningStockDto extends MarketplaceCommandDto {
-  @ApiProperty({ type: [PlanningStockEntryDto] })
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(100)
-  @ValidateNested({ each: true })
-  @Type(() => PlanningStockEntryDto)
-  entries!: PlanningStockEntryDto[];
 }
 export class PlanningStockConfirmationDto extends PlanningStockEntryDto {
   @ApiProperty({ type: Number }) unitsPerBoxAtCount!: number;

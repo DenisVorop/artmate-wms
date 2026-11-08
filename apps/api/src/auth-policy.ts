@@ -15,7 +15,6 @@ export const warehouseOperations = new Set([
   "getForecastJournalRun",
   "updateForecastPolicy",
   "getMarketplaces",
-  "confirmPlanningStock",
   "setMarketplaceResolution",
   "connectMarketplace",
   "toggleMarketplace",

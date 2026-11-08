@@ -1,3 +1,4 @@
+import { automaticTaskIntents } from "../src/work-automation/planning";
 import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -171,7 +172,7 @@ test("already sent inbound reduces only its own provider demand and never wareho
   assert.equal(row.localAfterDispatchUnits, 120);
   assert.equal(row.recommendedBoxes, 21);
 });
-test("unregistered confirmed stock contributes to assembly arithmetic but grants no physical dispatch", () => {
+test("manual counts add no stock for either assembly or dispatch", () => {
   const { w, m, context } = fixture();
   m.planningStock = [
     {
@@ -186,12 +187,12 @@ test("unregistered confirmed stock contributes to assembly arithmetic but grants
     } as never,
   ];
   const row = marketplacePlan(w, m, now, context).rows[0];
-  assert.equal(row.readyUnits, 200);
-  assert.equal(row.localAfterDispatchUnits, 40);
+  assert.equal(row.readyUnits, 0);
+  assert.equal(row.localAfterDispatchUnits, 0);
   assert.equal(row.shippingReadyUnits, 0);
-  assert.equal(row.recommendedBoxes, 26);
+  assert.equal(row.recommendedBoxes, 36);
   m.planningStock![0].accuracy = "approximate";
-  assert.equal(marketplacePlan(w, m, now, context).rows[0].dataComplete, false);
+  assert.deepEqual(marketplacePlan(w, m, now, context).rows[0], row);
 });
 test("unknown quantities block full recommendations; aggregate positive manual transit cannot be allocated", () => {
   const { w, m, context } = fixture();
@@ -264,28 +265,7 @@ test("optional queue offers one physical box, stops for full capacity and accoun
   assert.match(row.backlogReason, /Свободных мест/);
   assert.notEqual(row.proposalHash, readyHash);
 });
-test("unregistered stock leaves optional priority visible without pretending to know free capacity", () => {
-  const { w, m, context } = fixture();
-  m.planningStock = [
-    {
-      skuId: "sku-cats",
-      units: 200,
-      accuracy: "exact",
-      countedAt: now.toISOString(),
-      trackedUnitsAtCount: 0,
-      unitsPerBoxAtCount: 20,
-      outboundSupplyKeys: [],
-      enabled: true,
-    } as never,
-  ];
-  const row = marketplacePlan(w, m, now, context).rows[0];
-  assert.equal(row.backlogRank, 1);
-  assert.equal(row.backlogCapacityKnown, false);
-  assert.equal(row.backlogBoxes, 0);
-  assert.equal(row.backlogCanCreate, false);
-});
-
-test("disabled planning SKU still consumes physical capacity and unregistered occupancy", () => {
+test("disabled planning SKU consumes capacity only for actual warehouse work", () => {
   const { w, m, context } = fixture();
   m.snapshots.forEach((snapshot) => {
     snapshot.stocks[0].availableUnits = 1000;
@@ -309,9 +289,20 @@ test("disabled planning SKU still consumes physical capacity and unregistered oc
     } as never,
   ];
   let row = marketplacePlan(w, m, now, context).rows[0];
-  assert.equal(row.backlogCapacityKnown, false);
-  assert.equal(row.backlogCanCreate, false);
-  m.planningStock![0].units = 0;
+  assert.equal(row.backlogCapacityKnown, true);
+  assert.equal(row.backlogCanCreate, true);
+  const jobs = automaticTaskIntents(
+    w,
+    marketplacePlan(w, m, now, context),
+    [],
+    false,
+  );
+  assert.deepEqual(
+    jobs.map((job) =>
+      job.kind === "create" ? [job.skuId, job.boxesTarget] : job.kind,
+    ),
+    [["sku-cats", 1]],
+  );
   const free = w.locations.find(
     (l) => l.kind === "rack" && l.id !== raw.locationId,
   )!;

@@ -4,7 +4,6 @@ import type {
   MarketplacePlanRowDto,
 } from "../marketplaces/dto";
 import { planningBacklog } from "../marketplaces/planning-backlog";
-import type { PlanningStockConfirmation } from "../marketplaces/planning-stock";
 import type {
   AutomaticTaskIntent,
   AutomaticTaskOrigin,
@@ -59,11 +58,7 @@ function placeholderTask(skuId: string, boxesTarget: number): TaskDto {
   };
 }
 /** Reuse the same physical reservation guards as one-box backlog planning. */
-function storageFits(
-  w: WorkspaceDto,
-  row: MarketplacePlanRowDto,
-  confirmations: PlanningStockConfirmation[],
-) {
+function storageFits(w: WorkspaceDto, row: MarketplacePlanRowDto) {
   const probe = {
     ...row,
     recommendedBoxes: 0,
@@ -71,7 +66,7 @@ function storageFits(
     backlogCanCreate: false,
     backlogBoxes: 0,
   };
-  planningBacklog(w, [probe], { [row.skuId]: 1 }, confirmations);
+  planningBacklog(w, [probe], { [row.skuId]: 1 });
   return probe.backlogCapacityKnown && probe.backlogCanCreate;
 }
 function urgentBoxAllowed(row: MarketplacePlanRowDto) {
@@ -97,7 +92,6 @@ export function automaticTaskIntents(
   plan: MarketplacePlanDto,
   origins: AutomaticTaskOrigin[],
   assemblyBlocked: boolean,
-  confirmations: PlanningStockConfirmation[] = [],
 ): AutomaticTaskIntent[] {
   const untouched = w.tasks.filter((task) =>
     untouchedAutomaticTask(task, origins),
@@ -137,10 +131,7 @@ export function automaticTaskIntents(
     string,
     { count: number; purpose: AutomaticTaskPurpose; hash: string }
   >();
-  const unlocated = plan.rows.some(
-    (row) => row.unregisteredUnits > 0 || row.stockEstimated,
-  );
-  if (!assemblyBlocked && !unlocated) {
+  if (!assemblyBlocked) {
     const ranked = [...plan.rows].sort(
       (a, b) =>
         Number(lastServedAt.has(a.skuId)) - Number(lastServedAt.has(b.skuId)) ||
@@ -184,10 +175,7 @@ export function automaticTaskIntents(
             Math.floor(row.rawAvailableUnits / sku.unitsPerBox),
             urgent ? row.recommendedBoxes : Math.max(0, 1 - existing),
           );
-          if (
-            alreadyPlanned >= limit ||
-            !storageFits(simulation, row, confirmations)
-          )
+          if (alreadyPlanned >= limit || !storageFits(simulation, row))
             continue;
           desired.set(sku.id, {
             count: alreadyPlanned + 1,

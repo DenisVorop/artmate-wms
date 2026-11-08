@@ -3,14 +3,12 @@ import { finishedMetrics, putawayPlacementError } from "../physical";
 import type { MarketplacePlanRowDto } from "./dto";
 import { canonicalAssemblyLocation } from "../work-zones";
 import { placementRoutes } from "../placement-routing";
-import type { PlanningStockConfirmation } from "./planning-stock";
 
 /** Read-only reservation of future physical volume; never creates warehouse facts. */
 export function planningBacklog(
   w: W.WorkspaceDto,
   rows: MarketplacePlanRowDto[],
   minimumBoxes: Record<string, number> = {},
-  confirmations: PlanningStockConfirmation[] = [],
 ) {
   const order = rows
     .filter(
@@ -35,24 +33,13 @@ export function planningBacklog(
   order.forEach((row, index) => {
     row.backlogRank = index + 1;
   });
-  // Unknown addresses are occupied in reality. A visually empty map is not proof
-  // of free capacity while unregistered or approximate stock is present.
-  const unlocated =
-    rows.some((row) => row.unregisteredUnits > 0 || row.stockEstimated) ||
-    confirmations.some(
-      (stock) =>
-        stock.units === null ||
-        stock.accuracy === "approximate" ||
-        stock.units > stock.trackedUnitsAtCount,
-    );
   const missingPackaging = w.skus.some((sku) => !sku.packaging);
-  if (unlocated || missingPackaging) {
+  if (missingPackaging) {
     rows.forEach((row) => {
       row.backlogCapacityKnown = false;
-      row.backlogReason =
-        "Сначала подтвердите свободные места: часть готового товара ещё не размечена по адресам.";
+      row.backlogReason = "Для расчёта мест укажите размеры упаковки.";
     });
-    return "Очередь выбрана по спросу. Чтобы разрешить сборку впрок, разметьте готовый товар и подтвердите свободные места.";
+    return "Чтобы рассчитать свободные места, укажите размеры упаковки.";
   }
   const simulation: W.WorkspaceDto = {
     ...w,

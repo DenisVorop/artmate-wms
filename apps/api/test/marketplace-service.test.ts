@@ -392,49 +392,6 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
       ),
       /устарел/,
     );
-    const fresh = optionalResult.overview.plan.rows.find(
-      (row) => row.skuId === "sku-cats",
-    )!;
-    await as("manager", () =>
-      service.confirmPlanningStock({
-        ...req(),
-        entries: [
-          {
-            skuId: "sku-cats",
-            enabled: true,
-            units: 1000,
-            accuracy: "approximate",
-            note: "Test count",
-          },
-        ],
-      }),
-    );
-    await assert.rejects(
-      as("manager", () =>
-        service.createMarketplaceTask({
-          ...req(),
-          skuId: "sku-cats",
-          proposalHash: fresh.proposalHash,
-          purpose: "backlog",
-        }),
-      ),
-      /устарел/,
-    );
-    const blocked = (
-      await as("manager", () => service.getMarketplaces())
-    ).plan.rows.find((row) => row.skuId === "sku-cats")!;
-    assert.equal(blocked.backlogCanCreate, false);
-    await assert.rejects(
-      as("manager", () =>
-        service.createMarketplaceTask({
-          ...req(),
-          skuId: "sku-cats",
-          proposalHash: blocked.proposalHash,
-          purpose: "backlog",
-        }),
-      ),
-      /свободные места|размечен/i,
-    );
     created = await w.snapshot();
     // An unrelated warehouse read completes while the provider request is awaiting its response.
     let started!: () => void, release!: () => void;

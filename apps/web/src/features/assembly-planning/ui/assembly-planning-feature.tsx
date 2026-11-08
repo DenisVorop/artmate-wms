@@ -325,9 +325,6 @@ export function AssemblyPlanningFeature() {
                 onTransit={async (units) =>
                   !!(await actions.transit(row.skuId, units))
                 }
-                onStock={async (values) =>
-                  !!(await actions.confirmStock(row.skuId, values))
-                }
                 onCreate={async () => {
                   const result = await actions.create(
                     row.skuId,

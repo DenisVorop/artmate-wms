@@ -314,7 +314,6 @@ export class WorkAutomationService {
         assemblyPlan,
         currentOrigins,
         blocked,
-        marketplace.planningStock ?? [],
       );
       const previous = new Map(
         state.tasks.map((task) => [task.id, structuredClone(task)]),
@@ -339,14 +338,6 @@ export class WorkAutomationService {
       if (!blocked && !waiting) {
         if (!plan.rows.length)
           blockers.push("Нет тематик с включённым планированием.");
-        if (
-          plan.rows.some(
-            (row) => row.unregisteredUnits > 0 || row.stockEstimated,
-          )
-        )
-          blockers.push(
-            "Уточните готовые остатки и разметьте короба по местам хранения.",
-          );
         if (
           plan.rows.length &&
           plan.rows.every((row) => row.rawAvailableUnits < row.unitsPerBox)

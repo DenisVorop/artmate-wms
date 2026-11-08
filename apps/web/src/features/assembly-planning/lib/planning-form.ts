@@ -39,22 +39,3 @@ export const transitSchema = z.object({
     .max(100000000, "Слишком большое количество"),
 });
 export type TransitValues = z.infer<typeof transitSchema>;
-
-export const stockConfirmationSchema = z.object({
-  units: z
-    .number({ invalid_type_error: "Укажите количество готового товара" })
-    .int("Только целое количество")
-    .min(0, "Не меньше нуля")
-    .max(100000000, "Слишком большое количество"),
-});
-export type StockConfirmationValues = z.infer<typeof stockConfirmationSchema>;
-export const stockConfirmationEntry = (
-  skuId: string,
-  values: StockConfirmationValues,
-) => ({
-  skuId,
-  enabled: true,
-  units: values.units,
-  accuracy: "exact" as const,
-  note: "Пересчёт готового товара руководителем",
-});

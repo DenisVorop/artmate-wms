@@ -41,7 +41,7 @@ export function planningPresentationKey(
   clock = new Date(),
 ) {
   return hash({
-    version: 3,
+    version: 4,
     resolutions: activeMarketplaceResolutions(m, clock)
       .map(({ id, revision }) => ({ id, revision }))
       .sort((a, b) => a.id.localeCompare(b.id)),

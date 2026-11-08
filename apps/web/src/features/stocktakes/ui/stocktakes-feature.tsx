@@ -267,11 +267,10 @@ export function StocktakesFeature({
                   );
                   return true;
                 }}
-                onApprove={async (reason, revision, openingCompleteSkuIds) => {
+                onApprove={async (reason, revision) => {
                   const result = await commands.approve(
                     { ...doc, revision },
                     reason,
-                    openingCompleteSkuIds,
                   );
                   if (!result) return false;
                   ui.showArchive(true);

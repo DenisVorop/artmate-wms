@@ -151,106 +151,47 @@ const supply = (
   ],
   warnings: [],
 });
-test("confirmed totals offset tracked units once; new assembly, shipment and draft reservation do not double count", () => {
-  const f = fixture();
-  let row = f.row();
-  assert.equal(row.readyUnits, 100);
-  assert.equal(row.unregisteredUnits, 80);
-  assert.equal(row.shippingReadyUnits, 0);
-  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 100);
-  f.w.boxes.push({
-    ...structuredClone(f.template),
-    id: "new-box",
-    code: "NEW",
-  });
-  row = f.row();
-  assert.equal(row.readyUnits, 120);
-  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 120);
-  f.w.shipments.push({
+test("registered ready boxes follow assembly, reservations and shipments without using manual balances", () => {
+  const { w, template, row } = fixture();
+  assert.equal(row().readyUnits, 20);
+  assert.equal(row().shippingReadyUnits, 0);
+  assert.equal(row().recommendedUnits, row().monthlyOutboundUnits - 20);
+  w.boxes.push({ ...structuredClone(template), id: "new-box", code: "NEW" });
+  assert.equal(row().readyUnits, 40);
+  w.shipments.push({
     id: "draft",
     code: "DRAFT",
     boxesRequested: 1,
-    boxIds: [f.template.id],
+    boxIds: [template.id],
     status: "draft",
   } as any);
-  row = f.row();
-  assert.equal(row.readyUnits, 100);
-  assert.equal(row.shipmentReservedUnits, 20);
-  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 120);
-  f.w.shipments[0].status = "shipped";
-  f.w.boxes[0].status = "shipped";
-  row = f.row();
-  assert.equal(row.readyUnits, 100);
-  assert.equal(row.shipmentReservedUnits, 0);
-  assert.equal(row.recommendedUnits, row.monthlyOutboundUnits - 100);
-  assert.equal(row.shippingReadyUnits, 0);
+  assert.equal(row().readyUnits, 20);
+  assert.equal(row().shipmentReservedUnits, 20);
+  assert.equal(row().recommendedUnits, row().monthlyOutboundUnits - 40);
+  w.shipments[0].status = "shipped";
+  w.boxes[0].status = "shipped";
+  assert.equal(row().readyUnits, 20);
+  assert.equal(row().shipmentReservedUnits, 0);
+  assert.equal(row().recommendedUnits, row().monthlyOutboundUnits - 20);
 });
-test("excluded products disappear; unknown or approximate counts stay explicit review and cannot create tasks", () => {
-  const f = fixture();
-  f.confirmation.enabled = false;
-  assert.equal(f.row(), undefined);
-  f.confirmation.enabled = true;
+
+test("historical exact, approximate and missing counts cannot change quantities, review or task identity", () => {
+  const { m, confirmation, row } = fixture();
+  m.planningStock = [];
+  const baseline = row();
+  assert.equal(baseline.dataComplete, true);
+  assert.equal(baseline.unregisteredUnits, 0);
   for (const patch of [
-    { accuracy: "approximate" as const, units: 300 },
-    { accuracy: "exact" as const, units: null },
+    { units: 100, countedAt: "2026-10-19T12:00:00Z" },
+    { units: 300, accuracy: "approximate" as const },
+    { units: null, accuracy: "exact" as const },
+    { units: 0, unitsPerBoxAtCount: 4 },
   ]) {
-    Object.assign(f.confirmation, patch);
-    const row = f.row();
-    assert.equal(row.dataComplete, false);
-    assert.equal(row.canCreate, false);
-    assert.equal(row.stockEstimated, true);
-    assert.equal(row.advice.state, "review");
-    assert.equal(row.advice.action, "none");
+    m.planningStock = [{ ...confirmation, ...patch }];
+    assert.deepEqual(row(), baseline);
   }
-});
-test("negative opening offset, changed box size and an expired unregistered count block the recommendation", () => {
-  for (const patch of [
-    { units: 0 },
-    { unitsPerBoxAtCount: 4 },
-    { countedAt: "2026-10-19T12:00:00Z" },
-  ]) {
-    const f = fixture();
-    Object.assign(f.confirmation, patch);
-    const row = f.row();
-    assert.equal(row.dataComplete, false);
-    assert.equal(row.canCreate, false);
-    assert.equal(row.advice.action, "none");
-    assert.ok(row.unregisteredUnits >= 0);
-  }
-  const f = fixture();
-  f.confirmation.units = 20;
-  f.confirmation.countedAt = "2026-09-01T12:00:00Z";
-  assert.equal(f.row().dataComplete, true);
-});
-test("a new dispatched supply requests recount, while known documents updating quantities/timestamps do not", () => {
-  const f = fixture();
-  f.m.snapshots[0].supplies = [supply("old")];
-  f.confirmation.outboundSupplyKeys = outgoingSupplyKeys(f.m, "sku-cats");
-  assert.equal(f.row().dataComplete, true);
-  f.m.snapshots[0].supplies![0].updatedAt = "2026-10-26T12:30:00Z";
-  f.m.snapshots[0].supplies![0].items[0].pendingUnits = 10;
-  assert.equal(f.row().dataComplete, true);
-  f.m.snapshots[0].supplies![0].items[0].acceptedUnits = 10;
-  f.m.snapshots[0].supplies![0].items[0].readyUnits = 5;
-  assert.equal(f.row().dataComplete, true);
-  f.m.snapshots[0].supplies![0].items[0].plannedUnits = 40;
-  assert.equal(f.row().dataComplete, false);
-  f.m.snapshots[0].supplies![0].items[0].plannedUnits = 20;
-  assert.equal(f.row().dataComplete, true);
-  f.m.snapshots[0].supplies!.push(supply("draft", "excluded"));
-  assert.equal(f.row().dataComplete, true);
-  f.m.snapshots[0].supplies!.at(-1)!.calculation = "analytics";
-  assert.equal(f.row().dataComplete, false);
-  assert.match(f.row().advice.message, /поставка/);
-});
-test("confirmation revisions and source counts participate in task proposal identity", () => {
-  const f = fixture(),
-    before = f.row().proposalHash;
-  f.confirmation.revision++;
-  assert.notEqual(f.row().proposalHash, before);
-  const next = f.row().proposalHash;
-  f.confirmation.units = 120;
-  assert.notEqual(f.row().proposalHash, next);
+  m.planningStock = [{ ...confirmation, enabled: false }];
+  assert.equal(row(), undefined);
 });
 
 test("outgoing evidence canonicalizes duplicate SKU rows and ignores item ordering", () => {

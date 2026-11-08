@@ -10,7 +10,6 @@ import {
   forecastQuantity,
   unifiedStockPlan,
 } from "./unified-plan";
-import { outgoingSupplyKeys } from "./planning-stock";
 import { createHash } from "node:crypto";
 import * as W from "../dto";
 import { MarketplaceState } from "./storage";
@@ -559,7 +558,6 @@ export function marketplacePlan(
         minimumUnits,
         providers.reduce((sum, provider) => sum + provider.targetUnits, 0),
       );
-      let dataComplete = blockers.length === 0;
 
       const boxes = w.boxes.filter(
         (b) =>
@@ -575,56 +573,10 @@ export function marketplacePlan(
         reviewMessage ??=
           "Уточните, к какой отправке относятся зарезервированные короба.";
       }
-      const trackedReadyUnits = boxes
+      const readyUnits = boxes
         .filter((b) => !assigned.has(b.id))
         .reduce((s, b) => s + b.units, 0);
-      const stock = (m.planningStock ?? []).find((s) => s.skuId === sku.id),
-        stockConfirmedAt = stock?.countedAt ?? null,
-        stockEstimated =
-          !!stock && (stock.accuracy === "approximate" || stock.units === null);
-      const opening =
-        stock?.units !== null && stock?.units !== undefined
-          ? stock.units - stock.trackedUnitsAtCount
-          : 0;
-      const unregisteredUnits = Math.max(0, opening);
-      let stockReviewMessage: string | null = null;
-      if (stock) {
-        if (stock.units === null)
-          stockReviewMessage =
-            "Подтвердите точное количество готового товара у нас.";
-        else if (stock.accuracy === "approximate")
-          stockReviewMessage =
-            "Остаток указан примерно. Подтвердите точное количество перед сборкой.";
-        else if (opening < 0)
-          stockReviewMessage =
-            "Подтверждённый остаток меньше уже учтённых коробов. Нужен пересчёт.";
-        else if (stock.unitsPerBoxAtCount !== sku.unitsPerBox)
-          stockReviewMessage =
-            "Изменилось количество в коробе. Подтвердите готовый остаток заново.";
-        else if (
-          unregisteredUnits > 0 &&
-          (!Number.isFinite(Date.parse(stock.countedAt)) ||
-            clock.getTime() - Date.parse(stock.countedAt) >= 7 * day ||
-            Date.parse(stock.countedAt) > clock.getTime() + 60000)
-        )
-          stockReviewMessage =
-            "Готовый остаток подтверждён более недели назад. Пересчитайте его перед сборкой.";
-        else if (
-          unregisteredUnits > 0 &&
-          outgoingSupplyKeys(m, sku.id).some(
-            (key) => !stock.outboundSupplyKeys.includes(key),
-          )
-        )
-          stockReviewMessage =
-            "После пересчёта появилась новая поставка. Уточните, сколько готового товара осталось у нас.";
-        if (stockReviewMessage) blockers.push(stockReviewMessage);
-        if (unregisteredUnits > 0)
-          warnings.push(
-            "В расчёте есть готовый товар без адресов и QR. После внешней отправки или списания подтвердите остаток заново.",
-          );
-      }
-      dataComplete = blockers.length === 0;
-      const readyUnits = trackedReadyUnits + unregisteredUnits;
+      const dataComplete = blockers.length === 0;
       const shippingReadyUnits = boxes
         .filter(
           (b) =>
@@ -713,41 +665,39 @@ export function marketplacePlan(
       const canCreate = !blockers.length;
       // Presentation follows the same blockers; it never replaces missing quantities
       // or grants permission to create a task.
-      const advice: MarketplacePlanAdviceDto = stockReviewMessage
-        ? { state: "review", message: stockReviewMessage, action: "none" }
-        : reviewMessage
-          ? { state: "review", message: reviewMessage, action: "integrations" }
-          : inTransitUnits === null
+      const advice: MarketplacePlanAdviceDto = reviewMessage
+        ? { state: "review", message: reviewMessage, action: "integrations" }
+        : inTransitUnits === null
+          ? {
+              state: "review",
+              message: "Проверьте количество товара в пути.",
+              action: "transit",
+            }
+          : dataComplete &&
+              recommendedBoxes > 0 &&
+              rawAvailableUnits < sku.unitsPerBox
             ? {
-                state: "review",
-                message: "Проверьте количество товара в пути.",
-                action: "transit",
+                state: "raw_shortage",
+                message: `Примите и разместите товар: не хватает ${sku.unitsPerBox - rawAvailableUnits} шт.`,
+                action: "receiving",
               }
-            : dataComplete &&
-                recommendedBoxes > 0 &&
-                rawAvailableUnits < sku.unitsPerBox
+            : canCreate
               ? {
-                  state: "raw_shortage",
-                  message: `Примите и разместите товар: не хватает ${sku.unitsPerBox - rawAvailableUnits} шт.`,
-                  action: "receiving",
+                  state: "ready",
+                  message: "Можно передать в сборку.",
+                  action: "create",
                 }
-              : canCreate
+              : dataComplete && recommendedBoxes === 0
                 ? {
-                    state: "ready",
-                    message: "Можно передать в сборку.",
-                    action: "create",
+                    state: "covered",
+                    message: "Запаса и текущей сборки достаточно.",
+                    action: "none",
                   }
-                : dataComplete && recommendedBoxes === 0
-                  ? {
-                      state: "covered",
-                      message: "Запаса и текущей сборки достаточно.",
-                      action: "none",
-                    }
-                  : {
-                      state: "review",
-                      message: "Рекомендация требует проверки руководителем.",
-                      action: "none",
-                    };
+                : {
+                    state: "review",
+                    message: "Рекомендация требует проверки руководителем.",
+                    action: "none",
+                  };
       const proposalHash = createHash("sha256")
         .update(
           JSON.stringify({
@@ -755,6 +705,10 @@ export function marketplacePlan(
             skuId: sku.id,
             m: {
               ...m,
+              planningStock: (m.planningStock ?? [])
+                .filter((entry) => !entry.enabled)
+                .map((entry) => entry.skuId)
+                .sort(),
               connections: m.connections.map(
                 ({ historyLease: _historyLease, ...connection }) => connection,
               ),
@@ -803,9 +757,10 @@ export function marketplacePlan(
         inboundSource,
         inboundSources,
         readyUnits,
-        unregisteredUnits,
-        stockConfirmedAt,
-        stockEstimated,
+        // Legacy response fields for clients loaded before the upgrade.
+        unregisteredUnits: 0,
+        stockConfirmedAt: null,
+        stockEstimated: false,
         shippingReadyUnits,
         shipmentReservedUnits,
         openTaskUnits,
@@ -818,12 +773,7 @@ export function marketplacePlan(
         proposalHash,
       };
     });
-  const backlogMessage = planningBacklog(
-    w,
-    rows,
-    forecast?.minimumBoxes ?? {},
-    m.planningStock ?? [],
-  );
+  const backlogMessage = planningBacklog(w, rows, forecast?.minimumBoxes ?? {});
   for (const row of rows)
     row.proposalHash = createHash("sha256")
       .update(

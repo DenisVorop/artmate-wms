@@ -102,9 +102,6 @@ export function openingCountSchema(today = openingToday()) {
     });
 }
 export type OpeningCountValues = z.infer<ReturnType<typeof openingCountSchema>>;
-export const openingCompletionSchema = z.object({
-  completeSkuIds: z.array(z.string()).max(200),
-});
 export function openingCountDefaults(
   row: Pick<StocktakeRowDto, "count">,
 ): OpeningCountValues {

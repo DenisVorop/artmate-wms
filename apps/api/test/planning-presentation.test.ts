@@ -417,70 +417,21 @@ test("first pending forecast cannot seed a zero plan; a completed zero demand de
   assert.equal(writes(), 1);
 });
 
-test("completed forecasts with only stale or approximate stock show review rows instead of indefinite computation", async () => {
-  for (const accuracy of ["exact", "approximate"] as const) {
-    const { w, m, forecast, data, read, writes } = fixture();
-    await read();
-    const saved = structuredClone(data.get("marketplace_plan_display"));
-    // Match the incident: settings changed since the last display, forecast is
-    // already published, and every stock confirmation needs a human review.
-    m.settings.horizonDays = 28;
-    m.settings.safetyDays = 0;
-    m.settings.leadDays = 5;
-    m.planningStock = [
-      {
-        skuId: "sku-cats",
-        enabled: true,
-        units: 300,
-        accuracy,
-        note: "Physical count",
-        unitsPerBoxAtCount: 20,
-        trackedUnitsAtCount: 0,
-        countedAt: "2026-10-15T12:00:00Z",
-        actorAccountId: "manager",
-        revision: 1,
-        outboundSupplyKeys: [],
-      },
-    ];
-    const stock = structuredClone(m.planningStock);
-    const strict = marketplacePlan(w, m, now, forecast);
-    assert.equal(strict.rows.length, 1);
-    const row = strict.rows[0];
-    assert.equal(row.dataComplete, false);
-    assert.equal(row.canCreate, false);
-    assert.equal(row.backlogCanCreate, false);
-    assert.equal(row.advice.state, "review");
-    assert.match(
-      row.blockers.join(" "),
-      accuracy === "exact" ? /недели/ : /примерно/,
-    );
-    const result = await read();
-    assert.equal(
-      result.planStatus.state,
-      "current",
-      "the browser must render the strict review list",
-    );
-    assert.equal(result.previousPlan, null);
-    assert.equal(result.planStatus.calculatedAt, strict.generatedAt);
-    assert.match(result.planStatus.message, /Расчёт готов.*проверьте данные/);
-    assert.equal(
-      writes(),
-      2,
-      "review is saved separately from the last complete quantities",
-    );
-    assert.deepEqual(data.get("marketplace_plan_display"), saved);
-    assert.deepEqual(
-      m.planningStock,
-      stock,
-      "rendering must never renew or confirm inventory",
-    );
-    const pending = await read(now, { ...forecast, cacheCurrent: false });
-    assert.equal(
-      pending.planStatus.state,
-      "refreshing",
-      "a real recalculation keeps the compatible dated review visible",
-    );
-  }
+test("a cached plan with the retired stock estimates is ignored during forecast refresh", async () => {
+  const { data, read, forecast } = fixture();
+  await read();
+  const key = "marketplace_plan_display";
+  const cached = data.get(key) as {
+    compatibilityKey: string;
+    plan: ReturnType<typeof marketplacePlan>;
+  };
+  cached.compatibilityKey = "old-stock-model-key";
+  cached.plan.rows[0].readyUnits = 300;
+  const result = await read(now, { ...forecast, cacheCurrent: false });
+  assert.equal(
+    result.previousPlan?.rows.some((row) => row.readyUnits === 300) ?? false,
+    false,
+  );
 });
 
 test("a completed forecast with no mapped planning rows exposes the empty state without saving a zero plan", async () => {
@@ -494,24 +445,18 @@ test("a completed forecast with no mapped planning rows exposes the empty state 
   assert.equal(writes(), 0);
 });
 
-test("saved review survives imports, worker replacement and restart without renewing inventory", async () => {
+test("saved review survives imports, worker replacement and restart while inbound remains unknown", async () => {
   const { w, m, forecast, tx, data, read, writes } = fixture();
-  m.planningStock = [
+  m.snapshots[0].inbound = [
     {
-      skuId: "sku-cats",
-      enabled: true,
-      units: 300,
-      accuracy: "exact",
-      note: "Physical count",
-      unitsPerBoxAtCount: 20,
-      trackedUnitsAtCount: 0,
-      countedAt: "2026-10-15T12:00:00Z",
-      actorAccountId: "manager",
-      revision: 1,
-      outboundSupplyKeys: [],
+      externalId: "one",
+      units: null,
+      source: "ozon_analytics",
+      supplyIds: [],
+      warnings: [],
     },
   ];
-  const stock = structuredClone(m.planningStock);
+  m.snapshots[0].stocks[0].inboundUnits = null;
   await read();
   const review = structuredClone(data.get("marketplace_plan_review_display"));
   assert.ok(review);
@@ -549,7 +494,6 @@ test("saved review survives imports, worker replacement and restart without rene
     assert.equal(result.previousPlan.rows[0].backlogCanCreate, false);
     assert.equal(result.previousPlan.rows[0].advice.state, "review");
   }
-  assert.deepEqual(m.planningStock, stock);
   assert.deepEqual(data.get("marketplace_plan_review_display"), review);
   assert.equal(writes(), 1);
   m.connections[0].version++;
@@ -565,21 +509,16 @@ test("saved review survives imports, worker replacement and restart without rene
 test("a published all-review plan remains visible after a failed or active import", async () => {
   for (const syncStatus of ["failed", "partial", "running"] as const) {
     const { w, m, forecast, read, data } = fixture();
-    m.planningStock = [
+    m.snapshots[0].inbound = [
       {
-        skuId: "sku-cats",
-        enabled: true,
-        units: 300,
-        accuracy: "exact",
-        note: "Physical count",
-        unitsPerBoxAtCount: 20,
-        trackedUnitsAtCount: 0,
-        countedAt: "2026-10-15T12:00:00Z",
-        actorAccountId: "manager",
-        revision: 1,
-        outboundSupplyKeys: [],
+        externalId: "one",
+        units: null,
+        source: "ozon_analytics",
+        supplyIds: [],
+        warnings: [],
       },
     ];
+    m.snapshots[0].stocks[0].inboundUnits = null;
     m.connections[0].syncStatus = syncStatus;
     m.connections[0].syncMode = "manual";
     const strict = marketplacePlan(w, m, now, forecast);

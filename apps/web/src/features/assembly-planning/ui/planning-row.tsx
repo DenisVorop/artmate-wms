@@ -8,8 +8,6 @@ import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
 import { Badge, Button, Input } from "@/shared/ui";
 import { transitSchema, type TransitValues } from "../lib/planning-form";
 import { boxesLabel, packagedLabel, dispatchLabel } from "../lib/planning-view";
-import type { StockConfirmationValues } from "../lib/planning-form";
-import { PlanningStock } from "./planning-stock";
 import styles from "./assembly-planning.module.css";
 const number = (value: number | null, digits = 0) =>
   value == null
@@ -30,7 +28,6 @@ export function PlanningRow({
   pending,
   onCreate,
   onTransit,
-  onStock,
 }: {
   row: MarketplacePlanRowDto;
   currentRow?: MarketplacePlanRowDto;
@@ -38,7 +35,6 @@ export function PlanningRow({
   pending: boolean;
   onCreate: () => Promise<void>;
   onTransit: (units: number) => Promise<boolean>;
-  onStock: (values: StockConfirmationValues) => Promise<boolean>;
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false),
@@ -314,10 +310,8 @@ export function PlanningRow({
           />
           <Metric label="В пути, шт." value={number(row.inTransitUnits)} />
           <Metric
-            label="Готовых у нас, шт."
-            value={
-              row.stockEstimated ? "Нужно уточнить" : number(row.readyUnits)
-            }
+            label="Учтено на складе, шт."
+            value={number(row.readyUnits)}
           />
           <Metric
             label="Размечено для отгрузки, шт."
@@ -334,7 +328,9 @@ export function PlanningRow({
           товар и текущие задания уже учтены. Неразмеченные короба нужно
           привязать к адресам перед отгрузкой через WMS.
         </p>
-        <PlanningStock row={currentRow} pending={pending} onSave={onStock} />
+        <Link className={styles.textLink} href="/stocktakes">
+          Перейти к инвентаризации →
+        </Link>
         <Link
           className={styles.textLink}
           href="/integrations#marketplace-supplies-title"

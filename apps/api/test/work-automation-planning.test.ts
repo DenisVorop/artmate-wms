@@ -117,10 +117,9 @@ test("a feasible small urgent batch may cover part of the recommendation, but ne
   r.blockers.push("Нужно подтвердить остатки");
   assert.deepEqual(automaticTaskIntents(w, plan(r), [], false), []);
 });
-test("unknown, unregistered, missing raw, full storage or assembly pressure never creates work", () => {
+test("unknown, missing raw, full storage or assembly pressure never creates work", () => {
   for (const mode of [
     "unknown",
-    "unregistered",
     "raw",
     "storage",
     "assembly",
@@ -129,7 +128,6 @@ test("unknown, unregistered, missing raw, full storage or assembly pressure neve
     const { w, row, plan } = fixture();
     const r = row();
     if (mode === "unknown") r.dataComplete = false;
-    if (mode === "unregistered") r.unregisteredUnits = 1;
     if (mode === "raw") r.rawAvailableUnits = 0;
     if (mode === "storage")
       w.locations.forEach((l) => {
