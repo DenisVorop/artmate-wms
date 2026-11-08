@@ -83,7 +83,7 @@ async function receive(
 }
 async function task(skuId: string, boxesTarget = 1) {
   const s = await w.createTask({ ...req(), skuId, boxesTarget, employeeId });
-  const t = s.tasks.find((x) => x.skuId === skuId)!;
+  const t = s.tasks.find((x) => x.skuId === skuId && x.status === "queued")!;
   await w.claimTask(t.id, { ...req(), employeeId });
   return t;
 }
@@ -243,11 +243,12 @@ test("depleting a lowered raw pallet releases its physical address and held retu
 test("failed last-unit packing rolls back raw retirement, both holds, ledger, versions and work; retry and replay count once", async () => {
   const stock = await receive(4, 2);
   const picking = await lower(stock.pallet, stock.address);
-  const t = await task(stock.sku.id, 2);
-  await open(t, stock.pallet);
-  await scan(t, "barcode", stock.sku.barcode);
-  let s = await scan(t, "barcode", stock.sku.barcode);
-  const first = s.boxes.find((b) => b.code === t.openBoxCode)!;
+  const initialTask = await task(stock.sku.id);
+  await open(initialTask, stock.pallet);
+  await scan(initialTask, "barcode", stock.sku.barcode);
+  let s = await scan(initialTask, "barcode", stock.sku.barcode);
+  const first = s.boxes.find((b) => b.code === initialTask.openBoxCode)!;
+  const t = await task(stock.sku.id);
   const accumulator = s.pallets.find((p) => p.id === first.palletId)!;
   // Confirm the second box while admission is possible, then reproduce an
   // already confirmed open box resumed after the physical capacity shrank.
@@ -284,7 +285,7 @@ test("failed last-unit packing rolls back raw retirement, both holds, ledger, ve
     s.pallets.find((p) => p.id === stock.pallet.id)!.returnLocationId,
     null,
   );
-  assert.equal(s.tasks.find((x) => x.id === t.id)!.boxesCompleted, 2);
+  assert.equal(s.tasks.find((x) => x.id === t.id)!.boxesCompleted, 1);
   assert.equal(after.work.length, auditReady.work.length + 1);
   assert.equal(after.ledger.length, auditReady.ledger.length + 1);
   assert.equal(after.commands.length, auditReady.commands.length + 1);

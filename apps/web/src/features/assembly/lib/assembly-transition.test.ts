@@ -76,7 +76,7 @@ test("Пустая/недоступная очередь явно заверша
   assert.equal(transition.kind, "complete");
   assert.equal(transition.selectedId, done.id);
   assert.equal(transition.tab, "completed");
-  assert.match(transition.notice, /сотрудник свободен/);
+  assert.match(transition.notice, /взять из очереди/);
 });
 test("Обычный скан и replay без изменения не сообщают о новом коробе или лишней единице", () => {
   const before = task({ scannedUnits: 8 });

@@ -461,7 +461,7 @@ test("business advice asks for receiving only placed and free raw stock can sati
   assert.equal(row.canCreate, false);
   assert.deepEqual(row.advice, {
     state: "raw_shortage",
-    message: "Примите и разместите товар: не хватает 160 шт.",
+    message: "Примите и разместите товар: не хватает 20 шт.",
     action: "receiving",
   });
 });
@@ -498,7 +498,7 @@ test("business advice distinguishes covered demand from unknown quantities witho
   assert.equal(row.advice.action, "transit");
 });
 
-test("business advice never permits task creation beyond one-task quantity limit", () => {
+test("large recommendations still allow an individual box task", () => {
   const { w, m } = fixture();
   w.sections = [];
   w.movements = [];
@@ -513,9 +513,9 @@ test("business advice never permits task creation beyond one-task quantity limit
   assert.equal(row.dataComplete, true);
   assert.ok(row.recommendedBoxes > 1000);
   assert.ok(row.rawAvailableUnits > row.recommendedUnits);
-  assert.equal(row.canCreate, false);
-  assert.equal(row.advice.state, "review");
-  assert.equal(row.advice.action, "none");
+  assert.equal(row.canCreate, true);
+  assert.equal(row.advice.state, "ready");
+  assert.equal(row.advice.action, "create");
 });
 
 test("automatic refresh keeps a fresh verified version usable, while stale or replaced credentials and manual pending remain blocked", () => {

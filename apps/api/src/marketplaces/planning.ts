@@ -696,16 +696,16 @@ export function marketplacePlan(
         monthlyOutboundUnits,
       });
       const { recommendedBoxes, recommendedUnits } = unified;
-      if (dataComplete && recommendedUnits > rawAvailableUnits)
+      if (
+        dataComplete &&
+        recommendedBoxes > 0 &&
+        rawAvailableUnits < sku.unitsPerBox
+      )
         blockers.push(
-          "Недостаточно свободных размещённых раскрасок для всей рекомендации",
+          "Недостаточно свободных размещённых раскрасок для одного короба",
         );
       if (dataComplete && !recommendedBoxes)
         blockers.push("Дополнительная сборка сейчас не требуется");
-      if (dataComplete && recommendedBoxes > 1000)
-        blockers.push(
-          "Рекомендация превышает предел одного задания: 1000 коробов",
-        );
       warnings.push(
         goal?.message ??
           "Средний спрос рассчитан по заказам за вычетом отмен; сезонность и дни отсутствия товара не восстановлены",
@@ -723,10 +723,12 @@ export function marketplacePlan(
                 message: "Проверьте количество товара в пути.",
                 action: "transit",
               }
-            : dataComplete && recommendedUnits > rawAvailableUnits
+            : dataComplete &&
+                recommendedBoxes > 0 &&
+                rawAvailableUnits < sku.unitsPerBox
               ? {
                   state: "raw_shortage",
-                  message: `Примите и разместите товар: не хватает ${recommendedUnits - rawAvailableUnits} шт.`,
+                  message: `Примите и разместите товар: не хватает ${sku.unitsPerBox - rawAvailableUnits} шт.`,
                   action: "receiving",
                 }
               : canCreate

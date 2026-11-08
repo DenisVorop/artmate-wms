@@ -454,9 +454,9 @@ test("receiving claims are atomic per pallet, actor protected, QR never admits s
   await leave(other);
   await leave();
 });
-test("assembly resumes, WIP prevents switch/leave, global accumulator remains fixed and auto next updates same zone binding", async () => {
+test("assembly resumes, WIP prevents switch/leave, global accumulator remains fixed and the next box stays unclaimed", async () => {
   skuId = (await newRaw()).skuId;
-  const task = await createTask(2);
+  const task = await createTask(1);
   taskId = task.id;
   secondTaskId = (await createTask(1)).id;
   let s = await start(assembly);
@@ -507,8 +507,10 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
       .length,
     1,
   );
+  assert.equal(binding(s).jobId, null);
+  assert.equal(s.tasks.find((t) => t.id === secondTaskId)!.status, "queued");
   s = await start(putaway);
-  assert.equal(s.tasks.find((t) => t.id === taskId)!.status, "paused");
+  assert.equal(s.tasks.find((t) => t.id === taskId)!.status, "completed");
   assert.equal(binding(s).jobKind, null);
   assert.equal(binding(s).jobId, null);
 });
@@ -649,18 +651,18 @@ test("putaway carry resumes only same zone, blocks switch/shift, place autoadvan
   assert.equal(binding(s).jobId, null);
   assert.equal(s.balance.totalUnits, before);
   s = await start(assembly);
-  assert.equal(binding(s).jobId, taskId);
-  const task = s.tasks.find((t) => t.id === taskId)!,
+  assert.equal(binding(s).jobId, secondTaskId);
+  const task = s.tasks.find((t) => t.id === secondTaskId)!,
     p = s.pallets.find((p) => p.id === task.reservations[0].palletId)!;
-  await scanTask(taskId, "source", p.code);
-  await scanTask(taskId, "box", task.openBoxCode);
+  await scanTask(secondTaskId, "source", p.code);
+  await scanTask(secondTaskId, "box", task.openBoxCode);
   s = await scanTask(
-    taskId,
+    secondTaskId,
     "barcode",
     s.skus.find((x) => x.id === skuId)!.barcode,
   );
-  assert.equal(s.tasks.find((t) => t.id === taskId)!.status, "completed");
-  assert.equal(binding(s).jobId, secondTaskId);
+  assert.equal(s.tasks.find((t) => t.id === secondTaskId)!.status, "completed");
+  assert.equal(binding(s).jobId, null);
 });
 test("shipping ready-only claim, own narrow projection, exact reserved scans, named finish+FIFO ledger and atomic auto next", async () => {
   let s = await w.snapshot();
@@ -1057,7 +1059,7 @@ test("unbound legacy WIP can resume at assembly QR without losing scans, but ano
   );
 });
 
-test("automatic next never rolls a completed box back when a legacy paused task has an unavailable source", async () => {
+test("completion preserves its result when another paused task has an unavailable source", async () => {
   const before = await w.snapshot();
   let s = await w.createEmployee({
     ...req(),
@@ -1120,7 +1122,7 @@ test("automatic next never rolls a completed box back when a legacy paused task 
   assert(s.boxes.some((b) => b.code === current.openBoxCode));
   const idle = s.warehouse.zoneWork.find((x) => x.employeeId === employeeId)!;
   assert.equal(idle.jobId, null);
-  assert.match(idle.message, /недоступно/);
+  assert.match(idle.message, /Возьмите следующее/);
   await w.updateLocation(firstRaw.pallet.locationId!, {
     ...req(),
     blocked: false,

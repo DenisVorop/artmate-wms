@@ -365,6 +365,8 @@ export class TaskDto {
   @ApiPropertyOptional({ type: String, enum: ["urgent", "backlog"] })
   autoPurpose?: "urgent" | "backlog";
   @ApiProperty({ type: String, nullable: true }) createdAt!: string | null;
+  @ApiPropertyOptional({ type: String }) startedAt?: string;
+  @ApiPropertyOptional({ type: String }) queueOrder?: string;
   @ApiProperty({ type: Boolean }) boxCodeConfirmed!: boolean;
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
@@ -916,10 +918,14 @@ export class CreateEmployeeDto extends CommandDto {
 }
 export class CreateTaskDto extends CommandDto {
   @ApiProperty({ type: String }) @IsString() skuId!: string;
-  @ApiProperty({ default: 10, type: Number })
+  @ApiProperty({
+    default: 1,
+    type: Number,
+    description: "Количество отдельных заданий по одному коробу",
+  })
   @IsInt()
   @Min(1)
-  @Max(1000)
+  @Max(5)
   boxesTarget!: number;
   @ApiPropertyOptional({ type: String })
   @ValidateIf((_object, value) => value !== undefined)

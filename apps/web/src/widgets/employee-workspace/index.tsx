@@ -558,7 +558,9 @@ function EmployeeWorkspaceBody({
                             ? "Освободите место на сборочной паллете"
                             : "Дождитесь свободного места"
                           : zoneIdle && currentZone
-                            ? "В этой зоне пока нет работы"
+                            ? currentZone.zone.kind === "assembly"
+                              ? "Готовы взять задание?"
+                              : "В этой зоне пока нет работы"
                             : "Где начнём работу?"}
                       </h2>
                       <p>
@@ -587,7 +589,9 @@ function EmployeeWorkspaceBody({
                             )
                           }
                         >
-                          Проверить задания в зоне
+                          {currentZone.zone.kind === "assembly"
+                            ? "Взять задание на один короб"
+                            : "Проверить задания в зоне"}
                         </Button>
                       )}
                     </section>

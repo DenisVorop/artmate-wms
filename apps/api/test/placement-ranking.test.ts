@@ -232,12 +232,13 @@ test("putaway preserves thematic priority, physical capacity and fixed destinati
       boxesTarget: 2,
       employeeId: actor,
     });
-    const assembly = s.tasks.find((t) => t.skuId === sku.id)!;
-    await w.claimTask(assembly.id, { ...request(), employeeId: actor });
-    for (let box = 0; box < 2; box++) {
-      const current = (await w.snapshot()).tasks.find(
-        (t) => t.id === assembly.id,
-      )!;
+    const assemblies = s.tasks
+      .filter((t) => t.skuId === sku.id && t.status === "queued")
+      .slice(-2);
+    assert.equal(assemblies.length, 2);
+    for (const assembly of assemblies) {
+      const current = assembly;
+      await w.claimTask(assembly.id, { ...request(), employeeId: actor });
       await w.scanTask(assembly.id, {
         ...request(),
         employeeId: actor,

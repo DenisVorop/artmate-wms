@@ -5,22 +5,25 @@ export function selectEmployeeAssembly(
   employeeId: string,
 ): TaskDto | undefined {
   if (!employeeId) return undefined;
-  const ordered = [...tasks].sort(
-    (a, b) =>
-      (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
-      a.id.localeCompare(b.id),
-  );
+  // Free work is already ordered by the server using the whole warehouse history.
+  const own = tasks
+    .filter((task) => task.employeeId === employeeId)
+    .sort(
+      (a, b) =>
+        (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+        a.id.localeCompare(b.id),
+    );
   return (
-    ordered.find(
+    own.find(
       (task) => task.employeeId === employeeId && task.status === "active",
     ) ??
-    ordered.find(
+    own.find(
       (task) => task.employeeId === employeeId && task.status === "paused",
     ) ??
-    ordered.find(
+    own.find(
       (task) => task.employeeId === employeeId && task.status === "queued",
     ) ??
-    ordered.find((task) => task.employeeId === null && task.status === "queued")
+    tasks.find((task) => task.employeeId === null && task.status === "queued")
   );
 }
 
@@ -65,7 +68,7 @@ export function employeeAssemblyResult(
     );
     return next
       ? `Задание завершено. Следующее — ${next.code}.`
-      : `Задание завершено. Собрано коробов: ${updated.boxesCompleted}.`;
+      : `Задание завершено. Возьмите следующее, когда будете готовы.`;
   }
   return updated.boxesCompleted > before.boxesCompleted
     ? "Короб готов. Поставьте его на общую паллету в зоне сборки."

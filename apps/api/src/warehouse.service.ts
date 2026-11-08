@@ -1,3 +1,5 @@
+import { assemblyQueueOrder } from "./assembly-queue";
+import { ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU } from "./work-automation/planning";
 import { reconcileOpeningStock } from "./marketplaces/opening-stock-reconciliation";
 import { initializeWorkAutomationStorage } from "./work-automation/storage";
 import {
@@ -1881,7 +1883,19 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   createTask(b: D.CreateTaskDto) {
     return this._command("createTask", b, (s) => {
-      this._createAssemblyTask(s, b);
+      const open = s.tasks.filter(
+        (task) => task.skuId === b.skuId && task.status !== "completed",
+      ).length;
+      if (
+        !Number.isSafeInteger(b.boxesTarget) ||
+        b.boxesTarget < 1 ||
+        b.boxesTarget + open > ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU
+      )
+        fail(
+          "По тематике может быть не больше пяти незавершённых заданий сборки",
+        );
+      for (let index = 0; index < b.boxesTarget; index++)
+        this._createAssemblyTask(s, { ...b, boxesTarget: 1 });
     });
   }
   async commitPlanningTask(
@@ -1892,7 +1906,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   ): Promise<string> {
     if (requestAuth.getStore())
       await authorizeWarehouse(tx, "createTask", body, state);
-    const taskId = this._createAssemblyTask(state, body);
+    const open = state.tasks.filter(
+      (task) => task.skuId === body.skuId && task.status !== "completed",
+    ).length;
+    if (open >= ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU)
+      fail("По тематике уже есть пять незавершённых заданий сборки");
+    const taskId = this._createAssemblyTask(state, { ...body, boxesTarget: 1 });
     await this._commitState(tx, before, state, "createTask", body);
     return taskId;
   }
@@ -1968,12 +1987,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         );
         continue;
       }
-      if (
-        !Number.isInteger(intent.boxesTarget) ||
-        intent.boxesTarget < 1 ||
-        intent.boxesTarget > 10
-      )
-        fail("Автоматическое задание должно содержать от 1 до 10 коробов");
+      if (intent.boxesTarget !== 1)
+        fail("Автоматическое задание должно содержать один короб");
       if (intent.kind === "resize") {
         const task = changed.get(intent.taskId)!;
         task.reservations = this._assemblyReservations(
@@ -2022,6 +2037,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       id: taskId,
       code: nextCode("TASK"),
       createdAt: now(),
+      queueOrder: `${s.revision}:${s.tasks.length}`,
       boxCodeConfirmed: false,
       skuId: sku.id,
       boxesTarget: b.boxesTarget,
@@ -2111,8 +2127,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       const capacityError = assemblyAcceptanceError(s, task.skuId, task.id);
       if (capacityError) fail(capacityError);
     }
+    // A previously queued automatic batch may still be visible before the scheduler runs.
+    if (task.autoPurpose && task.status === "queued" && task.boxesTarget > 1) {
+      let remaining = task.unitsPerBox;
+      task.reservations = task.reservations.flatMap((reservation) => {
+        const quantity = Math.min(remaining, reservation.quantity);
+        remaining -= quantity;
+        return quantity ? [{ ...reservation, quantity }] : [];
+      });
+      if (remaining) fail("На короб не хватает зарезервированного товара");
+      task.boxesTarget = 1;
+    }
     task.employeeId = employeeId;
     task.status = "active";
+    task.startedAt ??= now();
     activity(s, "Сборка начата", `${task.code} · ${employee.name}`, "task");
   }
   claimTask(id: string, b: D.ClaimTaskDto) {
@@ -2325,6 +2353,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     task.scannedUnits = 0;
     task.openBoxContents = [];
     task.openBoxCode = nextCode("BOX");
+    if (task.autoPurpose && task.boxesCompleted < task.boxesTarget) {
+      task.boxesTarget = task.boxesCompleted;
+      task.reservations = [];
+    }
     if (task.boxesCompleted === task.boxesTarget) {
       task.status = "completed";
       task.sourcePalletId = null;
@@ -2335,53 +2367,26 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       `${find(s.skus, task.skuId, "Тематика").name} · ${employee.name} · ${task.boxesCompleted}/${task.boxesTarget}`,
       "packing",
     );
-    if (task.status === "completed") this._takeNextTask(s, employeeId);
-  }
-  private _takeNextTask(s: D.WorkspaceDto, employeeId: string) {
-    const binding = s.warehouse.zoneWork.find(
-      (w) => w.employeeId === employeeId,
-    );
-    if (binding) {
-      const zone = s.warehouse.workZones.find(
-        (z) => z.id === binding.zoneId && !z.archived,
+    if (task.status === "completed") {
+      const binding = s.warehouse.zoneWork.find(
+        (work) => work.employeeId === employeeId,
       );
-      if (zone?.kind === "assembly")
-        this._chooseZoneWork(s, zone, employeeId, true);
-      return;
+      if (
+        binding &&
+        s.warehouse.workZones.some(
+          (zone) =>
+            zone.id === binding.zoneId &&
+            !zone.archived &&
+            zone.kind === "assembly",
+        )
+      ) {
+        this._clearZoneJob(
+          s,
+          employeeId,
+          "Короб готов. Возьмите следующее задание, когда будете готовы.",
+        );
+      }
     }
-
-    if (this._activePutaway(s, employeeId)) return;
-    if (
-      s.tasks.some((t) => t.employeeId === employeeId && t.status === "active")
-    )
-      return;
-    const candidates = s.tasks
-      .filter(
-        (t) =>
-          t.status === "queued" &&
-          (!t.employeeId || t.employeeId === employeeId) &&
-          t.scannedUnits === 0 &&
-          !t.boxCodeConfirmed,
-      )
-      .sort(
-        (a, b) =>
-          Number(b.employeeId === employeeId) -
-            Number(a.employeeId === employeeId) ||
-          Number(a.autoPurpose === "backlog") -
-            Number(b.autoPurpose === "backlog") ||
-          (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
-          a.id.localeCompare(b.id),
-      );
-    const next = candidates.find(
-      (t) =>
-        !this._taskSourcesError(s, t) &&
-        !assemblyAcceptanceError(s, t.skuId, t.id),
-    );
-    if (!next) return;
-    next.sourcePalletId = null;
-    next.boxCodeConfirmed = false;
-    this._claimTask(s, next, employeeId);
-    activity(s, "Взято следующее задание", next.code, "task");
   }
   private _activePutaway(s: D.WorkspaceDto, employeeId: string) {
     return s.putawayTasks.find(
@@ -3825,7 +3830,6 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     s: D.WorkspaceDto,
     zone: D.WorkZoneDto,
     employeeId: string,
-    automatic = false,
   ) {
     const assign = (
       kind: string,
@@ -3854,7 +3858,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         )[0];
       if (own) {
         const sourceError = this._taskSourcesError(s, own);
-        if (automatic && own.status === "paused" && sourceError) {
+        if (own.status === "paused" && sourceError) {
           idle(`Следующее своё задание пока недоступно: ${sourceError}`);
           return;
         }
@@ -3877,15 +3881,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             !t.scannedUnits &&
             !t.boxCodeConfirmed,
         )
-        .sort(
-          (a, b) =>
-            Number(b.employeeId === employeeId) -
-              Number(a.employeeId === employeeId) ||
-            Number(a.autoPurpose === "backlog") -
-              Number(b.autoPurpose === "backlog") ||
-            (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
-            a.id.localeCompare(b.id),
-        );
+        .sort(assemblyQueueOrder(s.tasks, employeeId));
       const t = candidates.find(
         (t) =>
           !this._taskSourcesError(s, t) &&
@@ -4020,7 +4016,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     );
     if (!z) return;
     this._clearZoneJob(s, employeeId, "Выбираем следующее задание");
-    this._chooseZoneWork(s, z, employeeId, true);
+    this._chooseZoneWork(s, z, employeeId);
   }
   private _shipmentWorkError(
     s: D.WorkspaceDto,

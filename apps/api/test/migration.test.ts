@@ -347,7 +347,7 @@ test("v4 migration keeps a clean v3 plan empty, preserves revision and cached v3
   }
 });
 
-test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full box and skips unavailable queued sources across restart", async () => {
+test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full box without auto-claiming queued work across restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "artmate-wms-assembly-v6-"));
   const path = join(dir, "db"),
     oldEnv = process.env.WMS_DATA_DIR;
@@ -485,7 +485,7 @@ test("v6 keeps legacy task IDs WIP provenance QR and revisions, recovers a full 
       packed.tasks.find((t) => t.id === blocked.id)!.status,
       "queued",
     );
-    assert.equal(packed.tasks.find((t) => t.id === next.id)!.status, "active");
+    assert.equal(packed.tasks.find((t) => t.id === next.id)!.status, "queued");
     assert.equal(
       packed.tasks.find((t) => t.id === partial.id)!.status,
       "paused",

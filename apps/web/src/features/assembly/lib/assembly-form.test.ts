@@ -23,12 +23,12 @@ test("Свободное задание не получает выдуманно
   assert.match(planned.requestId, /^[0-9a-f-]{36}$/);
 });
 test("Создание требует тематику и 1..1000 целых коробов; норма упаковки не задаётся вручную", () => {
-  for (const boxesTarget of [0, -1, 1.5, 1001, Number.NaN])
+  for (const boxesTarget of [0, -1, 1.5, 6, Number.NaN])
     assert.equal(
       assemblySchema.safeParse({ ...values, boxesTarget }).success,
       false,
     );
-  for (const boxesTarget of [1, 1000])
+  for (const boxesTarget of [1, 5])
     assert.equal(
       assemblySchema.safeParse({ ...values, boxesTarget }).success,
       true,

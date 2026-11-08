@@ -1,3 +1,4 @@
+import { assemblyQueueOrder } from "./assembly-queue";
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as D from "./dto";
 export interface RequestAuthContext {
@@ -27,8 +28,11 @@ export function projectWorkspace(
         zoneWork: state.warehouse.zoneWork ?? [],
       },
     };
-  if (!context?.http || context.role === "manager") return state;
+  if (!context?.http || !context.employeeId) return state;
   const id = context.employeeId;
+  const order = assemblyQueueOrder(state.tasks, id);
+  if (context.role === "manager")
+    return { ...state, tasks: [...state.tasks].sort(order) };
   const addressHolds: D.AddressHoldDto[] = [];
   for (const m of state.movements)
     if (["planned", "in_transit"].includes(m.status))
@@ -47,10 +51,13 @@ export function projectWorkspace(
       ).values(),
     ],
     employees: state.employees.filter((e) => e.id === id),
-    tasks: state.tasks.filter(
-      (t) =>
-        t.employeeId === id || (t.status === "queued" && t.employeeId === null),
-    ),
+    tasks: state.tasks
+      .filter(
+        (t) =>
+          t.employeeId === id ||
+          (t.status === "queued" && t.employeeId === null),
+      )
+      .sort(order),
     putawayTasks: state.putawayTasks.filter(
       (t) => t.employeeId === id || t.status === "queued",
     ),

@@ -321,7 +321,7 @@ test("manager integrations encrypt keys, preserve stock/history on read and sync
     assert.equal(created.tasks.length, baseline.tasks.length + 1);
     assert.equal(created.tasks.at(-1)!.employeeId, null);
     assert.equal(created.tasks.at(-1)!.status, "queued");
-    assert.equal(created.tasks.at(-1)!.boxesTarget, proposal.recommendedBoxes);
+    assert.equal(created.tasks.at(-1)!.boxesTarget, 1);
     assert.deepEqual(created.boxes, baseline.boxes);
     assert.deepEqual(created.pallets, baseline.pallets);
     assert.deepEqual(created.balance, baseline.balance);

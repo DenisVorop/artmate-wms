@@ -114,13 +114,19 @@ test("FIFO reserves old remainder, conserves raw + work in progress + boxes, all
     boxesTarget: 2,
     employeeId: "employee-1",
   });
-  const task = state.tasks.find(
+  const [first, second] = state.tasks.filter(
     (t) => !initial.tasks.some((old) => old.id === t.id),
-  )!;
-  assert.deepEqual(
-    task.reservations.map((r) => r.quantity),
-    [30, 10],
   );
+  assert.deepEqual([first.boxesTarget, second.boxesTarget], [1, 1]);
+  assert.deepEqual(
+    first.reservations.map((r) => r.quantity),
+    [20],
+  );
+  assert.deepEqual(
+    second.reservations.map((r) => r.quantity),
+    [10, 10],
+  );
+  let task = first;
   await warehouse.updateTaskStatus(task.id, {
     ...req(),
     status: "active",
@@ -143,9 +149,13 @@ test("FIFO reserves old remainder, conserves raw + work in progress + boxes, all
   assert.equal(inventory(state, "sku-cats"), total);
   assert.equal(state.tasks.find((t) => t.id === task.id)!.boxesCompleted, 1);
   assert.equal(state.tasks.find((t) => t.id === task.id)!.scannedUnits, 0);
-  await assert.rejects(scan("barcode", "4601234000011"), /короба/);
+  assert.equal(state.tasks.find((t) => t.id === first.id)!.status, "completed");
+  assert.equal(state.tasks.find((t) => t.id === second.id)!.status, "queued");
+  await assert.rejects(scan("barcode", "4601234000011"), /начните/);
+  task = second;
+  const secondCode = second.openBoxCode;
+  await warehouse.claimTask(second.id, { ...req(), employeeId: "employee-1" });
   await assert.rejects(scan("box", firstCode), /текущего короба/);
-  const secondCode = state.tasks.find((t) => t.id === task.id)!.openBoxCode;
   await assert.rejects(scan("box", secondCode), /исходную паллету/);
   await scan("source", "PLT-001");
   await scan("box", secondCode);
@@ -176,10 +186,10 @@ test("command replay is idempotent and conflicting reuse is rejected", async () 
     /requestId/,
   );
 });
-test("concurrent reservations cannot overbook stock", async () => {
+test("concurrent batches of single-box work cannot exceed the theme queue limit", async () => {
   const calls = await Promise.allSettled([
-    warehouse.createTask({ ...req(), skuId: "sku-flowers", boxesTarget: 10 }),
-    warehouse.createTask({ ...req(), skuId: "sku-flowers", boxesTarget: 10 }),
+    warehouse.createTask({ ...req(), skuId: "sku-flowers", boxesTarget: 3 }),
+    warehouse.createTask({ ...req(), skuId: "sku-flowers", boxesTarget: 3 }),
   ]);
   assert.equal(calls.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal(calls.filter((x) => x.status === "rejected").length, 1);
@@ -388,8 +398,8 @@ test(
     try {
       const priorRevision = (await first.snapshot()).revision;
       const results = await Promise.allSettled([
-        first.createTask({ ...req(), skuId: "sku-dinos", boxesTarget: 20 }),
-        second.createTask({ ...req(), skuId: "sku-dinos", boxesTarget: 20 }),
+        first.createTask({ ...req(), skuId: "sku-dinos", boxesTarget: 3 }),
+        second.createTask({ ...req(), skuId: "sku-dinos", boxesTarget: 3 }),
       ]);
       assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
       assert.equal(results.filter((r) => r.status === "rejected").length, 1);
@@ -663,36 +673,19 @@ test("raw pallet task reservations prevent relocation and planned moves prevent 
     }),
     /зарезервирована/,
   );
+  const raw = await assemblyStock("MOVE-ONLY-RAW", 2, 2);
   s = await warehouse.createMovement({
     ...req(),
-    palletId: "pallet-cats-new",
+    palletId: raw.p.id,
     toLocationId: target.id,
     kind: "transfer",
     employeeId: "employee-3",
   });
   const m = s.movements.find(
-    (m) => m.palletId === "pallet-cats-new" && m.status === "planned",
+    (m) => m.palletId === raw.p.id && m.status === "planned",
   )!;
-  const available =
-    s.pallets
-      .filter(
-        (p) =>
-          p.skuId === "sku-cats" &&
-          p.kind === "raw" &&
-          p.status === "stored" &&
-          p.id !== "pallet-cats-new",
-      )
-      .reduce((sum, p) => sum + p.quantity, 0) -
-    s.tasks
-      .filter((t) => t.skuId === "sku-cats" && t.status !== "completed")
-      .flatMap((t) => t.reservations)
-      .reduce((sum, r) => sum + r.quantity, 0);
   await assert.rejects(
-    warehouse.createTask({
-      ...req(),
-      skuId: "sku-cats",
-      boxesTarget: Math.floor(available / 20) + 1,
-    }),
+    warehouse.createTask({ ...req(), skuId: raw.skuId!, boxesTarget: 1 }),
     /Недостаточно/,
   );
   s = await warehouse.cancelMovement(m.id, req());
@@ -726,15 +719,16 @@ test("packaging validates real layer geometry and keeps historic dimensions immu
   );
 });
 test("two pallets of one SKU ship through one picking position without losing held return addresses", async () => {
+  const existingTasks = new Set(
+    (await warehouse.snapshot()).tasks.map((t) => t.id),
+  );
   let s = await warehouse.createTask({
     ...req(),
     skuId: "sku-dinos",
     boxesTarget: 1,
     employeeId: "employee-2",
   });
-  const task = s.tasks.find(
-    (t) => t.employeeId === "employee-2" && t.status === "queued",
-  )!;
+  const task = s.tasks.find((t) => !existingTasks.has(t.id))!;
   await warehouse.updateTaskStatus(task.id, {
     ...req(),
     employeeId: "employee-2",
@@ -2949,7 +2943,7 @@ test("assignment preserves reservations and QR, permits off-shift planning, and 
   const stock = await assemblyStock("ASSIGNMENT"),
     a = await assemblyActor("Исполнитель Назначения"),
     b = await assemblyActor("Другой Исполнитель Назначения");
-  const t = await assemblyTask(stock.skuId, 2);
+  const t = await assemblyTask(stock.skuId);
   let s = await warehouse.assignTask(t.id, {
     ...req(),
     employeeId: "employee-4",
@@ -3024,7 +3018,8 @@ test("new box admission rolls back on the one full mixed accumulator and complet
     ...req(),
     maxBoxes: occupied + 1,
   });
-  const t = await assemblyTask(skuId, 2, actor.id);
+  const t = await assemblyTask(skuId, 1, actor.id);
+  const second = await assemblyTask(skuId, 1, actor.id);
   await warehouse.claimTask(t.id, { ...req(), employeeId: actor.id });
   await assert.rejects(
     actorScan(t, actor.id, "box", t.openBoxCode),
@@ -3053,41 +3048,40 @@ test("new box admission rolls back on the one full mixed accumulator and complet
     ...req(),
     employeeId: actor.id,
     kind: "box" as const,
-    value: current.openBoxCode,
+    value: second.openBoxCode,
   };
-  await assert.rejects(
-    warehouse.scanTask(t.id, admission),
-    /вместимость|заполнена/,
-  );
+  const claim = () =>
+    warehouse.claimTask(second.id, { ...req(), employeeId: actor.id });
+  await assert.rejects(claim(), /вместимость|заполнена/);
   assert.deepEqual(await warehouse.snapshot(), prior);
   // A second free address cannot create a parallel accumulator to bypass admission.
   await assemblyLocation("UNUSED-PARALLEL-ASSEMBLY", "assembly");
   const beforeSecondAttempt = await warehouse.snapshot();
-  await assert.rejects(
-    warehouse.scanTask(t.id, admission),
-    /вместимость|заполнена/,
-  );
+  await assert.rejects(claim(), /вместимость|заполнена/);
   assert.deepEqual(await warehouse.snapshot(), beforeSecondAttempt);
   await warehouse.updateLocation(location.id, {
     ...req(),
     maxBoxes: occupied + 2,
   });
-  // Failed admission did not confirm the box or bypass a fresh source scan.
-  await assert.rejects(warehouse.scanTask(t.id, admission), /исходную паллету/);
-  await actorScan(t, actor.id, "source", p.code);
+  await claim();
   await assert.rejects(
-    actorScan(t, actor.id, "box", t.openBoxCode),
+    warehouse.scanTask(second.id, admission),
+    /исходную паллету/,
+  );
+  await actorScan(second, actor.id, "source", p.code);
+  await assert.rejects(
+    actorScan(second, actor.id, "box", t.openBoxCode),
     /текущего короба/,
   );
-  await warehouse.scanTask(t.id, admission);
-  await actorScan(t, actor.id, "barcode", "AUTO-PACK-CAPACITY");
+  await warehouse.scanTask(second.id, admission);
+  await actorScan(second, actor.id, "barcode", "AUTO-PACK-CAPACITY");
   const final = {
     ...req(),
     employeeId: actor.id,
     kind: "barcode" as const,
     value: "AUTO-PACK-CAPACITY",
   };
-  state = await warehouse.scanTask(t.id, final);
+  state = await warehouse.scanTask(second.id, final);
   assert.equal(state.balance.totalUnits, prior.balance.totalUnits);
   assert.equal(
     state.pallets.filter((p) => p.kind === "assembly" && p.status === "stored")
@@ -3095,19 +3089,19 @@ test("new box admission rolls back on the one full mixed accumulator and complet
     1,
   );
   assert.equal(
-    state.boxes.find((b) => b.code === current.openBoxCode)!.palletId,
+    state.boxes.find((b) => b.code === second.openBoxCode)!.palletId,
     accumulator.id,
   );
   assert.equal(state.tasks.find((x) => x.id === t.id)!.status, "completed");
   const persisted = await warehouse.snapshot();
-  assert.deepEqual(await warehouse.scanTask(t.id, final), state);
+  assert.deepEqual(await warehouse.scanTask(second.id, final), state);
   assert.deepEqual(await warehouse.snapshot(), persisted);
   await warehouse.updateLocation(location.id, {
     ...req(),
     maxBoxes: location.maxBoxes,
   });
 });
-test("automatic next prioritizes assigned queued work, skips paused/foreign work, and replay never touches next", async () => {
+test("completion and replay never start queued work, which can be claimed explicitly", async () => {
   await parkFreeQueue();
   const actor = await assemblyActor("Исполнитель Очереди"),
     stock = await assemblyStock("AUTO-QUEUE", 1, 20),
@@ -3152,7 +3146,7 @@ test("automatic next prioritizes assigned queued work, skips paused/foreign work
   const first = await finish(current);
   assert.equal(
     first.state.tasks.find((x) => x.id === own.id)!.status,
-    "active",
+    "queued",
   );
   assert.equal(
     first.state.tasks.find((x) => x.id === free.id)!.status,
@@ -3164,10 +3158,11 @@ test("automatic next prioritizes assigned queued work, skips paused/foreign work
     first.state,
   );
   assert.deepEqual(await warehouse.snapshot(), beforeReplay);
+  await warehouse.claimTask(own.id, { ...req(), employeeId: actor.id });
   const second = await finish(own);
   assert.equal(
     second.state.tasks.find((x) => x.id === free.id)!.status,
-    "active",
+    "queued",
   );
   assert.equal(
     second.state.tasks.find((x) => x.id === free.id)!.sourcePalletId,
@@ -3177,6 +3172,7 @@ test("automatic next prioritizes assigned queued work, skips paused/foreign work
     second.state.tasks.find((x) => x.id === free.id)!.boxCodeConfirmed,
     false,
   );
+  await warehouse.claimTask(free.id, { ...req(), employeeId: actor.id });
   const third = await finish(free);
   assert.ok(
     !third.state.tasks.some(
@@ -3278,18 +3274,18 @@ async function packForPutaway(
     ...req(),
     packaging: profile,
   });
-  const task = await assemblyTask(stock.skuId, boxesTarget, actor.id);
-  await warehouse.claimTask(task.id, { ...req(), employeeId: actor.id });
+  const tasks = [];
   const boxIds: string[] = [];
   for (let i = 0; i < boxesTarget; i++) {
-    const state = await warehouse.snapshot(),
-      current = state.tasks.find((t) => t.id === task.id)!;
+    const task = await assemblyTask(stock.skuId, 1, actor.id);
+    tasks.push(task);
+    await warehouse.claimTask(task.id, { ...req(), employeeId: actor.id });
     await actorScan(task, actor.id, "source", stock.p.code);
-    await actorScan(task, actor.id, "box", current.openBoxCode);
+    await actorScan(task, actor.id, "box", task.openBoxCode);
     const next = await actorScan(task, actor.id, "barcode", tag);
-    boxIds.push(next.boxes.find((b) => b.code === current.openBoxCode)!.id);
+    boxIds.push(next.boxes.find((b) => b.code === task.openBoxCode)!.id);
   }
-  return { ...stock, actor, task, boxIds };
+  return { ...stock, actor, task: tasks[0], boxIds };
 }
 const putawayOf = (s: WorkspaceDto, boxId: string) =>
   s.putawayTasks.find((t) => t.boxId === boxId && t.status !== "completed")!;

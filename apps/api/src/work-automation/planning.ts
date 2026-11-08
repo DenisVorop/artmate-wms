@@ -10,7 +10,7 @@ import type {
   AutomaticTaskOrigin,
   AutomaticTaskPurpose,
 } from "./types";
-export const AUTOMATIC_TASK_MAX_BOXES = 10;
+export const ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU = 5;
 export const AUTOMATIC_QUEUE_MAX_TASKS = 5;
 export const AUTOMATIC_RUN_MAX_INTENTS = 20;
 export function untouchedAutomaticTask(
@@ -62,24 +62,19 @@ function placeholderTask(skuId: string, boxesTarget: number): TaskDto {
 function storageFits(
   w: WorkspaceDto,
   row: MarketplacePlanRowDto,
-  boxes: number,
   confirmations: PlanningStockConfirmation[],
 ) {
-  const probe = structuredClone(row);
-  Object.assign(probe, {
+  const probe = {
+    ...row,
     recommendedBoxes: 0,
     recommendedUnits: 0,
     backlogCanCreate: false,
     backlogBoxes: 0,
-  });
-  const workspace =
-    boxes > 1
-      ? { ...w, tasks: [...w.tasks, placeholderTask(row.skuId, boxes - 1)] }
-      : w;
-  planningBacklog(workspace, [probe], { [row.skuId]: boxes }, confirmations);
+  };
+  planningBacklog(w, [probe], { [row.skuId]: 1 }, confirmations);
   return probe.backlogCapacityKnown && probe.backlogCanCreate;
 }
-function urgentBatchAllowed(row: MarketplacePlanRowDto) {
+function urgentBoxAllowed(row: MarketplacePlanRowDto) {
   if (row.canCreate) return true;
   // These two whole-recommendation constraints are satisfied by a bounded batch.
   // Every other blocker remains authoritative, including newly introduced ones.
@@ -123,7 +118,9 @@ export function automaticTaskIntents(
       (item) => item.taskId === task.id && item.status === "queued",
     );
     if (!origin) continue;
-    const timestamp = Date.parse(origin.createdAt ?? task.createdAt ?? "");
+    const timestamp = Date.parse(
+      task.startedAt ?? origin.createdAt ?? task.createdAt ?? "",
+    );
     const knownTime = Number.isFinite(timestamp)
       ? timestamp
       : Number.NEGATIVE_INFINITY;
@@ -138,60 +135,77 @@ export function automaticTaskIntents(
   const simulation = { ...base, tasks: [...base.tasks] };
   const desired = new Map<
     string,
-    { boxes: number; purpose: AutomaticTaskPurpose; hash: string }
+    { count: number; purpose: AutomaticTaskPurpose; hash: string }
   >();
   const unlocated = plan.rows.some(
     (row) => row.unregisteredUnits > 0 || row.stockEstimated,
   );
   if (!assemblyBlocked && !unlocated) {
-    const rows = [...plan.rows].sort(
+    const ranked = [...plan.rows].sort(
       (a, b) =>
-        Number(b.recommendedBoxes > 0) - Number(a.recommendedBoxes > 0) ||
         Number(lastServedAt.has(a.skuId)) - Number(lastServedAt.has(b.skuId)) ||
         (lastServedAt.get(a.skuId) ?? Number.NEGATIVE_INFINITY) -
           (lastServedAt.get(b.skuId) ?? Number.NEGATIVE_INFINITY) ||
+        (b.dispatchShortageUnits ?? 0) - (a.dispatchShortageUnits ?? 0) ||
         (a.backlogRank ?? Number.MAX_SAFE_INTEGER) -
           (b.backlogRank ?? Number.MAX_SAFE_INTEGER) ||
-        a.skuName.localeCompare(b.skuName, "ru"),
+        a.skuName.localeCompare(b.skuName, "ru") ||
+        a.skuId.localeCompare(b.skuId),
     );
-    for (const row of rows) {
-      if (desired.size >= availableSlots) break;
-      const sku = w.skus.find((item) => item.id === row.skuId);
-      if (
-        !sku ||
-        desired.has(row.skuId) ||
-        !row.dataComplete ||
-        !row.backlogCapacityKnown ||
-        !Number.isSafeInteger(sku.unitsPerBox) ||
-        sku.unitsPerBox < 1 ||
-        base.tasks.some(
-          (task) => task.skuId === sku.id && task.status !== "completed",
-        )
-      )
-        continue;
-      const purpose = row.recommendedBoxes > 0 ? "urgent" : "backlog";
-      if (
-        purpose === "urgent" ? !urgentBatchAllowed(row) : !row.backlogCanCreate
-      )
-        continue;
-      const rawBoxes = Math.floor(row.rawAvailableUnits / sku.unitsPerBox);
-      let boxes = Math.min(
-        AUTOMATIC_TASK_MAX_BOXES,
-        rawBoxes,
-        purpose === "urgent" ? row.recommendedBoxes : 1,
-      );
-      while (boxes > 0 && !storageFits(simulation, row, boxes, confirmations))
-        boxes--;
-      if (!Number.isSafeInteger(boxes) || boxes < 1) continue;
-      desired.set(sku.id, { boxes, purpose, hash: row.proposalHash });
-      simulation.tasks.push(placeholderTask(sku.id, boxes));
+    const rows = [...new Map(ranked.map((row) => [row.skuId, row])).values()];
+    let remainingSlots = availableSlots;
+    for (const purpose of ["urgent", "backlog"] as const) {
+      // One turn per theme before the next round within the same priority.
+      for (
+        let round = 0;
+        round < ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU && remainingSlots;
+        round++
+      ) {
+        for (const row of rows) {
+          if (!remainingSlots) break;
+          const urgent = row.recommendedBoxes > 0;
+          if (urgent !== (purpose === "urgent")) continue;
+          const sku = w.skus.find((item) => item.id === row.skuId);
+          if (
+            !sku ||
+            !row.dataComplete ||
+            !row.backlogCapacityKnown ||
+            !Number.isSafeInteger(sku.unitsPerBox) ||
+            sku.unitsPerBox < 1 ||
+            (urgent ? !urgentBoxAllowed(row) : !row.backlogCanCreate)
+          )
+            continue;
+          const existing = base.tasks.filter(
+            (task) => task.skuId === sku.id && task.status !== "completed",
+          ).length;
+          const alreadyPlanned = desired.get(sku.id)?.count ?? 0;
+          const limit = Math.min(
+            ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU - existing,
+            Math.floor(row.rawAvailableUnits / sku.unitsPerBox),
+            urgent ? row.recommendedBoxes : Math.max(0, 1 - existing),
+          );
+          if (
+            alreadyPlanned >= limit ||
+            !storageFits(simulation, row, confirmations)
+          )
+            continue;
+          desired.set(sku.id, {
+            count: alreadyPlanned + 1,
+            purpose,
+            hash: row.proposalHash,
+          });
+          simulation.tasks.push(placeholderTask(sku.id, 1));
+          remainingSlots--;
+        }
+      }
     }
   }
   const intents: AutomaticTaskIntent[] = [];
-  const retained = new Set<string>();
+  const retained = new Map<string, number>();
   for (const task of untouched) {
     const goal = desired.get(task.skuId);
-    if (!goal || retained.has(task.skuId)) {
+    const kept = retained.get(task.skuId) ?? 0;
+    if (!goal || kept >= goal.count) {
       intents.push({
         kind: "withdraw",
         taskId: task.id,
@@ -200,13 +214,13 @@ export function automaticTaskIntents(
           : "План изменился: это задание больше не нужно.",
       });
     } else {
-      retained.add(task.skuId);
+      retained.set(task.skuId, kept + 1);
       const origin = origins.find((item) => item.taskId === task.id)!;
-      if (task.boxesTarget !== goal.boxes || origin.purpose !== goal.purpose)
+      if (task.boxesTarget !== 1 || origin.purpose !== goal.purpose)
         intents.push({
           kind: "resize",
           taskId: task.id,
-          boxesTarget: goal.boxes,
+          boxesTarget: 1,
           purpose: goal.purpose,
           proposalHash: goal.hash,
         });
@@ -216,15 +230,16 @@ export function automaticTaskIntents(
     if (intents.length >= AUTOMATIC_RUN_MAX_INTENTS) return intents;
   }
   for (const [skuId, goal] of desired) {
-    if (retained.has(skuId)) continue;
-    intents.push({
-      kind: "create",
-      skuId,
-      boxesTarget: goal.boxes,
-      purpose: goal.purpose,
-      proposalHash: goal.hash,
-    });
-    if (intents.length >= AUTOMATIC_RUN_MAX_INTENTS) break;
+    for (let count = retained.get(skuId) ?? 0; count < goal.count; count++) {
+      intents.push({
+        kind: "create",
+        skuId,
+        boxesTarget: 1,
+        purpose: goal.purpose,
+        proposalHash: goal.hash,
+      });
+      if (intents.length >= AUTOMATIC_RUN_MAX_INTENTS) return intents;
+    }
   }
   return intents;
 }

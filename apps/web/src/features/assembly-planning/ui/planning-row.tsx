@@ -144,7 +144,7 @@ export function PlanningRow({
               onClick={() => void onCreate()}
             >
               <Boxes size={16} />
-              Создать задание
+              Создать задание на один короб
             </Button>
           )}
           {!previous && action === "receiving" && (

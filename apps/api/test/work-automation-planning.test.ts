@@ -79,7 +79,7 @@ function fixture() {
     ({ rows }) as MarketplacePlanDto;
   return { w, row, task, origin, plan };
 }
-test("automatic work uses small urgent batches first and one backlog box without mutating input", () => {
+test("urgent demand creates individual boxes up to the queue limit without mutating input", () => {
   const { w, row, plan } = fixture();
   const before = JSON.stringify(w);
   const intents = automaticTaskIntents(
@@ -92,10 +92,7 @@ test("automatic work uses small urgent batches first and one backlog box without
     intents.map((i) =>
       i.kind === "create" ? [i.skuId, i.boxesTarget, i.purpose] : [],
     ),
-    [
-      ["sku-cats", 10, "urgent"],
-      ["sku-space", 1, "backlog"],
-    ],
+    Array.from({ length: 5 }, () => ["sku-cats", 1, "urgent"]),
   );
   assert.equal(JSON.stringify(w), before);
 });
@@ -108,7 +105,15 @@ test("a feasible small urgent batch may cover part of the recommendation, but ne
     "Недостаточно свободных размещённых раскрасок для всей рекомендации",
   ];
   const allowed = automaticTaskIntents(w, plan(r), [], false);
-  assert.equal(allowed[0].kind === "create" ? allowed[0].boxesTarget : 0, 2);
+  assert.equal(allowed.length, 2);
+  assert.ok(
+    allowed.every(
+      (intent) => intent.kind === "create" && intent.boxesTarget === 1,
+    ),
+  );
+  r.rawAvailableUnits = 12;
+  assert.deepEqual(automaticTaskIntents(w, plan(r), [], false), []);
+  r.rawAvailableUnits = 45;
   r.blockers.push("Нужно подтвердить остатки");
   assert.deepEqual(automaticTaskIntents(w, plan(r), [], false), []);
 });
@@ -138,13 +143,23 @@ test("unknown, unregistered, missing raw, full storage or assembly pressure neve
     );
   }
 });
-test("existing human or taken work prevents duplicate work for that SKU", () => {
+test("assigned, active and paused work uses the same five slots without being changed", () => {
   for (const status of ["queued", "active", "paused"]) {
     const { w, row, task, plan } = fixture();
-    const human = task("manual");
-    human.status = status;
-    w.tasks.push(human);
-    assert.deepEqual(automaticTaskIntents(w, plan(row()), [], false), []);
+    w.tasks = [{ ...task("manual", "sku-cats", 1), status }];
+    const intents = automaticTaskIntents(
+      w,
+      plan(row("sku-cats", 40)),
+      [],
+      false,
+    );
+    assert.equal(intents.length, 4);
+    assert.ok(
+      intents.every(
+        (intent) => intent.kind === "create" && intent.boxesTarget === 1,
+      ),
+    );
+    assert.equal(w.tasks[0].status, status);
   }
 });
 test("only untouched unassigned automated queues are excluded from calculation", () => {
@@ -193,14 +208,14 @@ test("reconciliation keeps IDs, reduces changed targets, withdraws obsolete or d
           : [i.kind],
     ),
     [
-      ["resize", "auto", 2],
-      ["withdraw", "duplicate"],
+      ["resize", "auto", 1],
+      ["resize", "duplicate", 1],
       ["withdraw", "obsolete"],
     ],
   );
   assert.deepEqual(
-    automaticTaskIntents(w, plan(row()), origins, false).map((i) => i.kind),
-    ["withdraw", "withdraw"],
+    automaticTaskIntents(w, plan(), origins, false).map((i) => i.kind),
+    ["withdraw", "withdraw", "withdraw"],
   );
 });
 test("full assembly withdraws only untouched queued auto work and preserves started work", () => {
@@ -416,9 +431,9 @@ test("a hundred-box demand rotates to another urgent theme after a batch and ret
   });
   const round = automaticTaskIntents(w, plan(...rows), origins, false);
   assert.equal(round[0].kind === "create" && round[0].skuId, "sku-000");
-  assert.equal(round[0].kind === "create" && round[0].boxesTarget, 10);
+  assert.equal(round[0].kind === "create" && round[0].boxesTarget, 1);
 });
-test("a single needed theme may continue in ten-box batches when no valid alternative needs work", () => {
+test("a single needed theme has at most five distinct one-box tasks", () => {
   const { w, rows, task, origin, plan } = wideFixture(2);
   rows[0].recommendedBoxes = 100;
   rows[0].recommendedUnits = 2000;
@@ -433,9 +448,9 @@ test("a single needed theme may continue in ten-box batches when no valid altern
     [origin(done.id, done.skuId)],
     false,
   );
-  assert.equal(intents.length, 1);
+  assert.equal(intents.length, 5);
   assert.equal(intents[0].kind === "create" && intents[0].skuId, rows[0].skuId);
-  assert.equal(intents[0].kind === "create" && intents[0].boxesTarget, 10);
+  assert.equal(intents[0].kind === "create" && intents[0].boxesTarget, 1);
 });
 test("rotation preserves urgent priority over backlog and handles unknown legacy times deterministically", () => {
   const { w, rows, task, origin, plan } = wideFixture(3);

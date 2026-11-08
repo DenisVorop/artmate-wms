@@ -37,7 +37,7 @@ export function afterAssemblyCommand(
       : {
           selectedId: task.id,
           tab: "completed",
-          notice: `${task.code} завершено. На общий накопитель собрано коробов: ${task.boxesCompleted}. Доступных заданий для этого сотрудника сейчас нет — сотрудник свободен.`,
+          notice: `${task.code} завершено. На общий накопитель собрано коробов: ${task.boxesCompleted}. Следующее задание можно взять из очереди.`,
           kind: "complete",
         };
   }

@@ -395,6 +395,7 @@ export class WorkAutomationService {
     intents: AutomaticTaskIntent[],
     checkedAt: string,
   ) {
+    const matched = new Set<string>();
     for (const intent of intents) {
       if (intent.kind === "withdraw") {
         const origin = origins.find((item) => item.taskId === intent.taskId);
@@ -414,9 +415,13 @@ export class WorkAutomationService {
         intent.kind === "resize"
           ? state.tasks.find((item) => item.id === intent.taskId)
           : state.tasks.find(
-              (item) => !previous.has(item.id) && item.skuId === intent.skuId,
+              (item) =>
+                !previous.has(item.id) &&
+                !matched.has(item.id) &&
+                item.skuId === intent.skuId,
             );
       if (!task) throw new Error("Automatic task was not committed");
+      matched.add(task.id);
       const old = origins.find((item) => item.taskId === task.id);
       await saveAutomationOrigin(tx, {
         taskId: task.id,

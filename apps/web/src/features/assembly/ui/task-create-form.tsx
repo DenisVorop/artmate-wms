@@ -21,7 +21,7 @@ export function TaskCreateForm({
 }) {
   const form = useForm<AssemblyValues>({
     resolver: zodResolver(assemblySchema),
-    defaultValues: { skuId: "", boxesTarget: 2, employeeId: "" },
+    defaultValues: { skuId: "", boxesTarget: 1, employeeId: "" },
   });
   const sku = data.skus.find((item) => item.id === form.watch("skuId"));
   return (
@@ -71,11 +71,11 @@ export function TaskCreateForm({
             </p>
           )}
           <label className="field">
-            Сколько коробов собрать
+            Сколько заданий создать · один короб на задание
             <Input
               type="number"
               min={1}
-              max={1000}
+              max={5}
               step={1}
               {...form.register("boxesTarget", { valueAsNumber: true })}
               aria-invalid={!!form.formState.errors.boxesTarget}

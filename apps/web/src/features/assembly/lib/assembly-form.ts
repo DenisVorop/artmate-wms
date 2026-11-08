@@ -10,7 +10,7 @@ export const assemblySchema = z.object({
     .number({ invalid_type_error: "Укажите количество коробов" })
     .int("Нужно целое количество")
     .min(1, "Минимум 1 короб")
-    .max(1000, "Не больше 1000 коробов"),
+    .max(5, "Не больше пяти отдельных заданий"),
 });
 export type AssemblyValues = z.infer<typeof assemblySchema>;
 export function buildAssembly(values: AssemblyValues): CreateTaskDto {

@@ -335,7 +335,7 @@ export function AssemblyPlanningFeature() {
                   );
                   if (result)
                     setNotice(
-                      `Задание «${row.skuName}» добавлено в очередь: ${boxesLabel(row.recommendedBoxes)}.`,
+                      `Задание «${row.skuName}» добавлено в очередь: один короб.`,
                     );
                 }}
               />

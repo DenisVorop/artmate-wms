@@ -220,13 +220,17 @@ test("preprinted labels issue without inventory; actor/working/source checks, at
       ).total,
       999,
     );
-    // Complete the remaining task box with a new label; old remainder + newer FIFO lot mix.
-    if (owner.boxesTarget === 2) {
-      await source(w, owner);
-      await scan(w, owner, "box", spare.code);
-      for (let i = 0; i < owner.unitsPerBox; i++) {
-        await source(w, owner);
-        await scan(w, owner, "barcode", sku.barcode);
+    // The next box keeps its mixed FIFO reservation and needs an explicit claim.
+    if (owner.id === first.id) {
+      const next = packed.tasks.find(
+        (t) => t.employeeId === owner.employeeId && t.status === "queued",
+      )!;
+      await w.claimTask(next.id, { ...req(), employeeId: owner.employeeId! });
+      await source(w, next);
+      await scan(w, next, "box", spare.code);
+      for (let i = 0; i < next.unitsPerBox; i++) {
+        await source(w, next);
+        await scan(w, next, "barcode", sku.barcode);
       }
       const mixed = (await w.snapshot()).boxes.find(
         (b) => b.code === spare.code,
@@ -544,20 +548,21 @@ test("preprinted labels stay free after early capacity rejection; a confirmed mi
         service.getBoxLabelBatchLabels(batch.id, { status: "free" }),
       )
     ).items;
-    const t = await task(w, "employee-1", 2),
+    const first = await task(w, "employee-1"),
       barcode = (await w.snapshot()).skus.find(
-        (s) => s.id === t.skuId,
+        (s) => s.id === first.skuId,
       )!.barcode;
-    await source(w, t);
-    await as("one", () => scan(w!, t, "box", labels[0].payload));
+    await source(w, first);
+    await as("one", () => scan(w!, first, "box", labels[0].payload));
     for (let i = 0; i < 20; i++)
-      await as("one", () => scan(w!, t, "barcode", barcode));
+      await as("one", () => scan(w!, first, "barcode", barcode));
     const firstState = await w.snapshot(),
       firstBox = firstState.boxes.find((b) => b.code === labels[0].code)!;
     assert.deepEqual(
       firstBox.lotContents.map((c) => c.quantity),
       [20],
     );
+    const t = await task(w, "employee-1");
     const accumulator = firstState.pallets.find(
       (p) => p.id === firstBox.palletId,
     )!;

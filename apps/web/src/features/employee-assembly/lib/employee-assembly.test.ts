@@ -62,7 +62,7 @@ test("own active/paused work outranks previews and foreign work is never selecte
   assert.equal(selectEmployeeAssembly(rows, ""), undefined);
   assert.deepEqual(rows, copy);
 });
-test("the oldest own queued preview is stable; free queue is only a fallback", () => {
+test("the oldest own preview is stable and free work respects server ranking", () => {
   assert.equal(
     selectEmployeeAssembly(
       [
@@ -83,7 +83,7 @@ test("the oldest own queued preview is stable; free queue is only a fallback", (
       ],
       "self",
     )?.id,
-    "a",
+    "z",
   );
 });
 test("source and unique box must be confirmed before items, including each newly reset box", () => {
@@ -184,7 +184,7 @@ test("a committed snapshot chooses the next server-active assignment without cla
   );
   assert.match(
     employeeAssemblyResult(before, [done], "self") ?? "",
-    /Собрано коробов: 10/,
+    /Возьмите следующее/,
   );
   assert.equal(
     employeeAssemblyResult(before, [{ ...before, scannedUnits: 20 }], "self"),

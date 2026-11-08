@@ -1,3 +1,4 @@
+import { assemblyQueueOrder } from "../src/assembly-queue";
 import "reflect-metadata";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -122,7 +123,7 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
       },
     );
     await t.test(
-      "current published plan creates one unassigned small task with FIFO and durable provenance; concurrent runs deduplicate",
+      "current published plan creates one task per box with FIFO and durable provenance; concurrent runs deduplicate",
       async () => {
         const before = await w.snapshot();
         const outcomes = await Promise.all([
@@ -131,25 +132,46 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
         ]);
         assert.equal(outcomes.filter((value) => value === "updated").length, 1);
         const after = await w.snapshot();
-        const task = after.tasks.find(
+        const tasks = after.tasks.filter(
           (item) => !before.tasks.some((old) => old.id === item.id),
-        )!;
-        assert.ok(task);
-        assert.equal(task.boxesTarget, 3);
-        assert.equal(task.employeeId, null);
-        assert.equal(task.status, "queued");
+        );
+        assert.equal(tasks.length, 3);
+        assert.ok(
+          tasks.every(
+            (task) =>
+              task.boxesTarget === 1 &&
+              task.employeeId === null &&
+              task.status === "queued",
+          ),
+        );
         assert.deepEqual(
-          task.reservations.map((r) => [r.palletId, r.quantity]),
+          tasks
+            .sort(assemblyQueueOrder(tasks, "employee"))
+            .map((task) =>
+              task.reservations.map((r) => [r.palletId, r.quantity]),
+            ),
           [
-            ["pallet-raw-0", 30],
-            ["pallet-cats-new", 30],
+            [["pallet-raw-0", 20]],
+            [
+              ["pallet-raw-0", 10],
+              ["pallet-cats-new", 10],
+            ],
+            [["pallet-cats-new", 20]],
           ],
         );
         const recorded = await origins();
-        assert.equal(recorded.length, 1);
-        assert.equal(recorded[0].taskId, task.id);
-        assert.equal(recorded[0].proposalHash, "published-3");
-        assert.equal(recorded[0].purpose, "urgent");
+        assert.equal(recorded.length, 3);
+        assert.deepEqual(
+          new Set(recorded.map((origin) => origin.taskId)),
+          new Set(tasks.map((task) => task.id)),
+        );
+        assert.ok(
+          recorded.every(
+            (origin) =>
+              origin.proposalHash === "published-3" &&
+              origin.purpose === "urgent",
+          ),
+        );
         assert.deepEqual(after.boxes, before.boxes);
         assert.deepEqual(after.pallets, before.pallets);
         assert.deepEqual(after.shipments, before.shipments);
@@ -158,7 +180,7 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
       },
     );
     await t.test(
-      "a changed plan reduces the same task and obsolete work is withdrawn with snapshot, never completed",
+      "a changed plan retains two single tasks and withdraws obsolete work with snapshot",
       async () => {
         const original = (await w.snapshot()).tasks.find(
           (task) => task.skuId === "sku-cats" && task.employeeId === null,
@@ -169,10 +191,10 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
           (task) => task.id === original.id,
         )!;
         assert.equal(reduced.code, original.code);
-        assert.equal(reduced.boxesTarget, 2);
+        assert.equal(reduced.boxesTarget, 1);
         assert.equal(
           reduced.reservations.reduce((n, r) => n + r.quantity, 0),
-          40,
+          20,
         );
         boxes = 0;
         assert.equal(await service.runWorkAutomation(), "updated");
@@ -184,7 +206,7 @@ test("automatic work persists FIFO tasks and reconciles only untouched origins w
           (item) => item.taskId === original.id,
         )!;
         assert.equal(origin.status, "withdrawn");
-        assert.equal(origin.withdrawnTask?.boxesTarget, 2);
+        assert.equal(origin.withdrawnTask?.boxesTarget, 1);
         assert.equal(origin.withdrawnTask?.boxesCompleted, 0);
         assert.ok(origin.withdrawnReason);
       },

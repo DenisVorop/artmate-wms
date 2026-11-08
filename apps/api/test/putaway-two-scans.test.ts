@@ -27,12 +27,13 @@ test("one box scan and one address scan persist carry across restart, advance th
       boxesTarget: 2,
       employeeId: actor,
     });
-    const assembly = s.tasks.at(-1)!;
-    await w.claimTask(assembly.id, { ...req(), employeeId: actor });
-    for (let i = 0; i < 2; i++) {
-      const current = (await w.snapshot()).tasks.find(
-        (t) => t.id === assembly.id,
-      )!;
+    const assemblies = s.tasks
+      .filter((t) => t.skuId === sku.id && t.status === "queued")
+      .slice(-2);
+    assert.equal(assemblies.length, 2);
+    for (const assembly of assemblies) {
+      const current = assembly;
+      await w.claimTask(assembly.id, { ...req(), employeeId: actor });
       await w.scanTask(assembly.id, {
         ...req(),
         employeeId: actor,

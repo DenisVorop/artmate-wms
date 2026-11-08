@@ -81,7 +81,7 @@ export function AssemblyFeature() {
               task.status === "queued" &&
               task.employeeId === (values.employeeId || null) &&
               task.skuId === values.skuId &&
-              task.boxesTarget === values.boxesTarget,
+              task.boxesTarget === 1,
           )
           .sort((a, b) =>
             (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
@@ -93,9 +93,11 @@ export function AssemblyFeature() {
         ui.setSearch("");
       }
       ui.setNotice(
-        values.employeeId
-          ? `Задание ${added?.code ?? ""} создано и назначено сотруднику ${data.employees.find((employee) => employee.id === values.employeeId)?.name ?? ""}. Для начала сборки исполнитель должен быть на смене; назначение можно изменить ниже.`
-          : `Задание ${added?.code ?? ""} создано в свободной очереди. Его можно взять на своей смене или назначить исполнителя ниже.`,
+        values.boxesTarget > 1
+          ? `Создано отдельных заданий по одному коробу: ${values.boxesTarget}.`
+          : values.employeeId
+            ? `Задание ${added?.code ?? ""} создано и назначено сотруднику ${data.employees.find((employee) => employee.id === values.employeeId)?.name ?? ""}. Для начала сборки исполнитель должен быть на смене; назначение можно изменить ниже.`
+            : `Задание ${added?.code ?? ""} создано в свободной очереди. Его можно взять на своей смене или назначить исполнителя ниже.`,
       );
     } catch {
       /* Preserve input and show the command error. */

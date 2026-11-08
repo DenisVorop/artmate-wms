@@ -1060,7 +1060,7 @@ export class MarketplaceService {
         throw new BadRequestException(
           backlog ? row.backlogReason : row.blockers.join(". "),
         );
-      const boxesTarget = backlog ? row.backlogBoxes : row.recommendedBoxes;
+      const boxesTarget = 1;
       const taskId = await this.warehouse.commitPlanningTask(
         tx,
         structuredClone(state),
