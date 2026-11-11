@@ -65,17 +65,20 @@ export async function loadOpeningLabelPage(
         signal?.throwIfAborted();
         const index = next++;
         try {
-          const label = await load(refs[index]);
+          const ref = refs[index];
+          const label = await load(ref);
           signal?.throwIfAborted();
+          // The stocktake stores the box ID; its physical QR contains the box code.
           if (
             ![label.svg, label.payload, label.code, label.title].every(
               (value) => typeof value === "string" && !!value.trim(),
             ) ||
+            (ref.type === "box" && label.boxId !== ref.id) ||
             label.payload !==
-              `artmate-wms:${refs[index].type}:${refs[index].id}`
+              `artmate-wms:${ref.type}:${ref.type === "box" ? label.code : ref.id}`
           )
             throw new Error("Не удалось получить полный QR этикетки.");
-          results[index] = { ref: refs[index], label };
+          results[index] = { ref, label };
         } catch (error) {
           failed = true;
           throw error;

@@ -1055,6 +1055,11 @@ export class UpdateShiftDto extends CommandDto {
   status!: string;
 }
 export class LabelDto {
+  @ApiPropertyOptional({
+    type: String,
+    description: "Resolved box ID when requested by its internal ID",
+  })
+  boxId?: string;
   @ApiProperty({ type: String }) payload!: string;
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String }) title!: string;

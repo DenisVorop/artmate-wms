@@ -45,10 +45,12 @@ test("label loading retains order, has at most four requests in flight, and retu
     max = Math.max(max, active);
     await new Promise((resolve) => setTimeout(resolve, 1));
     active--;
+    const code = ref.type === "box" ? `BOX-INV-12-${ref.id}` : "P1";
     return {
-      code: ref.id,
+      ...(ref.type === "box" ? { boxId: ref.id } : {}),
+      code,
       title: "Котики",
-      payload: `artmate-wms:${ref.type}:${ref.id}`,
+      payload: `artmate-wms:${ref.type}:${ref.type === "box" ? code : ref.id}`,
       svg: "<svg/>",
     };
   };
@@ -92,4 +94,28 @@ test("label loading rejects mismatched QR identifiers and malformed label conten
     loadOpeningLabelPage(refs, async () => ({ ...label, title: " " })),
     /полный QR/,
   );
+});
+
+test("a stored box label must identify the requested box and keep its scannable code", async () => {
+  const id = "stored-box-id";
+  const refs = [{ type: "box" as const, id }];
+  const label = {
+    boxId: id,
+    code: "BOX-INV-12-001-0001",
+    title: "Котики",
+    svg: "<svg/>",
+    payload: "artmate-wms:box:BOX-INV-12-001-0001",
+  };
+  assert.deepEqual(await loadOpeningLabelPage(refs, async () => label), [
+    { ref: refs[0], label },
+  ]);
+  for (const invalid of [
+    { ...label, boxId: undefined },
+    { ...label, boxId: "other-box-id" },
+    { ...label, payload: `artmate-wms:box:${id}` },
+  ])
+    await assert.rejects(
+      loadOpeningLabelPage(refs, async () => invalid),
+      /полный QR/,
+    );
 });

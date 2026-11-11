@@ -305,11 +305,18 @@ test("initial stocktake records observed existing stock only on authorized atomi
           "opening_balance",
         );
         assert.equal((await w.getStockLedger({})).summary.reconciled, true);
-        assert.equal(
-          approved.rows.find((row) => row.locationId === finishedAddress.id)!
-            .openingResult!.boxIds.length,
-          3,
-        );
+        const { boxIds } = approved.rows.find(
+          (row) => row.locationId === finishedAddress.id,
+        )!.openingResult!;
+        assert.equal(boxIds.length, 3);
+        for (const id of boxIds) {
+          const box = additions.find((item) => item.id === id)!;
+          const byId = await w.getLabel("box", id);
+          const byCode = await w.getLabel("box", box.code);
+          assert.notEqual(box.id, box.code);
+          assert.equal(byCode.payload, `artmate-wms:box:${box.code}`);
+          assert.deepEqual(byId, { ...byCode, boxId: id });
+        }
         const persisted = await audit();
         assert.deepEqual(
           await as("manager", () => service.approveStocktake(doc.id, approval)),

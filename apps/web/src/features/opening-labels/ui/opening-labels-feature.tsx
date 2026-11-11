@@ -26,9 +26,14 @@ export function OpeningLabelsFeature({
   locationId: string;
 }) {
   const [page, setPage] = useState(1);
-  const [kind, setKind] = useState<"pallet" | "box">("pallet");
+  const [selectedKind, setKind] = useState<"pallet" | "box">();
   const doc = useStocktake(stocktakeId),
     query = useOpeningLabels(doc.data, locationId, page);
+  const openingResult = doc.data?.rows.find(
+    (row) => row.locationId === locationId,
+  )?.openingResult;
+  const kind =
+    selectedKind ?? (openingResult?.boxIds?.length ? "box" : "pallet");
   const labels = (query.data?.labels ?? []).filter(
     (item) => item.ref.type === kind,
   );

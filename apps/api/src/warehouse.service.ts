@@ -4287,6 +4287,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     let code = "",
       title = "",
       payload = "";
+    let boxId: string | undefined;
     if (type === "work-zone") {
       const z = find(s.warehouse.workZones, id, "Рабочая зона");
       code = z.code;
@@ -4315,6 +4316,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       const box = s.boxes.find((b) => b.id === id || b.code === id);
       const task = s.tasks.find((t) => t.openBoxCode === id);
       if (!box && !task) throw new NotFoundException("Короб не найден");
+      if (box?.id === id) boxId = box.id;
       code = box?.code ?? task!.openBoxCode;
       title = find(s.skus, (box ?? task)!.skuId, "Тематика").name;
       payload = `artmate-wms:box:${code}`;
@@ -4323,6 +4325,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         "Тип метки: location, pallet, box или work-zone",
       );
     return {
+      ...(boxId === undefined ? {} : { boxId }),
       code,
       title,
       payload,
