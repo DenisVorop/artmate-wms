@@ -733,9 +733,6 @@
 .compactForm .rawRow {
   grid-template-columns: minmax(0, 1fr) minmax(90px, 120px) auto;
 }
-.compactForm .rawRow > .check {
-  grid-column: 1/-1;
-}
 .compactForm .inlineActions > button[type="submit"] {
   width: 100%;
   min-height: 50px;

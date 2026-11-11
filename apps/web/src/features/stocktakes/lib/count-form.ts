@@ -70,6 +70,11 @@ export function pendingCountBoxError(input: string): string | null {
     ? "Добавьте введённый код короба в список или очистите поле перед сохранением"
     : null;
 }
+export function hasRawStocktakeBaseline(row: StocktakeRowDto): boolean {
+  return (
+    row.baseline.pallet?.kind === "raw" || row.baseline.rawPallets.length > 0
+  );
+}
 export function stocktakeCountDefaults(
   row: StocktakeRowDto,
   compact = false,
@@ -98,15 +103,19 @@ export function stocktakeCountDefaults(
       quantity: String(item.quantity),
       present: true,
     }));
+  const observed = row.count?.rawPallets.map((pallet) => ({
+    palletCode: pallet.palletCode,
+    quantity: String(pallet.quantity),
+    present: true,
+  }));
+  const compactRaw =
+    observed ??
+    (hasRawStocktakeBaseline(row)
+      ? [{ palletCode: "", quantity: "", present: true }]
+      : []);
   return {
     locationCode: "",
-    rawPallets: compact
-      ? (row.count?.rawPallets ?? []).map((pallet) => ({
-          palletCode: pallet.palletCode,
-          quantity: String(pallet.quantity),
-          present: true,
-        }))
-      : [...known, ...extras],
+    rawPallets: compact ? compactRaw : [...known, ...extras],
     boxCodes: row.count?.boxCodes ?? [],
     inspected: false,
   };

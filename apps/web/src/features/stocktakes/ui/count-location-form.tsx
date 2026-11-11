@@ -11,6 +11,7 @@ import type {
 import { Button, Input } from "@/shared/ui";
 import {
   addCountBox,
+  hasRawStocktakeBaseline,
   pendingCountBoxError,
   stocktakeCountDefaults,
   stocktakeCountSchema,
@@ -56,6 +57,7 @@ export function CountLocationForm({
   const [expectedRevision, setExpectedRevision] = useState(revision);
   const [boxCode, setBoxCode] = useState("");
   const [boxError, setBoxError] = useState<string | null>(null);
+  const [showExtraBoxes, setShowExtraBoxes] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const form = useForm<StocktakeCountValues>({
     resolver: zodResolver(stocktakeCountSchema),
@@ -64,6 +66,16 @@ export function CountLocationForm({
   const raws = useFieldArray({ control: form.control, name: "rawPallets" });
   const boxes = form.watch("boxCodes");
   const rawValues = form.watch("rawPallets");
+  const showRaw =
+    !compact || hasRawStocktakeBaseline(row) || raws.fields.length > 0;
+  const showBoxes =
+    !compact ||
+    row.baseline.pallet?.kind === "finished" ||
+    row.baseline.boxes.length > 0 ||
+    boxes.length > 0 ||
+    showExtraBoxes;
+  const addRawPallet = () =>
+    raws.append({ palletCode: "", quantity: "", present: true });
   const dirty = form.formState.isDirty || !!boxCode.trim();
   useEffect(() => {
     onDirty(row.locationId, dirty);
@@ -192,6 +204,12 @@ export function CountLocationForm({
           placeholder="Введите или отсканируйте код адреса"
           disabled={disabled}
           {...form.register("locationCode")}
+          onKeyDown={(event) => {
+            if (!compact || event.key !== "Enter" || !raws.fields.length)
+              return;
+            event.preventDefault();
+            form.setFocus("rawPallets.0.palletCode");
+          }}
           aria-invalid={!!form.formState.errors.locationCode}
         />
         {form.formState.errors.locationCode && (
@@ -200,11 +218,13 @@ export function CountLocationForm({
           </span>
         )}
       </label>
-      <section>
-        <h4 className={styles.subheading}>Раскраски на паллетах</h4>
+      <section hidden={!showRaw}>
+        <h4 className={styles.subheading}>
+          {compact ? "Нерасфасованный товар" : "Раскраски на паллетах"}
+        </h4>
         <p className={styles.footerNote}>
           {compact ? (
-            "Введите код найденной паллеты и количество. Пустая паллета — 0 шт.; отсутствующую не добавляйте."
+            "Отсканируйте паллету и введите количество товара в штуках. Если паллета есть, но пуста, укажите 0."
           ) : (
             <>
               Отметьте физически найденные паллеты и введите количество.
@@ -216,6 +236,7 @@ export function CountLocationForm({
         </p>
         <div className={styles.rawRows}>
           {raws.fields.map((field, index) => {
+            const quantityId = `${id}-raw-quantity-${index}`;
             const known = row.baseline.rawPallets.find(
               (pallet) =>
                 pallet.palletCode.toLowerCase() ===
@@ -223,17 +244,22 @@ export function CountLocationForm({
             );
             return (
               <div className={styles.rawRow} key={field.id}>
-                <label className={styles.check} style={{ gridColumn: "1/-1" }}>
-                  <input
-                    type="checkbox"
-                    disabled={disabled}
-                    {...form.register(`rawPallets.${index}.present`)}
-                  />
-                  <span>
-                    Паллета {known?.palletCode ?? "с указанным кодом"} найдена
-                    здесь
-                  </span>
-                </label>
+                {!compact && (
+                  <label
+                    className={styles.check}
+                    style={{ gridColumn: "1/-1" }}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={disabled}
+                      {...form.register(`rawPallets.${index}.present`)}
+                    />
+                    <span>
+                      Паллета {known?.palletCode ?? "с указанным кодом"} найдена
+                      здесь
+                    </span>
+                  </label>
+                )}
                 <label className="field">
                   Код паллеты
                   <Input
@@ -241,9 +267,17 @@ export function CountLocationForm({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
+                    placeholder={
+                      compact ? "Отсканируйте QR паллеты" : undefined
+                    }
                     readOnly={!!known && !compact}
                     disabled={disabled}
                     {...form.register(`rawPallets.${index}.palletCode`)}
+                    onKeyDown={(event) => {
+                      if (!compact || event.key !== "Enter") return;
+                      event.preventDefault();
+                      document.getElementById(quantityId)?.focus();
+                    }}
                     aria-invalid={
                       !!form.formState.errors.rawPallets?.[index]?.palletCode
                     }
@@ -258,8 +292,8 @@ export function CountLocationForm({
                   )}
                 </label>
                 <StocktakeNumberField
-                  id={`${id}-raw-quantity-${index}`}
-                  label="Найдено, шт."
+                  id={quantityId}
+                  label={compact ? "Количество товара, шт." : "Найдено, шт."}
                   min={0}
                   max={100000000}
                   disabled={disabled || !rawValues[index]?.present}
@@ -275,15 +309,27 @@ export function CountLocationForm({
                     form.formState.errors.rawPallets?.[index]?.quantity?.message
                   }
                 />
-                {!known && (
+                {(compact || !known) && (
                   <Button
                     size="sm"
                     variant="ghost"
                     disabled={disabled}
                     onClick={() => raws.remove(index)}
-                    aria-label={`Убрать паллету ${index + 1}`}
+                    aria-label={
+                      compact ? undefined : `Убрать паллету ${index + 1}`
+                    }
                   >
-                    <X size={14} />
+                    {compact ? (
+                      raws.fields.length === 1 &&
+                      !rawValues[index]?.palletCode &&
+                      !rawValues[index]?.quantity ? (
+                        "Паллеты нет"
+                      ) : (
+                        "Убрать паллету"
+                      )
+                    ) : (
+                      <X size={14} />
+                    )}
                   </Button>
                 )}
                 {known && !compact && (
@@ -300,15 +346,13 @@ export function CountLocationForm({
           variant="ghost"
           size="sm"
           disabled={disabled || raws.fields.length >= 200}
-          onClick={() =>
-            raws.append({ palletCode: "", quantity: "", present: true })
-          }
+          onClick={addRawPallet}
         >
           <Plus size={14} />
           {compact ? "Добавить найденную паллету" : "Другая найденная паллета"}
         </Button>
       </section>
-      <section>
+      <section hidden={!showBoxes}>
         <h4 className={styles.subheading}>Готовые короба</h4>
         {!compact && !!row.baseline.boxes.length && (
           <p className={styles.footerNote}>
@@ -400,6 +444,32 @@ export function CountLocationForm({
             : "Неизвестный или найденный на другом адресе код сохранится как расхождение для проверки. Не создавайте для него новый товар."}
         </p>
       </section>
+      {(!showRaw || !showBoxes) && (
+        <div className={styles.inlineActions}>
+          {!showRaw && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={addRawPallet}
+            >
+              <Plus size={14} />
+              Нашли нерасфасованный товар
+            </Button>
+          )}
+          {!showBoxes && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => setShowExtraBoxes(true)}
+            >
+              <Plus size={14} />
+              Нашли готовые короба
+            </Button>
+          )}
+        </div>
+      )}
       <label className={styles.check}>
         <input
           type="checkbox"

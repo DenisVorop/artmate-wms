@@ -130,7 +130,14 @@ test("compact new count never prefills actual address pallet or box codes; manag
   });
   const fresh = stocktakeCountDefaults(source, true);
   assert.equal(fresh.locationCode, "");
-  assert.deepEqual(fresh.rawPallets, []);
+  assert.deepEqual(fresh.rawPallets, [
+    { palletCode: "", quantity: "", present: true },
+  ]);
+  const reopenedEmpty = stocktakeCountDefaults(
+    { ...source, count: { rawPallets: [], boxCodes: [] } },
+    true,
+  );
+  assert.deepEqual(reopenedEmpty.rawPallets, []);
   assert.deepEqual(fresh.boxCodes, []);
   assert.equal(fresh.inspected, false);
   assert.equal(
