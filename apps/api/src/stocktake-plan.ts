@@ -245,6 +245,20 @@ export function stocktakePlan(
         countedQuantity: qty,
         unitsDelta: 0,
       });
+    if (qty < pallet.quantity) {
+      const reserved = s.tasks
+        .filter((task) => task.status === "queued")
+        .flatMap((task) => task.reservations)
+        .filter((reservation) => reservation.palletId === id)
+        .reduce((sum, reservation) => sum + reservation.quantity, 0);
+      if (qty < reserved)
+        issue(
+          "ASSEMBLY_RESERVATION_SHORTAGE",
+          `${pallet.code}: насчитано ${qty} шт., а задания в очереди требуют ${reserved} шт. Перед утверждением освободите лишний резерв сборки`,
+          [pallet.locationId!],
+          id,
+        );
+    }
     if (qty !== pallet.quantity)
       changes.push({
         kind: "raw_count",

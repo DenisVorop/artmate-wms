@@ -475,6 +475,8 @@ export class StocktakeService {
             throw new BadRequestException(
               "Первичный остаток можно вводить только в документе первичного ввода",
             );
+          const reasons = cellBusyReasons(s, locationId);
+          if (reasons.length) throw new ConflictException(reasons.join("; "));
           count = {
             rawPallets: structuredClone(b.rawPallets),
             boxCodes: [...b.boxCodes],

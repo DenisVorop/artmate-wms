@@ -126,13 +126,13 @@ async function location(code: string, x: number) {
   });
   return s.locations.find((l) => l.code === code)!;
 }
-async function rawAt(l: D.LocationDto, qty = 100) {
+async function rawAt(l: D.LocationDto, qty = 100, skuId = "sku-cats") {
   const s = await w.createReceipt({
     ...req(),
     receivedAt: "2020-03-04T09:00:00.000Z",
     pallets: [
       {
-        skuId: "sku-cats",
+        skuId,
         quantity: qty,
         widthMm: 1200,
         depthMm: 800,
@@ -765,6 +765,80 @@ test("finished HTTP relocation and writeoff preserve provenance and empty source
   );
   assert.equal((await get(d.id)).status, "approved");
 });
+test("unclaimed assembly reserves neither block a recount nor change its baseline", async () => {
+  const address = await location("ST-QUEUED-ASSEMBLY", 84);
+  const catalog = await w.createSku({
+    ...req(),
+    name: "Сверка резерва сборки",
+    barcode: "ST-QUEUED-ASSEMBLY",
+  });
+  const pallet = await rawAt(address, 100, catalog.skus.at(-1)!.id);
+  const d = await doc([address.id], worker);
+  const initialVersion = d.rows[0].currentVersion;
+  const existing = await w.snapshot();
+  const state = await w.createTask({
+    ...req(),
+    skuId: pallet.skuId!,
+    boxesTarget: 1,
+  });
+  const task = state.tasks.find(
+    (item) => !existing.tasks.some((previous) => previous.id === item.id),
+  )!;
+  const reserved = task.reservations.find(
+    (item) => item.palletId === pallet.id,
+  );
+  assert.ok(reserved, "the queued task reserves the counted pallet");
+  const current = await get(d.id, worker);
+  assert.deepEqual(current.rows[0].busyReasons, []);
+  assert.equal(current.rows[0].currentVersion, initialVersion);
+  assert.equal(current.rows[0].stale, false);
+
+  const shortage = await count(
+    current,
+    address.id,
+    [{ palletCode: pallet.code, quantity: reserved.quantity - 1 }],
+    [],
+    worker,
+  );
+  assert.ok(
+    shortage.preview.issues.some(
+      (issue) => issue.code === "ASSEMBLY_RESERVATION_SHORTAGE",
+    ),
+  );
+  const review = await submit(shortage, worker);
+  const rejected = await call("POST", `stocktakes/${review.id}/approve`, {
+    ...req(),
+    expectedRevision: review.revision,
+    reason: "Проверка защиты резерва сборки",
+  });
+  assert.equal(rejected.status, 409);
+  assert.equal(
+    (await w.snapshot()).pallets.find((p) => p.id === pallet.id)!.quantity,
+    100,
+  );
+  const counted = await count(
+    review,
+    address.id,
+    [{ palletCode: pallet.code, quantity: reserved.quantity }],
+    [],
+    worker,
+  );
+  const approved = await approve(await submit(counted, worker));
+  assert.equal(approved.status, "approved");
+  assert.deepEqual(
+    (await w.snapshot()).tasks.find((t) => t.id === task.id),
+    task,
+  );
+
+  const whileQueued = await doc([address.id], worker);
+  await w.claimTask(task.id, { ...req(), employeeId: other.user.employeeId });
+  const active = await get(whileQueued.id, worker);
+  assert.equal(active.rows[0].stale, true);
+  assert.deepEqual(active.rows[0].busyReasons, [
+    "Паллета нужна для начатой сборки",
+  ]);
+});
+
 test("actual HTTP rejects invalid count bodies, another cell route replay and cached count after shift off", async () => {
   const l = await location("ST-STRICT", 60),
     second = await location("ST-STRICT-2", 63);

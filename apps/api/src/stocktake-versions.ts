@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { Queryable } from "./database";
 import * as D from "./dto";
+
+// A queued task reserves a quantity but nobody has taken its pallet into work.
+function assemblyUsesPallets(task: D.TaskDto) {
+  return task.status === "active" || task.status === "paused";
+}
+
 export function cellFingerprints(state: D.WorkspaceDto) {
   const result = new Map<string, string>();
   for (const l of state.locations) {
@@ -9,7 +15,7 @@ export function cellFingerprints(state: D.WorkspaceDto) {
       .sort((a, b) => a.id.localeCompare(b.id));
     const palletIds = new Set(pallets.map((p) => p.id));
     const reservations = state.tasks
-      .filter((t) => t.status !== "completed")
+      .filter(assemblyUsesPallets)
       .flatMap((t) =>
         t.reservations
           .filter((r) => r.quantity > 0 && palletIds.has(r.palletId))
@@ -123,11 +129,11 @@ export function cellBusyReasons(state: D.WorkspaceDto, id: string): string[] {
   if (
     state.tasks.some(
       (t) =>
-        t.status !== "completed" &&
+        assemblyUsesPallets(t) &&
         t.reservations.some((r) => r.quantity > 0 && palletIds.has(r.palletId)),
     )
   )
-    reasons.push("Товар зарезервирован заданием сборки");
+    reasons.push("Паллета нужна для начатой сборки");
   if (
     state.movements.some(
       (m) =>
