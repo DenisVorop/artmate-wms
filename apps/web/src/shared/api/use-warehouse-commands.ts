@@ -44,6 +44,7 @@ import type {
   UpdateRackSectionDto,
   CreateRackLevelDto,
   UpdateSkuPackagingDto,
+  UpdateSkuBarcodesDto,
   CreateMovementDto,
   ClaimMovementDto,
   ConfirmMovementDto,
@@ -165,6 +166,8 @@ export function useWarehouseCommands() {
       run(() => api.changeConsumables(id, dto)),
     enableConsumables: (dto: CommandDto) =>
       run(() => api.enableConsumables(dto)),
+    updateSkuBarcodes: (id: string, dto: UpdateSkuBarcodesDto) =>
+      run(() => api.updateSkuBarcodes(id, dto)),
     updateSkuPackaging: (id: string, dto: UpdateSkuPackagingDto) =>
       run(() => api.updateSkuPackaging(id, dto)),
     createMovement: (dto: CreateMovementDto) =>

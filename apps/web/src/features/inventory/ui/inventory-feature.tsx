@@ -25,7 +25,8 @@ export function InventoryFeature({
   if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
   const balance = data.balance;
   const skus = data.skus.filter((s) =>
-    `${s.name} ${s.code} ${s.barcode}`
+    [s.name, s.code, s.barcode, ...(s.alternateBarcodes ?? [])]
+      .join(" ")
       .toLowerCase()
       .includes(search.toLowerCase()),
   );

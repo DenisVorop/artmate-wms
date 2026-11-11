@@ -11,6 +11,7 @@ import { connectionPayload, mappingPayload } from "../lib/integration-form";
 import { ConnectionCard } from "./connection-card";
 import { ProductMapping } from "./product-mapping";
 import { SkuCreate } from "./sku-create";
+import { SkuBarcodes } from "./sku-barcodes";
 import { SupplyDocuments } from "./supply-documents";
 import styles from "./marketplace-integration.module.css";
 
@@ -87,6 +88,7 @@ export function MarketplaceIntegrationFeature() {
         ))}
       </div>
       <SupplyDocuments supplies={data.supplies} />
+      {skus.length > 0 && <SkuBarcodes skus={skus} />}
       <details className={`glass-panel ${styles.catalog} ${styles.disclosure}`}>
         <summary>
           <span>Товары · {data.products.length}</span>

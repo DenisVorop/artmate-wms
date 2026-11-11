@@ -153,7 +153,12 @@ function PalletFields({
     error?.widthCm || error?.depthCm || error?.heightCm || error?.weightKg;
   const existingBarcode =
     row.skuMode === "new"
-      ? data.skus.find((sku) => sku.barcode === row.newSku.barcode.trim())
+      ? data.skus.find((sku) => {
+          const barcode = row.newSku.barcode.trim();
+          return (
+            sku.barcode === barcode || sku.alternateBarcodes?.includes(barcode)
+          );
+        })
       : undefined;
   return (
     <section className={styles.row} aria-label={`Паллета ${index + 1}`}>

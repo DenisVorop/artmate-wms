@@ -294,6 +294,7 @@ export class SkuDto {
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String }) name!: string;
   @ApiProperty({ type: String }) barcode!: string;
+  @ApiPropertyOptional({ type: [String] }) alternateBarcodes?: string[];
   @ApiProperty({ type: Number }) unitsPerBox!: number;
   @ApiProperty({ type: String }) color!: string;
 }
@@ -609,6 +610,15 @@ export class CommandDto {
   @MaxLength(150)
   requestId!: string;
 }
+export class UpdateSkuBarcodesDto extends CommandDto {
+  @ApiProperty({ type: [String], maxItems: 50 })
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(150, { each: true })
+  alternateBarcodes!: string[];
+}
+
 export class ChangeConsumablesDto extends CommandDto {
   @ApiProperty({ type: String, enum: consumableItems })
   @IsIn(consumableItems)

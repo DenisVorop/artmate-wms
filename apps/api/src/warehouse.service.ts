@@ -22,6 +22,7 @@ import {
 } from "@nestjs/common";
 import { createDatabase, Database, Queryable } from "./database";
 import { requestAuth, projectWorkspace } from "./auth-context";
+import { linkedBarcodeOwners, skuBarcodeOwner } from "./sku-barcodes";
 import {
   consumableKey,
   consumableNames,
@@ -1638,7 +1639,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (name.length > 100 || barcode.length > 150 || (code?.length ?? 0) > 40)
       fail("Название, штрихкод или код тематики слишком длинные");
     const unitsPerBox = input.unitsPerBox ?? 20;
-    const existing = s.skus.find((x) => x.barcode === barcode);
+    const existing = skuBarcodeOwner(s.skus, barcode);
     if (existing) {
       if (
         existing.name !== name ||
@@ -2319,7 +2320,14 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (!task.boxCodeConfirmed)
         fail("Сначала отсканируйте код текущего короба");
       const sku = find(s.skus, task.skuId, "Тематика");
-      if (b.value !== sku.barcode)
+      const barcode = b.value.trim();
+      const owner = skuBarcodeOwner(s.skus, barcode);
+      const linked = owner
+        ? undefined
+        : (await linkedBarcodeOwners(tx, [barcode])).get(barcode);
+      if (
+        owner ? owner.id !== sku.id : linked?.size !== 1 || !linked.has(sku.id)
+      )
         fail(`Неверная тематика. Ожидается ${sku.name}`);
       if (task.sourcePalletId !== reservation.palletId)
         fail(`Отсканируйте исходную паллету ${source.code}`);
@@ -3196,6 +3204,46 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return this._command(`createRackLevel/${id}`, b, (s) => {
       this._addLevel(s, this._activeSection(s, id), b);
       activity(s, "Добавлен адрес яруса", b.code, "location");
+    });
+  }
+  updateSkuBarcodes(id: string, b: D.UpdateSkuBarcodesDto) {
+    return this._command(`updateSkuBarcodes/${id}`, b, async (s, tx) => {
+      const sku = find(s.skus, id, "Тематика");
+      if (
+        !Array.isArray(b.alternateBarcodes) ||
+        b.alternateBarcodes.length > 50 ||
+        b.alternateBarcodes.some(
+          (code) =>
+            typeof code !== "string" ||
+            !code.trim() ||
+            code.length > 150 ||
+            /\s/.test(code.trim()),
+        )
+      )
+        fail("Укажите до 50 штрихкодов без пробелов, до 150 символов каждый");
+      const codes = [
+        ...new Set(b.alternateBarcodes.map((code) => code.trim())),
+      ].filter((code) => code !== sku.barcode);
+      for (const code of codes) {
+        const other = skuBarcodeOwner(
+          s.skus.filter((item) => item.id !== id),
+          code,
+        );
+        if (other)
+          fail(`Штрихкод ${code} уже принадлежит тематике «${other.name}»`);
+      }
+      if (codes.length) {
+        const mappings = await linkedBarcodeOwners(tx, codes);
+        const conflict = [...mappings].find(([, owners]) =>
+          [...owners].some((owner) => owner !== id),
+        );
+        if (conflict)
+          fail(
+            `Штрихкод ${conflict[0]} уже связан с другой тематикой в карточках маркетплейсов`,
+          );
+      }
+      sku.alternateBarcodes = codes;
+      activity(s, "Штрихкоды тематики обновлены", sku.name, "warehouse");
     });
   }
   updateSkuPackaging(id: string, b: D.UpdateSkuPackagingDto) {

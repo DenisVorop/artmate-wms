@@ -106,6 +106,7 @@ export const warehouseOperations = new Set([
   "updateRackSection",
   "createRackLevel",
   "updateSkuPackaging",
+  "updateSkuBarcodes",
   "createMovement",
   "claimMovement",
   "takeMovement",

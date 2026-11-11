@@ -428,3 +428,20 @@
     margin-left: 20px;
   }
 }
+
+.barcodeForm {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin-top: 12px;
+}
+
+.barcodeForm label {
+  width: 100%;
+  max-width: 480px;
+}
+
+.barcodeForm textarea {
+  min-height: 100px;
+  resize: vertical;
+}

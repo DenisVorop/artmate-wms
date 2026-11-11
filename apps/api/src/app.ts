@@ -758,6 +758,26 @@ export class WarehouseController {
   ) {
     return this.warehouse.createRackLevel(id, body);
   }
+  @Post("skus/:id/barcodes")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "updateSkuBarcodes" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.UpdateSkuBarcodesDto })
+  @ApiParam({ name: "id", type: String })
+  updateSkuBarcodes(
+    @Param("id") id: string,
+    @Body(
+      new ValidationPipe({
+        expectedType: D.UpdateSkuBarcodesDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.UpdateSkuBarcodesDto,
+  ) {
+    return this.warehouse.updateSkuBarcodes(id, body);
+  }
   @Post("skus/:id/packaging")
   @HttpCode(200)
   @ApiOperation({ operationId: "updateSkuPackaging" })
