@@ -7,10 +7,12 @@ import type {
   StocktakeDto,
   StocktakeRowDto,
   CountStocktakeLocationDto,
+  WorkspaceDto,
 } from "@/shared/api/generated/model";
 import { Button, Input } from "@/shared/ui";
 import {
   addCountBox,
+  foreignPalletScanError,
   hasRawStocktakeBaseline,
   pendingCountBoxError,
   stocktakeCountDefaults,
@@ -22,6 +24,7 @@ import { StocktakeNumberField } from "./stocktake-number-field";
 import styles from "./stocktakes.module.css";
 
 export function CountLocationForm({
+  data,
   row,
   revision,
   pending,
@@ -33,6 +36,7 @@ export function CountLocationForm({
   compact = false,
 }: {
   compact?: boolean;
+  data?: Pick<WorkspaceDto, "pallets" | "locations">;
   row: StocktakeRowDto;
   revision: number;
   pending: boolean;
@@ -66,6 +70,12 @@ export function CountLocationForm({
   const raws = useFieldArray({ control: form.control, name: "rawPallets" });
   const boxes = form.watch("boxCodes");
   const rawValues = form.watch("rawPallets");
+  const scanError = (code: string) =>
+    compact ? foreignPalletScanError(data, row.locationId, code) : null;
+  const palletErrors = rawValues.map((item) =>
+    item.present ? scanError(item.palletCode) : null,
+  );
+  const hasForeignPallet = palletErrors.some(Boolean);
   const showRaw =
     !compact || hasRawStocktakeBaseline(row) || raws.fields.length > 0;
   const showBoxes =
@@ -121,7 +131,7 @@ export function CountLocationForm({
     <form
       className={`${styles.form} ${compact ? styles.compactForm : ""}`}
       onSubmit={form.handleSubmit(async (values) => {
-        if (disabled) return;
+        if (disabled || hasForeignPallet) return;
         const pendingCodeError = pendingCountBoxError(boxCode);
         if (pendingCodeError) {
           setBoxError(pendingCodeError);
@@ -237,6 +247,9 @@ export function CountLocationForm({
         <div className={styles.rawRows}>
           {raws.fields.map((field, index) => {
             const quantityId = `${id}-raw-quantity-${index}`;
+            const palletError =
+              palletErrors[index] ??
+              form.formState.errors.rawPallets?.[index]?.palletCode?.message;
             const known = row.baseline.rawPallets.find(
               (pallet) =>
                 pallet.palletCode.toLowerCase() ===
@@ -276,18 +289,24 @@ export function CountLocationForm({
                     onKeyDown={(event) => {
                       if (!compact || event.key !== "Enter") return;
                       event.preventDefault();
+                      if (scanError(event.currentTarget.value)) {
+                        event.currentTarget.select();
+                        return;
+                      }
                       document.getElementById(quantityId)?.focus();
                     }}
-                    aria-invalid={
-                      !!form.formState.errors.rawPallets?.[index]?.palletCode
+                    aria-invalid={!!palletError}
+                    aria-describedby={
+                      palletError ? `${quantityId}-pallet-error` : undefined
                     }
                   />
-                  {form.formState.errors.rawPallets?.[index]?.palletCode && (
-                    <span role="alert" className={styles.fieldError}>
-                      {
-                        form.formState.errors.rawPallets[index]?.palletCode
-                          ?.message
-                      }
+                  {palletError && (
+                    <span
+                      id={`${quantityId}-pallet-error`}
+                      role="alert"
+                      className={styles.fieldError}
+                    >
+                      {palletError}
                     </span>
                   )}
                 </label>
@@ -296,7 +315,11 @@ export function CountLocationForm({
                   label={compact ? "Количество товара, шт." : "Найдено, шт."}
                   min={0}
                   max={100000000}
-                  disabled={disabled || !rawValues[index]?.present}
+                  disabled={
+                    disabled ||
+                    !!palletErrors[index] ||
+                    !rawValues[index]?.present
+                  }
                   registration={form.register(`rawPallets.${index}.quantity`)}
                   value={rawValues[index]?.quantity ?? ""}
                   onApply={(value) =>
@@ -504,7 +527,11 @@ export function CountLocationForm({
         </p>
       )}
       <div className={styles.inlineActions}>
-        <Button type="submit" disabled={disabled} aria-busy={pending}>
+        <Button
+          type="submit"
+          disabled={disabled || hasForeignPallet}
+          aria-busy={pending}
+        >
           {compact ? "Сохранить и продолжить" : "Сохранить подсчёт ячейки"}
         </Button>
       </div>

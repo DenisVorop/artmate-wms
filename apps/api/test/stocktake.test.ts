@@ -352,9 +352,65 @@ test("paired raw relocation requires source omission and both counted addresses;
   )!;
   assert.equal(event.unitsDelta, 0);
   assert.equal(event.lines.length, 2);
-  let outside = await doc([a.id]);
-  outside = await count(outside, a.id, [{ palletCode: p.code, quantity: 100 }]);
-  assert(outside.preview.issues.some((i) => i.code === "OUTSIDE_SCOPE"));
+  const expected = await rawAt(a, 301);
+  const outside = await doc([a.id], worker);
+  const wrongPallet = [
+    { palletCode: `artmate-wms:pallet:${p.id}`, quantity: 304 },
+  ];
+  const rejected = await call(
+    "POST",
+    `stocktakes/${outside.id}/rows/${a.id}/count`,
+    {
+      ...req(),
+      expectedRevision: outside.revision,
+      locationCode: a.code,
+      rawPallets: wrongPallet,
+      boxCodes: [],
+    },
+    worker,
+  );
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.message, new RegExp(b.code));
+  assert.equal((await get(outside.id, worker)).rows[0].count, null);
+  assert.deepEqual(outside.preview.changes, []);
+
+  const row = outside.rows[0];
+  const legacy = stocktakePlan(
+    await w.snapshot(),
+    [
+      {
+        ...row,
+        count: { rawPallets: wrongPallet, boxCodes: [] },
+        countVersion: row.currentVersion,
+      },
+    ],
+    new Map([[a.id, row.currentVersion]]),
+    outside.revision,
+  );
+  assert(legacy.preview.issues.some((issue) => issue.code === "OUTSIDE_SCOPE"));
+  assert.deepEqual(legacy.preview.changes, []);
+  assert.equal(legacy.preview.unitsDelta, 0);
+  assert.equal(legacy.preview.canApprove, false);
+
+  const correct = await count(
+    outside,
+    a.id,
+    [
+      {
+        palletCode: `ARTMATE-WMS:PALLET:${expected.id.toUpperCase()}`,
+        quantity: 304,
+      },
+    ],
+    [],
+    worker,
+  );
+  assert.deepEqual(
+    correct.preview.changes.map(({ expectedQuantity, countedQuantity }) => [
+      expectedQuantity,
+      countedQuantity,
+    ]),
+    [[301, 304]],
+  );
 });
 test("worker ownership, revision conflict, unknown codes, aliases duplicate and review refresh history", async () => {
   const l = await location("ST-WORKER", 39),

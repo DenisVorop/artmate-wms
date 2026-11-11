@@ -30,7 +30,7 @@ export function StocktakeRow({
   preserveDraft = false,
   data,
 }: {
-  data?: Pick<WorkspaceDto, "skus" | "locations">;
+  data?: Pick<WorkspaceDto, "skus" | "locations" | "pallets">;
   compact?: boolean;
   preserveDraft?: boolean;
   doc: StocktakeDto;
@@ -216,6 +216,7 @@ export function StocktakeRow({
               <CountLocationForm
                 key={formKey}
                 compact={compact}
+                data={data}
                 row={row}
                 revision={doc.revision}
                 pending={pending}

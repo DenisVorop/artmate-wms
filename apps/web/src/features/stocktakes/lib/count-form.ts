@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   StocktakeRowDto,
   CountStocktakeLocationDto,
+  WorkspaceDto,
 } from "@/shared/api/generated/model";
 const code = z
   .string()
@@ -69,6 +70,26 @@ export function pendingCountBoxError(input: string): string | null {
   return input.trim()
     ? "Добавьте введённый код короба в список или очистите поле перед сохранением"
     : null;
+}
+export function foreignPalletScanError(
+  data: Pick<WorkspaceDto, "pallets" | "locations"> | undefined,
+  locationId: string,
+  scan: string,
+): string | null {
+  const value = scan
+    .trim()
+    .toLowerCase()
+    .replace(/^artmate-wms:pallet:/, "");
+  if (!data || !value) return null;
+  const pallet = data.pallets.find(
+    (item) =>
+      item.id.toLowerCase() === value || item.code.toLowerCase() === value,
+  );
+  if (!pallet?.locationId || pallet.locationId === locationId) return null;
+  const address = data.locations.find((item) => item.id === pallet.locationId);
+  return address
+    ? `Паллета ${pallet.code} числится в ячейке ${address.code}. Проверьте QR паллеты.`
+    : `Паллета ${pallet.code} числится в другой ячейке. Проверьте QR паллеты.`;
 }
 export function hasRawStocktakeBaseline(row: StocktakeRowDto): boolean {
   return (

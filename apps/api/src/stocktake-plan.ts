@@ -75,6 +75,24 @@ export function locationMatches(s: D.WorkspaceDto, id: string, value: string) {
     l = s.locations.find((l) => l.id === id);
   return l && (v === l.id.toLowerCase() || v === l.code.toLowerCase());
 }
+export function stocktakePalletByCode(s: D.WorkspaceDto, scan: string) {
+  const value = codeValue(scan.toLowerCase(), "pallet");
+  return s.pallets.find(
+    (pallet) =>
+      pallet.id.toLowerCase() === value || pallet.code.toLowerCase() === value,
+  );
+}
+export function stocktakePalletAddressError(
+  s: D.WorkspaceDto,
+  pallet: D.PalletDto,
+) {
+  const address = s.locations.find(
+    (location) => location.id === pallet.locationId,
+  );
+  return address
+    ? `Паллета ${pallet.code} числится в ячейке ${address.code}. Проверьте QR паллеты.`
+    : `Паллета ${pallet.code} числится в другой ячейке. Проверьте QR паллеты.`;
+}
 export function stocktakePlan(
   s: D.WorkspaceDto,
   rows: D.StocktakeRowSnapshotDto[],
@@ -122,12 +140,15 @@ export function stocktakePlan(
   }
   const rawFound = new Map<string, { locationId: string; quantity: number }>(),
     boxFound = new Map<string, string>();
+  const unresolvedRawLocations = new Set(
+    rows.filter((row) => !row.count).map((row) => row.locationId),
+  );
   for (const row of rows)
     if (row.count) {
       for (const count of row.count.rawPallets) {
-        const value = codeValue(count.palletCode, "pallet"),
-          p = s.pallets.find((p) => p.id === value || p.code === value);
+        const p = stocktakePalletByCode(s, count.palletCode);
         if (!p) {
+          unresolvedRawLocations.add(row.locationId);
           issue(
             "UNKNOWN_PALLET",
             `${row.locationCode}: неизвестный код паллеты «${count.palletCode}». Проверьте код и пересчитайте`,
@@ -143,6 +164,7 @@ export function stocktakePlan(
           !p.lotId ||
           !s.lots.some((l) => l.id === p.lotId && l.skuId === p.skuId)
         ) {
+          unresolvedRawLocations.add(row.locationId);
           issue(
             "UNAVAILABLE_PALLET",
             `${p.code}: паллета не является размещённым сырьём с известной партией`,
@@ -152,19 +174,23 @@ export function stocktakePlan(
           continue;
         }
         if (!scope.has(p.locationId)) {
+          unresolvedRawLocations.add(row.locationId);
           issue(
             "OUTSIDE_SCOPE",
-            `${p.code}: исходный адрес не включён в сверку. Создайте сверку с обоими адресами или оформите обычное перемещение`,
+            stocktakePalletAddressError(s, p),
             [p.locationId, row.locationId],
             p.id,
           );
           continue;
         }
-        if (rawFound.has(p.id)) {
+        const previous = rawFound.get(p.id);
+        if (previous) {
+          unresolvedRawLocations.add(previous.locationId);
+          unresolvedRawLocations.add(row.locationId);
           issue(
             "DUPLICATE_PALLET",
             `${p.code}: одна паллета указана более одного раза`,
-            [rawFound.get(p.id)!.locationId, row.locationId],
+            [previous.locationId, row.locationId],
             p.id,
           );
           continue;
@@ -232,8 +258,12 @@ export function stocktakePlan(
   for (const id of rawExpected) {
     const pallet = s.pallets.find((p) => p.id === id);
     if (!pallet) continue;
-    const found = rawFound.get(id),
-      qty = found?.quantity ?? 0;
+    const found = rawFound.get(id);
+    // An unresolved scan or an uncounted address cannot establish a shortage.
+    if (pallet.locationId && unresolvedRawLocations.has(pallet.locationId))
+      continue;
+    if (found && unresolvedRawLocations.has(found.locationId)) continue;
+    const qty = found?.quantity ?? 0;
     if (found && found.locationId !== pallet.locationId)
       changes.push({
         kind: "raw_pallet_relocation",

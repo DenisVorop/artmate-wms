@@ -38,7 +38,10 @@ export function StocktakeDocument({
   onCancel,
 }: {
   doc: StocktakeDto;
-  data?: Pick<WorkspaceDto, "skus" | "locations" | "warehouse" | "entrances">;
+  data?: Pick<
+    WorkspaceDto,
+    "skus" | "locations" | "warehouse" | "entrances" | "pallets"
+  >;
   isManager: boolean;
   ownEmployeeId: string;
   working: boolean;

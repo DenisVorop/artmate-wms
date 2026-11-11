@@ -22,6 +22,8 @@ import {
   rowIsStale,
   stocktakePlan,
   locationMatches,
+  stocktakePalletAddressError,
+  stocktakePalletByCode,
 } from "./stocktake-plan";
 import { cellVersions, cellBusyReasons } from "./stocktake-versions";
 import * as D from "./dto";
@@ -477,6 +479,18 @@ export class StocktakeService {
             );
           const reasons = cellBusyReasons(s, locationId);
           if (reasons.length) throw new ConflictException(reasons.join("; "));
+          for (const scanned of b.rawPallets) {
+            const pallet = stocktakePalletByCode(s, scanned.palletCode);
+            if (!pallet?.locationId || pallet.locationId === locationId)
+              continue;
+            const managerMove =
+              a.role === "manager" &&
+              rows.some((entry) => entry.locationId === pallet.locationId);
+            if (!managerMove)
+              throw new BadRequestException(
+                stocktakePalletAddressError(s, pallet),
+              );
+          }
           count = {
             rawPallets: structuredClone(b.rawPallets),
             boxCodes: [...b.boxCodes],
