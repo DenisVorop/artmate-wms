@@ -36,6 +36,7 @@ export const warehouseOperations = new Set([
   "restoreWorkZone",
   "startZoneWork",
   "leaveZoneWork",
+  "claimShipmentWork",
   "scanShipmentWork",
   "finishShipmentWork",
   "getWorkRoute",
@@ -132,6 +133,7 @@ const workerReads = new Set([
 const workerWrites = new Set([
   "startZoneWork",
   "leaveZoneWork",
+  "claimShipmentWork",
   "scanShipmentWork",
   "finishShipmentWork",
   "claimStocktake",
@@ -163,6 +165,7 @@ const actorWrites = new Set([
   "claimMovement",
   "startZoneWork",
   "leaveZoneWork",
+  "claimShipmentWork",
   "scanShipmentWork",
   "finishShipmentWork",
   "bindReceiptPalletLabel",
@@ -288,6 +291,7 @@ export async function authorizeWarehouse(
         "startZoneWork",
         "bindReceiptPalletLabel",
         "claimMovement",
+        "claimShipmentWork",
         "scanShipmentWork",
         "finishShipmentWork",
         "takePutawayBox",
@@ -300,6 +304,11 @@ export async function authorizeWarehouse(
       throw new ForbiddenException(
         "Для работы в зоне начните или возобновите свою смену",
       );
+    if (op === "claimShipmentWork") {
+      const shipment = state.shipments.find((x) => x.id === id);
+      if (shipment?.employeeId && shipment.employeeId !== account.employee_id)
+        throw new ForbiddenException("Отбор уже взял другой сотрудник");
+    }
     if (
       ["scanShipmentWork", "finishShipmentWork"].includes(op) &&
       state.shipments.find((x) => x.id === id)?.employeeId !==

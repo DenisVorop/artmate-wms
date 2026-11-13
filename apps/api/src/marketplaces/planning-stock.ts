@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "../box-stock";
 import { createHash } from "node:crypto";
 import type { Queryable } from "../database";
 import type { WorkspaceDto } from "../dto";
@@ -18,9 +19,7 @@ export interface PlanningStockConfirmation {
 /** This projection does not create physical inventory or grant shipping/FIFO availability. */
 export function trackedFinishedUnits(w: WorkspaceDto, skuId: string) {
   return w.boxes
-    .filter(
-      (b) => b.skuId === skuId && ["stored", "in_transit"].includes(b.status),
-    )
+    .filter((b) => b.skuId === skuId && isBoxOnHand(b.status))
     .reduce((n, b) => n + b.units, 0);
 }
 export function outgoingSupplyKeys(m: MarketplaceState, skuId: string) {

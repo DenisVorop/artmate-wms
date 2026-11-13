@@ -664,7 +664,7 @@ test("putaway carry resumes only same zone, blocks switch/shift, place autoadvan
   assert.equal(s.tasks.find((t) => t.id === secondTaskId)!.status, "completed");
   assert.equal(binding(s).jobId, null);
 });
-test("shipping ready-only claim, own narrow projection, exact reserved scans, named finish+FIFO ledger and atomic auto next", async () => {
+test("box picking scans FIFO reservations at storage, updates the pallet, and ships only on manager confirmation", async () => {
   let s = await w.snapshot();
   const pallet = s.pallets.find(
     (p) => p.id === s.boxes.find((b) => b.id === firstBox.id)!.palletId,
@@ -672,61 +672,79 @@ test("shipping ready-only claim, own narrow projection, exact reserved scans, na
   const prior = s.shipments.map((x) => x.id);
   s = await w.createShipment({ ...req(), skuId, boxesRequested: 1 });
   const draft = s.shipments.find((x) => !prior.includes(x.id))!;
+  assert.deepEqual(draft.boxIds, [firstBox.id]);
   await leave();
-  s = await start(shipping);
-  assert.equal(binding(s).jobId, null);
-  assert(!s.shipments.some((x) => x.id === draft.id));
-  const source = s.locations.find((l) => l.id === pallet.locationId)!;
-  let moved = await w.createMovement({
-    ...req(),
-    palletId: pallet.id,
-    toLocationId: "loc-shipping",
-    employeeId: manager.user.employeeId,
-    kind: "transfer",
-  });
-  const movement = moved.movements.find(
-    (m) => m.palletId === pallet.id && m.status === "planned",
-  )!;
-  await w.takeMovement(movement.id, {
-    ...req(),
-    palletCode: pallet.code,
-    locationCode: source.code,
-  });
-  await w.placeMovement(movement.id, {
-    ...req(),
-    palletCode: pallet.code,
-    locationCode: "OUT-01",
-  });
-  const balance = (await w.snapshot()).balance.totalUnits,
-    eventsBefore = (await w.getStockLedger({})).summary.eventsCount;
-  s = await start(shipping);
-  assert.equal(binding(s).jobId, draft.id);
-  assert.deepEqual(
-    s.shipments.map((x) => x.id),
-    [draft.id],
+  const free = await call("GET", "workspace", undefined, worker);
+  assert(free.body.shipments.some((x: D.ShipmentDto) => x.id === draft.id));
+  const base = `shipments/${draft.id}`;
+  s = await ok(
+    `${base}/work/claim`,
+    { ...req(), employeeId: worker.user.employeeId },
+    worker,
   );
-  assert.equal(s.balance.totalUnits, balance);
-  assert.equal((await w.getStockLedger({})).summary.eventsCount, eventsBefore);
   assert.equal(
-    (await call("POST", `shipments/${draft.id}/ship`, req())).status,
-    400,
+    s.shipments.find((x) => x.id === draft.id)!.employeeId,
+    worker.user.employeeId,
   );
+  assert(!s.warehouse.zoneWork.length);
+  assert.equal((await call("POST", `${base}/ship`, req())).status, 400);
   assert.equal(
     (
       await call(
         "POST",
-        `shipments/${draft.id}/work/scan`,
-        { ...req(), employeeId: other.user.employeeId, boxCode: firstBox.code },
+        `${base}/work/claim`,
+        { ...req(), employeeId: other.user.employeeId },
         other,
       )
     ).status,
     403,
   );
+  const scan = {
+    ...req(),
+    employeeId: worker.user.employeeId,
+    boxCode: `artmate-wms:box:${firstBox.code}`,
+  };
   assert.equal(
     (
       await call(
         "POST",
-        `shipments/${draft.id}/work/finish`,
+        `${base}/work/scan`,
+        { ...scan, ...req(), boxCode: "WRONG" },
+        worker,
+      )
+    ).status,
+    400,
+  );
+  const balance = s.balance.totalUnits;
+  s = await ok(`${base}/work/scan`, scan, worker);
+  assert.equal(s.shipments.find((x) => x.id === draft.id)!.status, "draft");
+  assert.deepEqual(s.shipments.find((x) => x.id === draft.id)!.scannedBoxIds, [
+    firstBox.id,
+  ]);
+  const box = s.boxes.find((b) => b.id === firstBox.id)!;
+  assert.equal(box.status, "staged");
+  assert.equal(box.locationId, null);
+  assert.equal(box.palletId, null);
+  assert.equal(
+    s.pallets.find((p) => p.id === pallet.id)!.quantity,
+    pallet.quantity - 1,
+  );
+  assert.equal(s.balance.totalUnits, balance);
+  assert.equal(
+    (await ok(`${base}/work/scan`, scan, worker)).revision,
+    s.revision,
+  );
+  assert.equal(
+    (await call("POST", `${base}/work/scan`, { ...scan, ...req() }, worker))
+      .status,
+    400,
+  );
+  assert.equal((await call("POST", `${base}/ship`, req(), worker)).status, 403);
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `${base}/work/finish`,
         {
           ...req(),
           employeeId: worker.user.employeeId,
@@ -737,91 +755,31 @@ test("shipping ready-only claim, own narrow projection, exact reserved scans, na
     ).status,
     400,
   );
+  const staged = await leave();
   assert.equal(
-    (
-      await call(
-        "POST",
-        `shipments/${draft.id}/work/scan`,
-        { ...req(), employeeId: worker.user.employeeId, boxCode: "WRONG" },
-        worker,
-      )
-    ).status,
-    400,
+    staged.shipments.some((x) => x.id === draft.id && x.status === "shipped"),
+    false,
   );
-  const scan = {
-    ...req(),
-    employeeId: worker.user.employeeId,
-    boxCode: `artmate-wms:box:${firstBox.code}`,
-  };
-  s = await ok(`shipments/${draft.id}/work/scan`, scan, worker);
-  assert.deepEqual(s.shipments.find((x) => x.id === draft.id)!.scannedBoxIds, [
-    firstBox.id,
-  ]);
-  assert.equal(s.balance.totalUnits, balance);
-  assert.equal(
-    (
-      await call(
-        "POST",
-        `shipments/${draft.id}/work/scan`,
-        { ...scan, ...req() },
-        worker,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await call(
-        "POST",
-        "work-zones/leave",
-        { ...req(), employeeId: worker.user.employeeId },
-        worker,
-      )
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await call(
-        "POST",
-        `shipments/${draft.id}/work/finish`,
-        {
-          ...req(),
-          employeeId: worker.user.employeeId,
-          zoneCode: code(receiving),
-        },
-        worker,
-      )
-    ).status,
-    400,
-  );
-  const finish = {
-      ...req(),
-      employeeId: worker.user.employeeId,
-      zoneCode: code(shipping),
-    },
-    out = await ok(`shipments/${draft.id}/work/finish`, finish, worker);
+  const ship = req();
+  const out = await ok(`${base}/ship`, ship);
   assert.equal(out.balance.totalUnits, balance - firstBox.units);
   assert.equal(out.shipments.find((x) => x.id === draft.id)!.status, "shipped");
-  assert.equal(binding(out).jobId, null);
+  assert.equal((await ok(`${base}/ship`, ship)).revision, out.revision);
+  const ledger = await w.getStockLedger({});
+  const events = ledger.items.filter((e) => e.referenceId === draft.id);
+  assert.equal(events.find((e) => e.kind === "shipment_pick")?.unitsDelta, 0);
   assert.equal(
-    (await ok(`shipments/${draft.id}/work/finish`, finish, worker)).revision,
-    out.revision,
+    events.find((e) => e.kind === "shipment_pick")?.employeeId,
+    worker.user.employeeId,
   );
-  const ledger = (await w.getStockLedger({})).items.find(
-    (e) => e.referenceId === draft.id,
-  )!;
-  assert.equal(ledger.kind, "shipment");
-  assert.equal(ledger.employeeId, worker.user.employeeId);
-  assert.equal(ledger.unitsDelta, -firstBox.units);
-  assert(
-    !(await call("GET", "workspace", undefined, other)).body.shipments.some(
-      (x: D.ShipmentDto) => x.id === draft.id,
-    ),
+  assert.equal(
+    events.find((e) => e.kind === "shipment")?.unitsDelta,
+    -firstBox.units,
   );
+  assert.equal(ledger.summary.reconciled, true);
 });
 
-test("multiple workers claim distinct ready shipments, completion claims next atomically, pause preserves scanned ownership and revoke precedes replay", async () => {
+test("shipping QR takes distinct reservations concurrently, pause preserves picks and session revocation precedes replay", async () => {
   let s = await w.createLocation({
     ...req(),
     code: "ZONE-SHIP-2",
@@ -979,14 +937,12 @@ test("multiple workers claim distinct ready shipments, completion claims next at
     worker,
   );
   const beforeEvents = (await w.getWorkHistory({})).total;
-  s = await ok(
-    `shipments/${a.jobId}/work/finish`,
-    { ...req(), employeeId: worker.user.employeeId, zoneCode: code(shipping) },
-    worker,
-  );
+  s = await ok(`shipments/${a.jobId}/ship`, req());
+  assert.equal(binding(s).jobId, null);
+  assert.equal((await w.getWorkHistory({})).total, beforeEvents);
+  s = await start(shipping);
   const next = binding(s);
   assert(next.jobId && next.jobId !== a.jobId && next.jobId !== b.jobId);
-  assert.equal((await w.getWorkHistory({})).total, beforeEvents);
   assert.equal(
     (
       await call("POST", `work-zones/${shipping.id}`, {

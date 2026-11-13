@@ -99,6 +99,19 @@ export class ShipmentWorkController {
   constructor(
     @Inject(WarehouseService) private readonly warehouse: WarehouseService,
   ) {}
+  @Post(":id/work/claim")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "claimShipmentWork" })
+  @ApiParam({ name: "id", type: String })
+  @ApiBody({ type: D.ClaimTaskDto })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  claimShipmentWork(
+    @Param("id") id: string,
+    @Body(pipe(D.ClaimTaskDto)) b: D.ClaimTaskDto,
+  ) {
+    return this.warehouse.claimShipmentWork(id, b);
+  }
+
   @Post(":id/work/scan")
   @HttpCode(200)
   @ApiOperation({ operationId: "scanShipmentWork" })

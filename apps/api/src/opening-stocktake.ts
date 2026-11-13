@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "./box-stock";
 import { createHash } from "node:crypto";
 import { isISO8601 } from "class-validator";
 import type * as D from "./dto";
@@ -35,9 +36,7 @@ export function openingLocationIssues(
         pallet.locationId === locationId && pallet.status !== "retired",
     ) ||
     s.boxes.some(
-      (box) =>
-        box.locationId === locationId &&
-        ["stored", "in_transit"].includes(box.status),
+      (box) => box.locationId === locationId && isBoxOnHand(box.status),
     )
   )
     reasons.push(

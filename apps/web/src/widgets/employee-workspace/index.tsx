@@ -37,6 +37,7 @@ import { EmployeeJobList } from "./employee-job-list";
 export function EmployeeWorkspace(props: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
+  initialShipmentId?: string;
   initialShowJobs?: boolean;
 }) {
   return (
@@ -48,10 +49,12 @@ export function EmployeeWorkspace(props: {
 function EmployeeWorkspaceBody({
   initialMode = "zone",
   initialDocumentId,
+  initialShipmentId,
   initialShowJobs = false,
 }: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
+  initialShipmentId?: string;
   initialShowJobs?: boolean;
 }) {
   const { user } = useSession(),
@@ -67,6 +70,8 @@ function EmployeeWorkspaceBody({
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
     [problem, setProblem] = useState<string | null>(null);
+  const [selectedShipmentId, setSelectedShipmentId] =
+    useState(initialShipmentId);
   const workPanel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (showJobs) return;
@@ -186,7 +191,11 @@ function EmployeeWorkspaceBody({
   const choose = async (next: EmployeeMode, confirmed = false) => {
     if (zones.pending || scan.pending || (scan.unsaved && !confirmed))
       return false;
-    if (currentZone && !(await zones.leave())) return false;
+    if (
+      (currentZone || (mode === "shipping" && priority?.mode === "shipping")) &&
+      !(await zones.leave())
+    )
+      return false;
     if (confirmed) displayed.current.mode = next;
     day.choose(next);
     setProblem(null);
@@ -354,13 +363,17 @@ function EmployeeWorkspaceBody({
                       ["putaway", "Разместить короба"],
                       ["receiving", "Приёмка"],
                       ["movements", "Перемещения"],
+                      ["shipping", "Отбор коробов"],
                       ["stocktakes", "Инвентаризация"],
                     ] as [EmployeeMode, string][]
                   ).map(([key, label]) => (
                     <button
                       key={key}
                       disabled={
-                        blocked || (!!priority && priority.mode !== key)
+                        blocked ||
+                        (!!priority &&
+                          priority.mode !== "shipping" &&
+                          priority.mode !== key)
                       }
                       onClick={() => void choose(key)}
                     >
@@ -440,6 +453,19 @@ function EmployeeWorkspaceBody({
                 data={data}
                 employeeId={employee.id}
                 onResume={() => setShowJobs(false)}
+                canOpenShipping={
+                  !blocked &&
+                  !noShift &&
+                  (!priority || priority.mode === "shipping")
+                }
+                onOpenShipping={(shipmentId) => {
+                  setSelectedShipmentId(shipmentId);
+                  if (mode === "shipping") setShowJobs(false);
+                  else
+                    void choose("shipping").then((opened) => {
+                      if (opened) setShowJobs(false);
+                    });
+                }}
                 canOpenMovements={
                   !blocked &&
                   !noShift &&
@@ -571,7 +597,7 @@ function EmployeeWorkspaceBody({
                                 : "Дождитесь свободного места или сканируйте QR другой рабочей зоны."
                             }`
                           : currentZone?.assignment.message ||
-                            "Отсканируйте QR зоны приёмки, сборки, размещения или отгрузки."}
+                            "Отсканируйте QR рабочей зоны или выберите отбор коробов."}
                       </p>
                       <EmployeeScan
                         contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}`}
@@ -580,6 +606,17 @@ function EmployeeWorkspaceBody({
                         onScan={async () => false}
                         onProblem={setProblem}
                       />
+                      {!currentZone &&
+                        data.shipments.some(
+                          (row) => row.status === "draft",
+                        ) && (
+                          <Button
+                            disabled={blocked}
+                            onClick={() => void choose("shipping")}
+                          >
+                            К отбору коробов
+                          </Button>
+                        )}
                       {currentZone && (
                         <Button
                           disabled={blocked}
@@ -632,7 +669,9 @@ function EmployeeWorkspaceBody({
                         <EmployeeShipping
                           key={key}
                           data={data}
+                          shipmentId={selectedShipmentId}
                           onIdle={() => void choose("zone")}
+                          onQueue={() => void choose("shipping")}
                           onProblem={setProblem}
                         />
                       )}

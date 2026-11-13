@@ -249,6 +249,16 @@ test("partial shipment ships requested boxes and preserves remaining pallet quan
     palletCode: "FG-002",
     locationCode: "PICK-01",
   });
+  s = await warehouse.claimShipmentWork(shipment.id, {
+    ...req(),
+    employeeId: "employee-3",
+  });
+  for (const id of shipment.boxIds)
+    s = await warehouse.scanShipmentWork(shipment.id, {
+      ...req(),
+      employeeId: "employee-3",
+      boxCode: s.boxes.find((box) => box.id === id)!.code,
+    });
   s = await warehouse.shipShipment(shipment.id, req());
   s = await warehouse.createMovement({
     ...req(),
@@ -848,6 +858,16 @@ test("two pallets of one SKU ship through one picking position without losing he
   const shipment = s.shipments.find(
     (x) => x.skuId === "sku-dinos" && x.status === "draft",
   )!;
+  s = await warehouse.claimShipmentWork(shipment.id, {
+    ...req(),
+    employeeId: "employee-3",
+  });
+  for (const id of shipment.boxIds)
+    s = await warehouse.scanShipmentWork(shipment.id, {
+      ...req(),
+      employeeId: "employee-3",
+      boxCode: s.boxes.find((box) => box.id === id)!.code,
+    });
   s = await warehouse.shipShipment(shipment.id, req());
   assert.equal(s.pallets.find((p) => p.id === first.id)!.quantity, 0);
   assert.equal(s.pallets.find((p) => p.id === second.id)!.quantity, 0);

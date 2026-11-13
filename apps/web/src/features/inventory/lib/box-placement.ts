@@ -26,6 +26,12 @@ export function boxPlacement(
       status: "Отгружен",
       tone: "neutral" as const,
     };
+  if (box.status === "staged")
+    return {
+      address: "Отгрузка",
+      status: "Отобран",
+      tone: "warning" as const,
+    };
   if (box.status === "in_transit")
     return {
       address: "У сотрудника",

@@ -371,7 +371,7 @@ export class BoxDto {
   @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
   @ApiProperty({
-    enum: ["stored", "in_transit", "shipped", "written_off"],
+    enum: ["stored", "in_transit", "staged", "shipped", "written_off"],
     type: String,
   })
   status!: string;
@@ -415,6 +415,7 @@ export class EmployeeDto {
   @ApiProperty({ type: Number }) unitsToday!: number;
 }
 export class ShipmentDto {
+  @ApiPropertyOptional({ type: String, enum: ["box"] }) pickingMode?: "box";
   @ApiPropertyOptional({ type: String, nullable: true }) employeeId?:
     | string
     | null;
@@ -1447,6 +1448,7 @@ export const STOCK_LEDGER_KINDS = [
   "assembly",
   "putaway",
   "movement",
+  "shipment_pick",
   "shipment",
   "adjustment",
 ] as const;

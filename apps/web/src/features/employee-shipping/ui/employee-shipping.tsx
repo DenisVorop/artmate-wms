@@ -23,11 +23,15 @@ const boxCount = (count: number) =>
 export function EmployeeShipping({
   data,
   onIdle,
+  onQueue,
   onProblem,
+  shipmentId,
 }: {
   data: WorkspaceDto;
   onIdle: () => void;
+  onQueue: () => void;
   onProblem?: (message: string) => void;
+  shipmentId?: string;
 }) {
   const { user } = useSession();
   const commands = useEmployeeShipping();
@@ -40,6 +44,16 @@ export function EmployeeShipping({
   const working =
     data.employees.find((employee) => employee.id === user?.employeeId)
       ?.status === "working";
+  const queue = data.shipments.filter(
+    (row) =>
+      row.status === "draft" &&
+      !row.employeeId &&
+      !employeeShippingProgress(row).complete,
+  );
+  const selected = shipmentId
+    ? queue.find((row) => row.id === shipmentId)
+    : null;
+  const direct = shipment?.pickingMode === "box";
   const progress = shipment ? employeeShippingProgress(shipment) : null;
   const boxes =
     shipment?.boxIds.map((id) => data.boxes.find((box) => box.id === id)) ?? [];
@@ -50,7 +64,9 @@ export function EmployeeShipping({
   const busy = commands.pending || gateway.pending || scans.pending > 0;
   const issue = !working
     ? "Начните или возобновите рабочую смену."
-    : !zone || zone.archived || zone.kind !== "shipping"
+    : shipment &&
+        !direct &&
+        (!zone || zone.archived || zone.kind !== "shipping")
       ? "Зона отгрузки недоступна. Отсканируйте действующую зону."
       : assignment?.jobId && !shipment
         ? "Назначенная отгрузка недоступна. Обновите данные или сообщите руководителю."
@@ -60,6 +76,21 @@ export function EmployeeShipping({
             ? employeeShippingScopeIssue(data, shipment, zone)
             : null;
   const ready = !!shipment && !!zone && !!progress?.complete && !issue;
+  const nextPallet = data.pallets.find(
+    (pallet) => pallet.id === nextBox?.palletId,
+  );
+  const unavailable =
+    direct &&
+    nextBox &&
+    (!nextAddress ||
+      nextAddress.archived ||
+      nextAddress.blocked ||
+      nextPallet?.status !== "stored" ||
+      data.movements.some(
+        (m) =>
+          m.palletId === nextPallet.id &&
+          ["planned", "in_transit"].includes(m.status),
+      ));
   const totalUnits = boxes.reduce((sum, box) => sum + (box?.units ?? 0), 0);
   return (
     <section className={styles.feature} aria-label="Моя отгрузка">
@@ -68,18 +99,54 @@ export function EmployeeShipping({
           {commands.notice}
         </p>
       )}
-      <header className={styles.header}>
-        <span>Отгрузка</span>
-        {zone && <small>{zone.name}</small>}
-      </header>
-      {!shipment ? (
+      {!shipment && !issue && queue.length > 0 ? (
+        <div className={`glass-panel ${styles.panel}`}>
+          <h2 className={styles.queueTitle}>Отбор коробов</h2>
+          {commands.error && (
+            <p className={styles.error} role="alert">
+              {commands.error}
+            </p>
+          )}
+          <ul className={styles.queue}>
+            {(selected
+              ? [selected, ...queue.filter((row) => row.id !== selected.id)]
+              : queue
+            ).map((row) => (
+              <li key={row.id}>
+                <div>
+                  <strong>
+                    {data.skus.find((sku) => sku.id === row.skuId)?.name ??
+                      row.code}
+                  </strong>
+                  <small>
+                    {boxCount(
+                      row.boxIds.length - (row.scannedBoxIds?.length ?? 0),
+                    )}{" "}
+                    к отбору · {row.code}
+                  </small>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void commands.claim(row.id)}
+                >
+                  Взять отбор
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <Button variant="ghost" disabled={busy} onClick={onIdle}>
+            К рабочим зонам
+          </Button>
+        </div>
+      ) : !shipment ? (
         <div className={`glass-panel ${styles.center}`}>
           <Truck size={30} />
           <h2>{issue ? "Работа недоступна" : "Готовых отгрузок нет"}</h2>
           <p>
             {issue ??
               assignment?.message ??
-              "Для этой зоны пока нет подготовленных коробов. Руководитель создаёт отгрузки и готовит паллеты."}
+              "Руководитель создаёт отгрузки в WMS. Новые задания появятся здесь."}
           </p>
           <Button disabled={busy} onClick={onIdle}>
             К выбору зоны
@@ -99,22 +166,21 @@ export function EmployeeShipping({
           <div className={`glass-panel ${styles.panel}`}>
             {progress && !progress.complete ? (
               <>
-                <span className={styles.eyebrow}>ПРОВЕРКА КОРОБОВ</span>
-                <div
-                  className={styles.counter}
-                  aria-live="polite"
-                  aria-atomic="true"
-                >
-                  <strong>{progress.scanned}</strong>
-                  <span>/ {progress.total}</span>
-                </div>
-                <p className={styles.counterLabel}>коробов подтверждено</p>
+                {direct && <h3>Возьмите и отсканируйте короб</h3>}
+                <p className={styles.progress} role="status">
+                  {progress.scanned} из {progress.total}{" "}
+                  {direct ? "отобрано" : "подтверждено"}
+                </p>
                 {nextBox && (
                   <>
+                    <div className={styles.box}>
+                      <span>Следующий короб</span>
+                      <strong>{nextBox.code}</strong>
+                    </div>
                     <div className={styles.address}>
                       <MapPin size={21} />
                       <div>
-                        <span>Возьмите короб с адреса</span>
+                        <span>Адрес</span>
                         <strong>
                           {nextAddress?.code ?? "Адрес недоступен"}
                         </strong>
@@ -123,19 +189,18 @@ export function EmployeeShipping({
                     <LocationMapButton
                       data={data}
                       locationId={nextAddress?.id}
-                      routeRequest={{
-                        kind: "shipping",
-                        id: shipment.id,
-                        boxId: nextBox.id,
-                      }}
+                      routeRequest={
+                        shipment.workZoneId
+                          ? {
+                              kind: "shipping",
+                              id: shipment.id,
+                              boxId: nextBox.id,
+                            }
+                          : undefined
+                      }
                       intent="take"
                       contextKey={`shipping:${user?.employeeId ?? ""}:${shipment.id}:${nextBox.id}:${nextAddress?.id ?? "missing"}`}
                     />
-                    <div className={styles.box}>
-                      <span>Следующий короб</span>
-                      <strong>{nextBox.code}</strong>
-                      <small>{nextBox.units} раскрасок</small>
-                    </div>
                   </>
                 )}
                 {issue && (
@@ -143,20 +208,43 @@ export function EmployeeShipping({
                     {issue}
                   </p>
                 )}
+                {unavailable && (
+                  <p className={styles.error} role="status">
+                    Следующий короб сейчас недоступен. Можно сканировать другие
+                    короба из резерва.
+                  </p>
+                )}
                 <EmployeeScan
-                  contextKey={`shipping:${shipment.id}:${progress.nextBoxId ?? "missing"}`}
+                  contextKey={`shipping:${shipment.id}`}
                   label="Сканируйте код короба"
                   pending={commands.pending}
-                  disabled={!!issue || !nextBox}
+                  disabled={!!issue}
                   error={commands.error}
-                  repeat={false}
+                  repeat={direct}
                   onScan={(value) => commands.scan(shipment, value)}
                   onProblem={onProblem}
                 />
-                <p className={styles.help}>
-                  Скан подтверждает наличие короба. Остатки изменятся после
-                  отдельного подтверждения отгрузки.
+                {direct && (
+                  <Button
+                    variant="ghost"
+                    disabled={busy || scans.unsaved}
+                    onClick={onIdle}
+                  >
+                    Выйти из отбора
+                  </Button>
+                )}
+              </>
+            ) : direct ? (
+              <>
+                <PackageCheck size={28} className={styles.readyIcon} />
+                <h3>Отбор завершён</h3>
+                <p className={styles.summary}>
+                  Отобрано {boxCount(shipment.boxesRequested)}. Отправку
+                  подтверждает руководитель.
                 </p>
+                <Button disabled={busy} onClick={onQueue}>
+                  К отгрузкам
+                </Button>
               </>
             ) : (
               <>
@@ -217,7 +305,7 @@ export function EmployeeShipping({
               Сообщить о проблеме
             </Button>
           )}
-          {progress?.scanned === 0 && (
+          {!direct && progress?.scanned === 0 && (
             <Button variant="ghost" disabled={busy} onClick={onIdle}>
               К выбору зоны
             </Button>

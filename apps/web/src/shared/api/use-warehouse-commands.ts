@@ -115,6 +115,8 @@ export function useWarehouseCommands() {
       run(() => api.restoreWorkZone(id, dto)),
     startZoneWork: (dto: StartZoneWorkDto) => run(() => api.startZoneWork(dto)),
     leaveZoneWork: (dto: ClaimTaskDto) => run(() => api.leaveZoneWork(dto)),
+    claimShipmentWork: (id: string, dto: ClaimTaskDto) =>
+      run(() => api.claimShipmentWork(id, dto)),
     scanShipmentWork: (id: string, dto: ScanShipmentWorkDto) =>
       run(() => api.scanShipmentWork(id, dto)),
     finishShipmentWork: (id: string, dto: FinishShipmentWorkDto) =>

@@ -22,6 +22,8 @@ export function ShipmentCard({
   onShip,
 }: Props) {
   const state = shipmentReadiness(data, shipment);
+  const legacy = shipment.pickingMode !== "box" && !!shipment.employeeId;
+  const ready = shipment.pickingMode === "box" && state.ready;
   const units = state.boxes.reduce((sum, box) => sum + (box?.units ?? 0), 0);
   const hasRemainder = state.pallets.some(
     (pallet) =>
@@ -41,10 +43,16 @@ export function ShipmentCard({
     <article className="ops-task-card">
       <div className="ops-card-top">
         <span className="ops-mono">{shipment.code}</span>
-        <Badge tone={shipment.status === "shipped" ? "success" : "warning"}>
+        <Badge
+          tone={shipment.status === "shipped" || ready ? "success" : "warning"}
+        >
           {shipment.status === "shipped"
             ? "Отправлена"
-            : "Короба зарезервированы"}
+            : ready
+              ? "Готова к отправке"
+              : state.picked
+                ? `Отобрано ${state.picked} из ${shipment.boxesRequested}`
+                : "Короба зарезервированы"}
         </Badge>
       </div>
       <div className="ops-card-name">
@@ -68,23 +76,31 @@ export function ShipmentCard({
             onPrepare={onPrepare}
           />
           <p className={styles.dispatchHint}>
-            {state.ready
-              ? "Все выбранные короба находятся в зоне отбора или отгрузки. Можно подтвердить отправку."
-              : "Отправка станет доступна после подтверждённого размещения всех выбранных коробов в зоне отбора или отгрузки."}
+            {legacy
+              ? "Завершите уже начатую отгрузку через QR её рабочей зоны."
+              : ready
+                ? "Все короба отобраны. Подтвердите отправку после передачи груза."
+                : "Отсканируйте зарезервированные короба через рабочий экран."}
           </p>
           <div className="ops-action-row">
-            <Button
-              size="sm"
-              disabled={pending || !state.ready}
-              onClick={() => void onShip().catch(() => {})}
-            >
-              Подтвердить отправку
-              <ArrowUpRight size={14} />
-            </Button>
-            <Link href="/movements" className="button button--ghost button--sm">
-              Перемещения
-              <ArrowRight size={14} />
-            </Link>
+            {ready && (
+              <Button
+                size="sm"
+                disabled={pending}
+                onClick={() => void onShip().catch(() => {})}
+              >
+                Подтвердить отправку
+                <ArrowUpRight size={14} />
+              </Button>
+            )}
+            {!legacy && !ready && (
+              <Link
+                href={`/work?mode=shipping&shipmentId=${shipment.id}`}
+                className="button button--secondary button--sm"
+              >
+                Открыть отбор
+              </Link>
+            )}
           </div>
         </>
       )}

@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "./box-stock";
 import { assemblyQueueOrder } from "./assembly-queue";
 import {
   ASSEMBLY_QUEUE_MAX_TASKS,
@@ -835,7 +836,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       stockPositions(state),
     );
     if (
-      /^(?:(scanTask|packTask|takePutawayTask|placePutawayTask|takePutawayBox|placePutawayBox|takeMovement|placeMovement)\/|takeAnyPutawayBox$)/.test(
+      /^(?:(scanTask|packTask|takePutawayTask|placePutawayTask|takePutawayBox|placePutawayBox|takeMovement|placeMovement|scanShipmentWork)\/|takeAnyPutawayBox$)/.test(
         operation,
       )
     ) {
@@ -1026,6 +1027,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         )
       )
         fail("Короб в пути без задания размещения");
+      if (
+        box.status === "staged" &&
+        (box.palletId !== null ||
+          box.locationId !== null ||
+          s.shipments.filter(
+            (x) =>
+              x.status === "draft" &&
+              x.pickingMode === "box" &&
+              x.scannedBoxIds?.includes(box.id),
+          ).length !== 1)
+      )
+        fail("Отобранный короб должен находиться в одной отгрузке");
       if (box.lotContents.reduce((sum, c) => sum + c.quantity, 0) !== box.units)
         fail("Нарушен состав короба");
       if (
@@ -1598,9 +1611,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     );
     const workInProgressUnits = sum(s.tasks.map((t) => t.scannedUnits));
     const boxedUnits = sum(
-      s.boxes
-        .filter((b) => ["stored", "in_transit"].includes(b.status))
-        .map((b) => b.units),
+      s.boxes.filter((b) => isBoxOnHand(b.status)).map((b) => b.units),
     );
     const awaiting = s.pallets.filter((p) => p.status === "awaiting_placement");
     s.balance = {
@@ -2895,31 +2906,37 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       activity(s, "Размещение возвращено в очередь", t.code, "putaway");
     });
   }
+  private _shipmentBoxSource(s: D.WorkspaceDto, box: D.BoxDto) {
+    if (box.status !== "stored") return null;
+    const pallet = s.pallets.find((p) => p.id === box.palletId);
+    const location =
+      box.locationId && this._isActiveLocation(s, box.locationId)
+        ? s.locations.find((l) => l.id === box.locationId)
+        : null;
+    if (
+      !pallet ||
+      pallet.kind !== "finished" ||
+      pallet.status !== "stored" ||
+      pallet.skuId !== box.skuId ||
+      !location ||
+      pallet.locationId !== location.id ||
+      location.blocked ||
+      location.kind === "assembly" ||
+      s.putawayTasks.some(
+        (t) => t.boxId === box.id && t.status !== "completed",
+      ) ||
+      s.movements.some(
+        (m) =>
+          m.palletId === pallet.id &&
+          ["planned", "in_transit"].includes(m.status),
+      )
+    )
+      return null;
+    return { pallet, location };
+  }
   private _boxFifo(s: D.WorkspaceDto, skuId: string) {
     return s.boxes
-      .filter((b) => {
-        const p = s.pallets.find((p) => p.id === b.palletId);
-        const l = s.locations.find((l) => l.id === b.locationId);
-        return (
-          b.skuId === skuId &&
-          b.status === "stored" &&
-          p?.kind === "finished" &&
-          p.status === "stored" &&
-          !!l &&
-          p.locationId === l.id &&
-          this._isActiveLocation(s, l.id) &&
-          !l.blocked &&
-          l.kind !== "assembly" &&
-          !s.putawayTasks.some(
-            (t) => t.boxId === b.id && t.status !== "completed",
-          ) &&
-          !s.movements.some(
-            (m) =>
-              m.palletId === p.id &&
-              ["planned", "in_transit"].includes(m.status),
-          )
-        );
-      })
+      .filter((box) => box.skuId === skuId && this._shipmentBoxSource(s, box))
       .sort((a, b) => {
         const dates = (box: D.BoxDto) =>
           box.lotContents
@@ -2958,6 +2975,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         skuId: sku.id,
         boxesRequested: b.boxesRequested,
         status: "draft",
+        pickingMode: "box",
         boxIds: boxes.map((box) => box.id),
       });
       activity(
@@ -2971,18 +2989,25 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   shipShipment(id: string, b: D.CommandDto) {
     return this._command(`shipShipment/${id}`, b, (s) => {
       const shipment = find(s.shipments, id, "Отгрузка");
-      if (shipment.employeeId)
-        fail(
-          "Отгрузка взята сотрудником. Завершите её по сканам на рабочем месте",
-        );
+      if (shipment.pickingMode !== "box")
+        fail("Сначала отсканируйте зарезервированные короба на рабочем месте");
       this._shipShipment(s, id);
     });
   }
   private _shipShipment(s: D.WorkspaceDto, id: string) {
     const shipment = find(s.shipments, id, "Отгрузка");
     if (shipment.status === "shipped") fail("Отгрузка уже выполнена");
+    if (shipment.pickingMode === "box") {
+      if (!this._shipmentPickComplete(shipment))
+        fail("Сначала отсканируйте все зарезервированные короба");
+    }
     for (const boxId of shipment.boxIds) {
       const box = find(s.boxes, boxId, "Короб");
+      if (shipment.pickingMode === "box") {
+        if (box.status !== "staged") fail("Сначала отберите все короба");
+        box.status = "shipped";
+        continue;
+      }
       if (box.status !== "stored") fail("Короб уже отгружен");
       if (
         s.putawayTasks.some(
@@ -3027,6 +3052,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       }
     }
     shipment.status = "shipped";
+    if (shipment.pickingMode === "box" && shipment.employeeId) {
+      const binding = s.warehouse.zoneWork.find(
+        (w) =>
+          w.employeeId === shipment.employeeId &&
+          w.jobKind === "shipping" &&
+          w.jobId === shipment.id,
+      );
+      if (binding)
+        this._clearZoneJob(
+          s,
+          shipment.employeeId,
+          "Отгрузка отправлена. Выберите следующую работу",
+        );
+    }
     activity(
       s,
       "Отгрузка завершена",
@@ -3838,8 +3877,21 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         scanned.some((id) => !shipment.boxIds.includes(id))
       )
         fail("Подтверждённый короб не принадлежит отгрузке");
-      if (scanned.length && !shipment.employeeId)
+      if (
+        scanned.length &&
+        !shipment.employeeId &&
+        shipment.pickingMode !== "box"
+      )
         fail("У подтверждённых коробов отгрузки должен быть исполнитель");
+      if (
+        shipment.pickingMode === "box" &&
+        shipment.status === "draft" &&
+        scanned.some(
+          (id) =>
+            !s.boxes.some((box) => box.id === id && box.status === "staged"),
+        )
+      )
+        fail("Скан отбора должен соответствовать подготовленному коробу");
       if (shipment.employeeId)
         find(s.employees, shipment.employeeId, "Исполнитель отгрузки");
     }
@@ -3908,7 +3960,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     const shipments = s.shipments.filter(
       (x) => x.employeeId === employeeId && x.status === "draft",
     );
-    if (shipments.some((x) => (x.scannedBoxIds ?? []).length > 0))
+    if (
+      shipments.some(
+        (x) => x.pickingMode !== "box" && (x.scannedBoxIds ?? []).length > 0,
+      )
+    )
       fail("Сначала завершите отгрузку с уже подтверждёнными коробами");
     for (const t of tasks) {
       if (t.status === "active") t.status = "paused";
@@ -3921,7 +3977,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     for (const shipment of shipments) {
       shipment.employeeId = null;
       shipment.workZoneId = null;
-      shipment.scannedBoxIds = [];
+      if (shipment.pickingMode !== "box") shipment.scannedBoxIds = [];
     }
     s.warehouse.zoneWork = s.warehouse.zoneWork.filter(
       (w) => w.employeeId !== employeeId,
@@ -3958,7 +4014,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
               (x) =>
                 x.employeeId === b.employeeId &&
                 x.status === "draft" &&
-                x.workZoneId === zone.id,
+                (x.workZoneId === zone.id || x.pickingMode === "box"),
             )));
       if (
         carry &&
@@ -4127,8 +4183,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         (x) => x.employeeId === employeeId && x.status === "draft",
       );
       if (own) {
-        if (own.workZoneId !== zone.id)
+        if (own.pickingMode === "box") {
+          own.workZoneId = zone.id;
+        } else if (own.workZoneId !== zone.id) {
           fail("Ваша отгрузка относится к другой рабочей зоне");
+        }
         assign(
           "shipping",
           own.id,
@@ -4137,26 +4196,27 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         );
         return;
       }
-      const draft = s.shipments
-        .filter((x) => x.status === "draft" && !x.employeeId)
-        .sort(
-          (a, b) => a.code.localeCompare(b.code) || a.id.localeCompare(b.id),
-        )
-        .find((x) => !this._shipmentWorkError(s, x, zone));
+      const draft = s.shipments.find(
+        (x) =>
+          x.status === "draft" &&
+          !x.employeeId &&
+          x.boxIds.some((id) => {
+            const box = s.boxes.find((item) => item.id === id);
+            return box && this._shipmentBoxSource(s, box);
+          }),
+      );
       if (draft) {
+        draft.pickingMode = "box";
         draft.employeeId = employeeId;
         draft.workZoneId = zone.id;
-        draft.scannedBoxIds = [];
+        draft.scannedBoxIds ??= [];
         assign(
           "shipping",
           draft.id,
           null,
-          "Отсканируйте каждый зарезервированный короб и подтвердите отгрузку",
+          "Берите короба по адресам и сканируйте их QR",
         );
-      } else
-        idle(
-          "Нет готовых отгрузок у адресов зоны. Сначала переместите зарезервированные паллеты в зону отбора или отгрузки",
-        );
+      } else idle("Нет отгрузок для отбора");
     }
   }
   private _advanceZone(
@@ -4254,21 +4314,84 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (error) fail(error);
     return { shipment, zone };
   }
+  private _shipmentPickComplete(shipment: D.ShipmentDto) {
+    const scanned = new Set(shipment.scannedBoxIds);
+    return (
+      shipment.boxIds.length > 0 &&
+      shipment.boxIds.length === shipment.boxesRequested &&
+      scanned.size === shipment.boxesRequested &&
+      shipment.boxIds.every((id) => scanned.has(id))
+    );
+  }
+  claimShipmentWork(id: string, b: D.ClaimTaskDto) {
+    return this._command(`claimShipmentWork/${id}`, b, (s) => {
+      this._movementEmployee(s, b.employeeId);
+      const shipment = find(s.shipments, id, "Отгрузка");
+      if (shipment.status !== "draft" || this._shipmentPickComplete(shipment))
+        fail("Отбор этой отгрузки уже завершён");
+      if (shipment.employeeId === b.employeeId) return;
+      if (shipment.employeeId)
+        throw new ForbiddenException("Отбор уже взял другой сотрудник");
+      this._leaveWork(s, b.employeeId);
+      shipment.pickingMode = "box";
+      shipment.employeeId = b.employeeId;
+      shipment.scannedBoxIds ??= [];
+    });
+  }
   scanShipmentWork(id: string, b: D.ScanShipmentWorkDto) {
     return this._command(`scanShipmentWork/${id}`, b, (s) => {
-      const { shipment } = this._shipmentWorkActor(s, id, b.employeeId);
+      const shipment = find(s.shipments, id, "Отгрузка");
+      if (shipment.pickingMode === "box") {
+        this._movementEmployee(s, b.employeeId);
+        if (shipment.employeeId !== b.employeeId)
+          throw new ForbiddenException("Отбор взял другой сотрудник");
+        if (shipment.status !== "draft") fail("Отгрузка уже отправлена");
+        if (
+          s.movements.some(
+            (m) => m.employeeId === b.employeeId && m.status === "in_transit",
+          ) ||
+          s.putawayTasks.some(
+            (t) => t.employeeId === b.employeeId && t.status === "in_transit",
+          )
+        )
+          fail("Сначала подтвердите размещение товара в пути");
+      } else {
+        this._shipmentWorkActor(s, id, b.employeeId);
+      }
+      const code = b.boxCode.trim();
       const box = shipment.boxIds
         .map((id) => find(s.boxes, id, "Короб"))
-        .find((box) => this._scanEntity(b.boxCode, "box", box.code, box.code));
+        .find(
+          (box) =>
+            this._scanEntity(code, "box", box.code, box.code) ||
+            this._scanEntity(code, "box", box.id, box.code),
+        );
       if (!box) fail("Короб не входит в резерв этой отгрузки");
       shipment.scannedBoxIds ??= [];
       if (shipment.scannedBoxIds.includes(box.id))
-        fail("Этот короб уже подтверждён. Отсканируйте следующий");
+        fail("Этот короб уже отобран. Отсканируйте следующий");
+      if (shipment.pickingMode === "box") {
+        const source = this._shipmentBoxSource(s, box);
+        if (!source)
+          fail(
+            "Короб недоступен для отбора. Проверьте его адрес и перемещение паллеты",
+          );
+        const { pallet } = source;
+        box.status = "staged";
+        box.palletId = null;
+        box.locationId = null;
+        pallet.quantity--;
+        this._recomputePallet(s, pallet);
+      }
       shipment.scannedBoxIds.push(box.id);
     });
   }
   finishShipmentWork(id: string, b: D.FinishShipmentWorkDto) {
     return this._command(`finishShipmentWork/${id}`, b, (s) => {
+      if (find(s.shipments, id, "Отгрузка").pickingMode === "box")
+        fail(
+          "Отбор завершится после последнего скана. Отправку подтверждает руководитель",
+        );
       const { shipment, zone } = this._shipmentWorkActor(s, id, b.employeeId),
         scanned = new Set(shipment.scannedBoxIds ?? []);
       if (this._readWorkZone(s, b.zoneCode).id !== zone.id)

@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "../box-stock";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../database";
@@ -78,7 +79,7 @@ export async function reconcileOpeningStock(
       previousIds.has(box.id) ||
       (box as typeof box & { openingStocktakeId?: string })
         .openingStocktakeId !== doc.id ||
-      !["stored", "in_transit"].includes(box.status)
+      !isBoxOnHand(box.status)
     )
       continue;
     if (

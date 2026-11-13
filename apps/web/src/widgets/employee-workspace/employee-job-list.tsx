@@ -20,12 +20,16 @@ export function EmployeeJobList({
   onResume,
   onOpenMovements,
   canOpenMovements,
+  canOpenShipping,
+  onOpenShipping,
 }: {
   data: WorkspaceDto;
   employeeId: string;
   onResume: () => void;
   onOpenMovements: () => void;
   canOpenMovements: boolean;
+  canOpenShipping: boolean;
+  onOpenShipping: (shipmentId: string) => void;
 }) {
   const [kind, setKind] = useState<WorkQueueKind | "all">("all");
   const title = useRef<HTMLHeadingElement>(null);
@@ -69,8 +73,7 @@ export function EmployeeJobList({
         </select>
       </label>
       <p className={styles.queueHint}>
-        Чтобы взять работу, вернитесь к заданию и сканируйте QR нужной рабочей
-        зоны. Для спуска паллеты откройте задание из списка.
+        Сканируйте QR рабочей зоны или откройте нужное задание из списка.
       </p>
       {(kind === "all" || kind === "stocktake") && stocktakes.isPending && (
         <p className={styles.queueHint} role="status">
@@ -121,6 +124,15 @@ export function EmployeeJobList({
                       </p>
                     )}
                     <small>{job.code}</small>
+                    {job.kind === "shipping" && job.state !== "review" && (
+                      <Button
+                        variant="secondary"
+                        disabled={!canOpenShipping}
+                        onClick={() => onOpenShipping(job.referenceId)}
+                      >
+                        Открыть отбор
+                      </Button>
+                    )}
                     {job.kind === "movement" &&
                       data.movements.some(
                         (movement) =>

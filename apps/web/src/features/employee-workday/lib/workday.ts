@@ -39,6 +39,15 @@ export function employeePriority(
   )
     return { mode: "movements", carrying: true };
   if (
+    data.shipments.some(
+      (shipment) =>
+        shipment.employeeId === employeeId &&
+        shipment.pickingMode === "box" &&
+        shipment.status === "draft",
+    )
+  )
+    return { mode: "shipping", carrying: false };
+  if (
     data.putawayTasks.some(
       (t) => t.employeeId === employeeId && t.status === "claimed",
     )

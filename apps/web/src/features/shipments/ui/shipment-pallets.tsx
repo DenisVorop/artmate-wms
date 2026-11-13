@@ -87,7 +87,7 @@ export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
                 <CheckCircle2 size={14} />
                 Готова к отбору
               </div>
-            ) : (
+            ) : location?.kind === "rack" && location.level > 2 ? (
               <Button
                 size="sm"
                 variant="secondary"
@@ -95,9 +95,9 @@ export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
                 onClick={() => onPrepare(pallet.id)}
               >
                 <ArrowDownToLine size={14} />
-                Подготовить к отгрузке
+                Спустить паллету
               </Button>
-            )}
+            ) : null}
             {putawayHold && (
               <p className={styles.note}>
                 Паллета ожидает размещение зарезервированных коробов. Завершите
@@ -107,7 +107,9 @@ export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
           </div>
         );
       })}
-      {readiness.boxes.some((box) => !box?.palletId) && (
+      {readiness.boxes.some(
+        (box) => !box || (box.status !== "staged" && !box.palletId),
+      ) && (
         <p className={styles.note}>
           Часть коробов находится в размещении или без паллеты. Завершите
           размещение перед отправкой.

@@ -110,7 +110,6 @@ test("marketplace HTTP routes enforce fresh manager auth, CSRF/origin, strict DT
           historyDays: 28,
         },
       ],
-      ["POST", "/transit", { ...req(), skuId: "sku-cats", inTransitUnits: 0 }],
       [
         "POST",
         "/tasks",
@@ -129,6 +128,18 @@ test("marketplace HTTP routes enforce fresh manager auth, CSRF/origin, strict DT
         `${method} ${path} employee`,
       );
     }
+    assert.equal(
+      (
+        await call(
+          "POST",
+          "/transit",
+          { ...req(), skuId: "sku-cats", inTransitUnits: 0 },
+          "manager",
+        )
+      ).status,
+      404,
+      "manual transit entry was removed",
+    );
     const empty = await call("GET", "", undefined, "manager");
     assert.equal(empty.status, 200);
     assert.deepEqual(

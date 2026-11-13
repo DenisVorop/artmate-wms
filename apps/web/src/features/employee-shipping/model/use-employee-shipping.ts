@@ -36,6 +36,22 @@ export function useEmployeeShipping() {
     pending: commands.pending,
     error: commands.error,
     notice,
+    claim: async (id: string) => {
+      if (busy.current || !employeeId) return false;
+      busy.current = true;
+      try {
+        await commands.claimShipmentWork(id, {
+          requestId: crypto.randomUUID(),
+          employeeId,
+        });
+        setNotice(null);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        busy.current = false;
+      }
+    },
     scan: (shipment: ShipmentDto, boxCode: string) =>
       run(shipment, () =>
         commands.scanShipmentWork(shipment.id, {

@@ -2,8 +2,18 @@ import { EmployeeWorkPage } from "@/pages/employee-workspace-page";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string; stocktakeId?: string }>;
+  searchParams: Promise<{
+    mode?: string;
+    stocktakeId?: string;
+    shipmentId?: string;
+  }>;
 }) {
   const p = await searchParams;
-  return <EmployeeWorkPage mode={p.mode} documentId={p.stocktakeId} />;
+  return (
+    <EmployeeWorkPage
+      mode={p.mode}
+      documentId={p.stocktakeId}
+      shipmentId={p.shipmentId}
+    />
+  );
 }

@@ -38,7 +38,8 @@ export function skuInventory(data: InventorySource, skuId: string) {
     (box) =>
       box.skuId === skuId &&
       (box.status === BoxDtoStatus.stored ||
-        box.status === BoxDtoStatus.in_transit),
+        box.status === BoxDtoStatus.in_transit ||
+        box.status === BoxDtoStatus.staged),
   );
   const boxedUnits = boxes.reduce((sum, box) => sum + box.units, 0);
   const reservedUnits = data.tasks

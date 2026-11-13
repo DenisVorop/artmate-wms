@@ -81,7 +81,7 @@ export function DashboardFeature() {
     );
   const storedBoxes = data.boxes.filter((box) => box.status === "stored");
   const accountedBoxes = data.boxes.filter((box) =>
-    ["stored", "in_transit"].includes(box.status),
+    ["stored", "in_transit", "staged"].includes(box.status),
   );
   const occupiedIds = new Set([
     ...data.pallets

@@ -45,7 +45,8 @@ function ManagerShipmentsFeature() {
           <p className="eyebrow">КОМПЛЕКТАЦИЯ И ОТПРАВКА</p>
           <h1 className="page-heading">Отгрузки</h1>
           <p className="page-description">
-            Подготовьте паллеты к отбору и отправьте нужное количество коробов.
+            Зарезервируйте короба по FIFO, отберите их по QR и подтвердите
+            отправку.
           </p>
         </div>
         <Badge tone="success">
@@ -104,7 +105,7 @@ function ManagerShipmentsFeature() {
                 try {
                   await commands.create(values);
                   ui.setNotice(
-                    "Отгрузка создана. Короба зарезервированы по FIFO. Подготовьте паллеты к отбору.",
+                    "Отгрузка создана. Короба зарезервированы по FIFO и доступны к отбору.",
                   );
                 } catch {
                   /* The API error is rendered above the list. */
@@ -153,8 +154,8 @@ function ManagerShipmentsFeature() {
             </form>
           </section>
           <div className="ops-note">
-            В отгрузку попадут только выбранные короба. После частичного отбора
-            остаток можно вернуть на удерживаемый адрес через «Перемещения».
+            В отгрузку попадут только зарезервированные короба. Отбор доступен
+            на рабочем экране сотрудника.
           </div>
         </aside>
       </div>

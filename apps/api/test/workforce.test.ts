@@ -349,10 +349,17 @@ test("only factual completions count: no scans claims releases corrections retir
     skuId: sku.id,
     boxesRequested: 1,
   });
-  await w.shipShipment(
-    state.shipments.find((s) => s.skuId === sku.id)!.id,
-    req(),
-  );
+  const shipment = state.shipments.find((s) => s.skuId === sku.id)!;
+  state = await w.claimShipmentWork(shipment.id, {
+    ...req(),
+    employeeId: employee.id,
+  });
+  await w.scanShipmentWork(shipment.id, {
+    ...req(),
+    employeeId: employee.id,
+    boxCode: state.boxes.find((box) => box.id === shipment.boxIds[0])!.code,
+  });
+  await w.shipShipment(shipment.id, req());
   await w.retireEmptyPallet(physical.id, {
     ...req(),
     palletCode: physical.code,

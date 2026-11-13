@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "../box-stock";
 import { applyMarketplaceResolutions } from "./planning-resolutions";
 import type { ForecastPlanContext } from "../forecasting/forecast-storage";
 import { planningBacklog } from "./planning-backlog";
@@ -542,8 +543,7 @@ export function marketplacePlan(
       );
 
       const boxes = w.boxes.filter(
-        (b) =>
-          b.skuId === sku.id && ["stored", "in_transit"].includes(b.status),
+        (b) => b.skuId === sku.id && isBoxOnHand(b.status),
       );
       const shipmentReservedUnits = boxes
         .filter((b) => assigned.has(b.id))

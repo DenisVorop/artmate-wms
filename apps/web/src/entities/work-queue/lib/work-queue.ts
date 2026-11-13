@@ -273,6 +273,10 @@ export function buildWorkQueue(
     });
   }
   for (const shipment of workspace.shipments) {
+    const picked =
+      shipment.pickingMode === "box" &&
+      shipment.boxIds.length > 0 &&
+      shipment.boxIds.every((id) => shipment.scannedBoxIds?.includes(id));
     add({
       referenceId: shipment.id,
       kind: "shipping",
@@ -284,15 +288,19 @@ export function buildWorkQueue(
       state:
         shipment.status === "shipped"
           ? "completed"
-          : shipment.employeeId
-            ? "active"
-            : "queued",
+          : picked
+            ? "review"
+            : shipment.employeeId
+              ? "active"
+              : "queued",
       statusLabel:
         shipment.status === "shipped"
           ? "Отгружено"
-          : shipment.employeeId
-            ? "В работе"
-            : "Подготовлено к отбору",
+          : picked
+            ? "Готово к отправке"
+            : shipment.employeeId
+              ? "В работе"
+              : "Готово к отбору",
       quantityLabel: `${shipment.scannedBoxIds?.length ?? 0} / ${shipment.boxesRequested} коробов`,
       fromLabel: null,
       toLabel: null,

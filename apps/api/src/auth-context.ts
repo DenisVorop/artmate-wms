@@ -74,7 +74,9 @@ export function projectWorkspace(
         (w) => w.employeeId === id,
       ),
     },
-    shipments: state.shipments.filter((x) => x.employeeId === id),
+    shipments: state.shipments.filter(
+      (x) => x.employeeId === id || (x.status === "draft" && !x.employeeId),
+    ),
     activities: [],
     receipts: state.receipts.filter((r) => r.status !== "completed"),
   };

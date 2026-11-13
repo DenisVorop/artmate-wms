@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { employeeMode, employeePriority } from "./workday";
 const data = (patch: Partial<WorkspaceDto> = {}) =>
-  ({ putawayTasks: [], movements: [], tasks: [], ...patch }) as WorkspaceDto;
+  ({
+    putawayTasks: [],
+    movements: [],
+    tasks: [],
+    shipments: [],
+    ...patch,
+  }) as WorkspaceDto;
 test("work hub prioritizes an own physical carry over active assembly and other requested work", () => {
   const s = data({
     putawayTasks: [

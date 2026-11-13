@@ -1055,6 +1055,24 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
       .status,
     403,
   );
+  const employeeId = worker.user.employeeId;
+  const claim = await call(
+    "POST",
+    `shipments/${shipment.id}/work/claim`,
+    { ...req(), employeeId },
+    worker,
+  );
+  assert.equal(claim.status, 200, JSON.stringify(claim.body));
+  const reservedBox = claim.body.boxes.find(
+    (b: D.BoxDto) => b.id === shipment.boxIds[0],
+  );
+  const pick = await call(
+    "POST",
+    `shipments/${shipment.id}/work/scan`,
+    { ...req(), employeeId, boxCode: reservedBox.code },
+    worker,
+  );
+  assert.equal(pick.status, 200, JSON.stringify(pick.body));
   assert.equal(
     (await call("POST", `shipments/${shipment.id}/ship`, shipRequest, manager))
       .status,

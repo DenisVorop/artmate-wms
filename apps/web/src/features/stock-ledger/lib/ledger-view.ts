@@ -8,6 +8,7 @@ export const ledgerKindLabels: Record<StockLedgerEventDto["kind"], string> = {
   assembly: "Сборка",
   putaway: "Размещение короба",
   movement: "Перемещение паллеты",
+  shipment_pick: "Отбор короба",
   shipment: "Отгрузка",
   adjustment: "Корректировка",
 };

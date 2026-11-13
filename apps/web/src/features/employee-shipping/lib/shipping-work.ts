@@ -22,7 +22,13 @@ export function employeeShippingWork(
             shipment.employeeId === employeeId &&
             shipment.workZoneId === zone?.id,
         )
-      : undefined;
+      : data.shipments.find(
+          (row) =>
+            row.pickingMode === "box" &&
+            row.status === "draft" &&
+            row.employeeId === employeeId &&
+            !row.workZoneId,
+        );
   return { assignment, zone, shipment };
 }
 
@@ -46,7 +52,7 @@ export function employeeShippingProgress(shipment: ShipmentDto) {
 export function employeeShippingScopeIssue(
   data: Pick<WorkspaceDto, "boxes" | "pallets" | "locations" | "movements">,
   shipment: ShipmentDto,
-  zone: WorkZoneDto,
+  zone?: WorkZoneDto,
 ): string | null {
   if (
     shipment.boxIds.length !== shipment.boxesRequested ||
@@ -55,6 +61,13 @@ export function employeeShippingScopeIssue(
     return "Состав отгрузки изменился. Обновите данные или сообщите руководителю.";
   for (const id of shipment.boxIds) {
     const box = data.boxes.find((box) => box.id === id);
+    const direct = shipment.pickingMode === "box";
+    if (direct) {
+      if (!box) return "В отгрузке отсутствует короб.";
+      if (shipment.scannedBoxIds?.includes(id) && box.status !== "staged")
+        return "Отобранный короб больше недоступен.";
+      continue;
+    }
     const location = data.locations.find(
       (location) => location.id === box?.locationId,
     );
@@ -65,7 +78,7 @@ export function employeeShippingScopeIssue(
       !location ||
       location.archived ||
       location.blocked ||
-      !zone.locationIds.includes(location.id) ||
+      !zone?.locationIds.includes(location.id) ||
       !["picking", "shipping"].includes(location.kind) ||
       !pallet ||
       pallet.status !== "stored" ||

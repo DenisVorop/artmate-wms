@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "./box-stock";
 import { randomUUID } from "node:crypto";
 import * as D from "./dto";
 import { Queryable } from "./database";
@@ -89,7 +90,7 @@ export function stockPositions(s: D.WorkspaceDto): D.StockLedgerLineDto[] {
         null,
       );
   for (const b of s.boxes)
-    if (["stored", "in_transit"].includes(b.status))
+    if (isBoxOnHand(b.status))
       for (const part of b.lotContents)
         add(
           b.skuId,
@@ -195,8 +196,10 @@ export function ledgerEvent(
     kind = "movement";
     referenceType = "movement";
     reference = s.movements.find((x) => x.id === id);
-  } else if (["shipShipment", "finishShipmentWork"].includes(op)) {
-    kind = "shipment";
+  } else if (
+    ["scanShipmentWork", "shipShipment", "finishShipmentWork"].includes(op)
+  ) {
+    kind = op === "scanShipmentWork" ? "shipment_pick" : "shipment";
     referenceType = "shipment";
     reference = s.shipments.find((x) => x.id === id);
   } else if (operation)

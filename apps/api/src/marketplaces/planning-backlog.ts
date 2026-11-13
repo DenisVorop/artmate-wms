@@ -1,3 +1,4 @@
+import { isBoxOnHand } from "../box-stock";
 import type * as W from "../dto";
 import { finishedMetrics, putawayPlacementError } from "../physical";
 import type { MarketplacePlanRowDto } from "./dto";
@@ -158,7 +159,7 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
   const incoming = w.boxes.filter(
     (box) =>
       !assigned.has(box.id) &&
-      ["stored", "in_transit"].includes(box.status) &&
+      isBoxOnHand(box.status) &&
       !w.locations.some(
         (location) =>
           location.id === box.locationId &&

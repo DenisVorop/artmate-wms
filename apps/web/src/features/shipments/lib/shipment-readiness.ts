@@ -9,9 +9,16 @@ export function shipmentReadiness(data: WorkspaceDto, shipment: ShipmentDto) {
   const boxes = shipment.boxIds.map((id) =>
     data.boxes.find((box) => box.id === id),
   );
+  const scanned = new Set(shipment.scannedBoxIds);
   const ready =
+    shipment.boxesRequested > 0 &&
     boxes.length === shipment.boxesRequested &&
+    (shipment.pickingMode !== "box" ||
+      (new Set(shipment.boxIds).size === boxes.length &&
+        scanned.size === boxes.length)) &&
     boxes.every((box) => {
+      if (shipment.pickingMode === "box")
+        return !!box && box.status === "staged" && scanned.has(box.id);
       if (!box || !isShipmentBoxAvailable(data, box, shipment.id)) return false;
       const location = data.locations.find(
         (item) => item.id === box.locationId,
@@ -35,7 +42,7 @@ export function shipmentReadiness(data: WorkspaceDto, shipment: ShipmentDto) {
   const pallets = data.pallets.filter((pallet) =>
     boxes.some((box) => box?.palletId === pallet.id),
   );
-  return { ready, boxes, pallets };
+  return { ready, boxes, pallets, picked: scanned.size };
 }
 
 // Availability is a preview. The API validates the reservation when saving.
