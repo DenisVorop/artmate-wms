@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useSession } from "@/entities/session";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +24,8 @@ function ManagerShipmentsFeature() {
   const { data, isPending, isError, refetch } = useWorkspace();
   const commands = useShipments();
   const ui = useShipmentState();
+  const [wbNumber, setWbNumber] = useState("");
+  const [wbReservations, setWbReservations] = useState<string[]>([]);
   const {
     register,
     handleSubmit,
@@ -35,6 +38,13 @@ function ManagerShipmentsFeature() {
   const selectedSku = watch("skuId");
   if (isPending) return <LoadingState />;
   if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
+  const reservedDrafts = data.shipments.filter(
+    (row) =>
+      row.status === "draft" &&
+      !row.wb &&
+      !row.employeeId &&
+      !row.scannedBoxIds?.length,
+  );
   const available = data.boxes.filter(
     (box) => box.skuId === selectedSku && isShipmentBoxAvailable(data, box),
   ).length;
@@ -85,6 +95,10 @@ function ManagerShipmentsFeature() {
                     commands.clearError();
                     ui.setPreparingId(palletId);
                   }}
+                  onAssign={async (employeeId) => {
+                    await commands.assignWb(shipment.id, employeeId);
+                    ui.setNotice("Исполнитель отбора обновлён.");
+                  }}
                   onShip={async () => {
                     await commands.ship(shipment.id);
                     ui.setNotice(
@@ -97,6 +111,64 @@ function ManagerShipmentsFeature() {
           )}
         </section>
         <aside className="ops-stack">
+          <section className="glass-panel ops-panel">
+            <h2>Поставка Wildberries</h2>
+            <form
+              className="ops-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void commands
+                  .importWb(wbNumber.trim(), wbReservations)
+                  .then(() => {
+                    setWbNumber("");
+                    setWbReservations([]);
+                    ui.setNotice(
+                      "Поставка WB загружена. Сотрудник может взять отбор.",
+                    );
+                  })
+                  .catch(() => {});
+              }}
+            >
+              <label>
+                Номер поставки WB
+                <input
+                  value={wbNumber}
+                  onChange={(event) => setWbNumber(event.target.value)}
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]{0,19}"
+                  required
+                />
+              </label>
+              {reservedDrafts.length > 0 && (
+                <fieldset className={styles.reserveList}>
+                  <legend>Использовать уже зарезервированные короба</legend>
+                  {reservedDrafts.map((row) => (
+                    <label key={row.id}>
+                      <input
+                        type="checkbox"
+                        checked={wbReservations.includes(row.id)}
+                        onChange={(event) =>
+                          setWbReservations((ids) =>
+                            event.target.checked
+                              ? [...ids, row.id]
+                              : ids.filter((id) => id !== row.id),
+                          )
+                        }
+                      />
+                      <span>
+                        {data.skus.find((sku) => sku.id === row.skuId)?.name ??
+                          row.code}{" "}
+                        · {row.boxesRequested} кор. · {row.code}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <Button type="submit" disabled={commands.pending}>
+                Загрузить и создать отбор
+              </Button>
+            </form>
+          </section>
           <section className="glass-panel ops-panel">
             <h2>Новая отгрузка</h2>
             <form

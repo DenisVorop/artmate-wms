@@ -7,6 +7,8 @@ import type {
   UpdateWorkZoneDto,
   StartZoneWorkDto,
   ScanShipmentWorkDto,
+  ImportWbShipmentDto,
+  AssignWbShipmentDto,
   FinishShipmentWorkDto,
   AdjustStockDto,
   ChangeConsumablesDto,
@@ -115,6 +117,10 @@ export function useWarehouseCommands() {
       run(() => api.restoreWorkZone(id, dto)),
     startZoneWork: (dto: StartZoneWorkDto) => run(() => api.startZoneWork(dto)),
     leaveZoneWork: (dto: ClaimTaskDto) => run(() => api.leaveZoneWork(dto)),
+    importWbShipment: (dto: ImportWbShipmentDto) =>
+      run(() => api.importWbShipment(dto)),
+    assignWbShipment: (id: string, dto: AssignWbShipmentDto) =>
+      run(() => api.assignWbShipment(id, dto)),
     claimShipmentWork: (id: string, dto: ClaimTaskDto) =>
       run(() => api.claimShipmentWork(id, dto)),
     scanShipmentWork: (id: string, dto: ScanShipmentWorkDto) =>

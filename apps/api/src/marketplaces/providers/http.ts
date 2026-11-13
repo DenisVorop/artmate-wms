@@ -35,7 +35,9 @@ const operations = {
 } as const;
 export type MarketplaceOperation =
   | (typeof operations)[keyof typeof operations]
-  | "/api/v1/supplies/{ID}/goods";
+  | "/api/v1/supplies/{ID}/goods"
+  | "/api/v1/supplies/{ID}/package"
+  | "/api/v1/supplies/{ID}";
 export interface MarketplaceProviderDiagnostic {
   readonly operation: MarketplaceOperation;
   readonly status?: number;
@@ -251,17 +253,24 @@ function buildClient(
       throw limitError();
     }
     const key = `${parsed.origin}${parsed.pathname}`;
-    const supplyGoods =
-      parsed.origin === "https://supplies-api.wildberries.ru" &&
-      /^\/api\/v1\/supplies\/[1-9]\d{0,19}\/goods$/.test(parsed.pathname);
+    const supplyPath =
+      parsed.origin === "https://supplies-api.wildberries.ru"
+        ? /^\/api\/v1\/supplies\/[1-9]\d{0,19}(?:\/(goods|package))?$/.exec(
+            parsed.pathname,
+          )
+        : null;
     if (
-      (!Object.hasOwn(operations, key) && !supplyGoods) ||
+      (!Object.hasOwn(operations, key) && !supplyPath) ||
       parsed.username ||
       parsed.password
     )
       throw limitError();
-    const operation: MarketplaceOperation = supplyGoods
-      ? "/api/v1/supplies/{ID}/goods"
+    const operation: MarketplaceOperation = supplyPath
+      ? supplyPath[1] === "goods"
+        ? "/api/v1/supplies/{ID}/goods"
+        : supplyPath[1] === "package"
+          ? "/api/v1/supplies/{ID}/package"
+          : "/api/v1/supplies/{ID}"
       : operations[key as keyof typeof operations];
     const isWb = parsed.hostname !== "api-seller.ozon.ru";
     const provider = isWb ? "wildberries" : "ozon";

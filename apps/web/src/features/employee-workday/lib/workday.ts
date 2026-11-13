@@ -43,7 +43,11 @@ export function employeePriority(
       (shipment) =>
         shipment.employeeId === employeeId &&
         shipment.pickingMode === "box" &&
-        shipment.status === "draft",
+        shipment.status === "draft" &&
+        (!shipment.wb ||
+          shipment.boxIds.some(
+            (boxId) => !shipment.scannedBoxIds?.includes(boxId),
+          )),
     )
   )
     return { mode: "shipping", carrying: false };

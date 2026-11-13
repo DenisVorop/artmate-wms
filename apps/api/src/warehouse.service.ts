@@ -1,3 +1,5 @@
+import { locationMatches } from "./stocktake-plan";
+import type { WbPackage } from "./marketplaces/providers/wb-package-manifest";
 import { isBoxOnHand } from "./box-stock";
 import { assemblyQueueOrder } from "./assembly-queue";
 import {
@@ -2546,6 +2548,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       fail(
         "Разместите короба по тематическим паллетам через второстепенные задания",
       );
+    if (
+      s.shipments.some(
+        (shipment) =>
+          shipment.status === "draft" &&
+          shipment.wb?.pendingBoxId &&
+          s.boxes.some(
+            (box) =>
+              box.id === shipment.wb?.pendingBoxId && box.palletId === p.id,
+          ),
+      )
+    )
+      fail("Сотрудник маркирует короб этой паллеты для WB");
     if (p.locationId && this._incomingPutaway(s, p.locationId).length)
       fail("Паллета назначения зарезервирована размещением коробов");
   }
@@ -2982,6 +2996,184 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         s,
         "Отгрузка подготовлена",
         `${sku.name} · ${b.boxesRequested} коробов зарезервировано по FIFO`,
+        "shipment",
+      );
+    });
+  }
+  importWbShipment(
+    body: D.ImportWbShipmentDto,
+    getManifest: (
+      tx: Queryable,
+    ) => Promise<{ storeId: string; labels: WbPackage[] }>,
+  ) {
+    return this._command("importWbShipment", body, async (s, tx) => {
+      const { storeId, labels } = await getManifest(tx);
+      const existing = s.shipments.find(
+        (shipment) =>
+          shipment.wb?.supplyId === body.supplyId &&
+          shipment.wb.storeId === storeId,
+      );
+      if (existing) fail("Эта поставка WB уже есть в отгрузках WMS");
+      const required = new Map<
+        string,
+        { skuId: string; units: number; count: number }
+      >();
+      const key = (skuId: string, units: number) =>
+        JSON.stringify([skuId, units]);
+      for (const label of labels) {
+        find(s.skus, label.skuId, "Тематика");
+        const id = key(label.skuId, label.units);
+        const entry = required.get(id);
+        if (entry) entry.count++;
+        else
+          required.set(id, {
+            skuId: label.skuId,
+            units: label.units,
+            count: 1,
+          });
+      }
+      const originals = new Set(body.sourceShipmentIds);
+      if (originals.size !== body.sourceShipmentIds.length)
+        fail("Каждый исходный резерв можно выбрать один раз");
+      const selectedBoxes = new Set<string>();
+      for (const id of originals) {
+        const source = find(s.shipments, id, "Исходная отгрузка");
+        if (
+          source.status !== "draft" ||
+          source.employeeId ||
+          source.wb ||
+          source.scannedBoxIds?.length
+        )
+          fail(
+            "К поставке можно привязать только свободные резервы без сканов",
+          );
+        for (const id of source.boxIds) {
+          const box = find(s.boxes, id, "Короб резерва");
+          const need = required.get(key(box.skuId, box.units));
+          if (
+            !need ||
+            need.count === 0 ||
+            selectedBoxes.has(id) ||
+            !this._shipmentBoxSource(s, box)
+          )
+            fail(
+              "Выбранные резервы превышают состав поставки WB или содержат недоступные короба",
+            );
+          need.count--;
+          selectedBoxes.add(id);
+        }
+      }
+      const otherReserved = new Set(
+        s.shipments
+          .filter(
+            (shipment) =>
+              shipment.status === "draft" && !originals.has(shipment.id),
+          )
+          .flatMap((shipment) => shipment.boxIds),
+      );
+      if ([...selectedBoxes].some((id) => otherReserved.has(id)))
+        fail("Один из коробов уже зарезервирован другой отгрузкой");
+      for (const need of required.values()) {
+        if (!need.count) continue;
+        const candidates = this._boxFifo(s, need.skuId).filter(
+          (box) =>
+            box.units === need.units &&
+            !otherReserved.has(box.id) &&
+            !selectedBoxes.has(box.id),
+        );
+        if (candidates.length < need.count)
+          fail(
+            `Не хватает коробов по ${need.units} шт. для тематики «${find(s.skus, need.skuId, "Тематика").name}»`,
+          );
+        for (const box of candidates.slice(0, need.count))
+          selectedBoxes.add(box.id);
+      }
+      // Reserve by FIFO, then visit each address together. Preserve the exact selected IDs.
+      const boxIds = [...new Set(labels.map((label) => label.skuId))]
+        .flatMap((skuId) => this._boxFifo(s, skuId))
+        .filter((box) => selectedBoxes.has(box.id))
+        .sort((a, b) => {
+          const left = find(s.locations, a.locationId!, "Адрес");
+          const right = find(s.locations, b.locationId!, "Адрес");
+          return (
+            left.y - right.y ||
+            left.x - right.x ||
+            left.code.localeCompare(right.code, "ru", { numeric: true })
+          );
+        })
+        .map((box) => box.id);
+      if (boxIds.length !== labels.length)
+        fail("Не удалось сопоставить все грузоместа с коробами WMS");
+      s.shipments = s.shipments.filter(
+        (shipment) => !originals.has(shipment.id),
+      );
+      s.shipments.push({
+        id: randomUUID(),
+        code: `WB-${body.supplyId}`,
+        skuId: labels[0].skuId,
+        boxesRequested: boxIds.length,
+        boxIds,
+        status: "draft",
+        pickingMode: "box",
+        employeeId: null,
+        scannedBoxIds: [],
+        wb: {
+          supplyId: body.supplyId,
+          storeId,
+          labels,
+          locationId: null,
+          pendingBoxId: null,
+          sourceShipmentIds: [...originals],
+        },
+      });
+      activity(
+        s,
+        "Создан отбор поставки WB",
+        `№ ${body.supplyId} · ${boxIds.length} коробов`,
+        "shipment",
+      );
+    });
+  }
+  assignWbShipment(id: string, body: D.AssignWbShipmentDto) {
+    return this._command(`assignWbShipment/${id}`, body, (s) => {
+      const shipment = find(s.shipments, id, "Отгрузка");
+      if (
+        !shipment.wb ||
+        shipment.status !== "draft" ||
+        this._shipmentPickComplete(shipment)
+      )
+        fail("Переназначить можно только незавершённый отбор WB");
+      const employee = find(s.employees, body.employeeId, "Сотрудник");
+      if (shipment.employeeId === employee.id) return;
+      if (
+        s.shipments.some(
+          (item) =>
+            item.id !== id &&
+            item.employeeId === employee.id &&
+            item.status === "draft" &&
+            !this._shipmentPickComplete(item),
+        )
+      )
+        fail("У сотрудника уже есть незавершённый отбор");
+      if (shipment.employeeId) {
+        const binding = s.warehouse.zoneWork.find(
+          (w) => w.employeeId === shipment.employeeId && w.jobId === id,
+        );
+        if (binding)
+          this._clearZoneJob(
+            s,
+            shipment.employeeId,
+            "Задание передано другому сотруднику",
+          );
+      }
+      shipment.employeeId = employee.id;
+      shipment.workZoneId = null;
+      shipment.wb.locationId = null;
+      shipment.wb.pendingBoxId = null;
+      activity(
+        s,
+        "Назначен отбор поставки WB",
+        `№ ${shipment.wb.supplyId} · ${employee.name}`,
         "shipment",
       );
     });
@@ -3892,6 +4084,28 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         )
       )
         fail("Скан отбора должен соответствовать подготовленному коробу");
+      if (shipment.wb) {
+        const wb = shipment.wb;
+        const used = wb.labels.filter((label) => label.boxId);
+        if (
+          wb.labels.length !== shipment.boxIds.length ||
+          new Set(wb.labels.map((label) => label.code)).size !==
+            wb.labels.length ||
+          used.length !== scanned.length ||
+          new Set(used.map((label) => label.boxId)).size !== used.length ||
+          used.some(
+            (label) =>
+              !scanned.includes(label.boxId!) ||
+              !label.employeeId ||
+              !label.scannedAt,
+          ) ||
+          (wb.pendingBoxId !== null &&
+            (!wb.locationId ||
+              !shipment.boxIds.includes(wb.pendingBoxId) ||
+              scanned.includes(wb.pendingBoxId)))
+        )
+          fail("Нарушена связь коробов с этикетками WB");
+      }
       if (shipment.employeeId)
         find(s.employees, shipment.employeeId, "Исполнитель отгрузки");
     }
@@ -3975,6 +4189,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     ))
       this._releasePutaway(t);
     for (const shipment of shipments) {
+      if (shipment.wb) {
+        shipment.workZoneId = null;
+        continue;
+      }
       shipment.employeeId = null;
       shipment.workZoneId = null;
       if (shipment.pickingMode !== "box") shipment.scannedBoxIds = [];
@@ -4180,7 +4398,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       idle("Возьмите любой готовый короб и отсканируйте его QR");
     } else if (zone.kind === "shipping") {
       const own = s.shipments.find(
-        (x) => x.employeeId === employeeId && x.status === "draft",
+        (x) =>
+          x.employeeId === employeeId &&
+          x.status === "draft" &&
+          !this._shipmentPickComplete(x),
       );
       if (own) {
         if (own.pickingMode === "box") {
@@ -4332,6 +4553,16 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (shipment.employeeId === b.employeeId) return;
       if (shipment.employeeId)
         throw new ForbiddenException("Отбор уже взял другой сотрудник");
+      if (
+        s.shipments.some(
+          (x) =>
+            x.wb &&
+            x.employeeId === b.employeeId &&
+            x.status === "draft" &&
+            !this._shipmentPickComplete(x),
+        )
+      )
+        fail("Сначала завершите назначенный отбор WB");
       this._leaveWork(s, b.employeeId);
       shipment.pickingMode = "box";
       shipment.employeeId = b.employeeId;
@@ -4359,6 +4590,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         this._shipmentWorkActor(s, id, b.employeeId);
       }
       const code = b.boxCode.trim();
+      if (shipment.wb) {
+        this._scanWbShipment(s, shipment, b.employeeId, code);
+        return;
+      }
       const box = shipment.boxIds
         .map((id) => find(s.boxes, id, "Короб"))
         .find(
@@ -4371,20 +4606,69 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (shipment.scannedBoxIds.includes(box.id))
         fail("Этот короб уже отобран. Отсканируйте следующий");
       if (shipment.pickingMode === "box") {
-        const source = this._shipmentBoxSource(s, box);
-        if (!source)
-          fail(
-            "Короб недоступен для отбора. Проверьте его адрес и перемещение паллеты",
-          );
-        const { pallet } = source;
-        box.status = "staged";
-        box.palletId = null;
-        box.locationId = null;
-        pallet.quantity--;
-        this._recomputePallet(s, pallet);
+        this._stageShipmentBox(s, box);
       }
       shipment.scannedBoxIds.push(box.id);
     });
+  }
+  private _stageShipmentBox(s: D.WorkspaceDto, box: D.BoxDto) {
+    const source = this._shipmentBoxSource(s, box);
+    if (!source)
+      fail(
+        "Короб недоступен для отбора. Проверьте его адрес и перемещение паллеты",
+      );
+    const { pallet } = source;
+    box.status = "staged";
+    box.palletId = null;
+    box.locationId = null;
+    pallet.quantity--;
+    this._recomputePallet(s, pallet);
+  }
+
+  private _scanWbShipment(
+    s: D.WorkspaceDto,
+    shipment: D.ShipmentDto,
+    employeeId: string,
+    code: string,
+  ) {
+    const wb = shipment.wb!;
+    const scanned = (shipment.scannedBoxIds ??= []);
+    const id = shipment.boxIds.find((id) => !scanned.includes(id));
+    if (!id) fail("Все короба поставки уже отобраны");
+    const box = find(s.boxes, id, "Короб");
+    const source = this._shipmentBoxSource(s, box);
+    if (!source)
+      fail("Следующий короб недоступен. Проверьте адрес и перемещение паллеты");
+    if (!wb.pendingBoxId && wb.locationId !== source.location.id) {
+      if (!locationMatches(s, source.location.id, code))
+        fail(`Отсканируйте QR места ${source.location.code}`);
+      wb.locationId = source.location.id;
+      return;
+    }
+    if (!wb.pendingBoxId) {
+      if (
+        !this._scanEntity(code, "box", box.id, box.code) &&
+        !this._scanEntity(code, "box", box.code, box.code)
+      )
+        fail(`Отсканируйте QR короба ${box.code}`);
+      wb.pendingBoxId = box.id;
+      return;
+    }
+    if (wb.pendingBoxId !== box.id || wb.locationId !== source.location.id)
+      fail(
+        "Короб сменил адрес. Сообщите руководителю, чтобы он возобновил отбор с проверки места",
+      );
+    const label = wb.labels.find((label) => label.code === code);
+    if (!label) fail("Эта этикетка не принадлежит поставке WB");
+    if (label.boxId) fail("Эта этикетка WB уже использована");
+    if (label.skuId !== box.skuId || label.units !== box.units)
+      fail(
+        "Этикетка WB не подходит по тематике или количеству. Возьмите этикетку для этого короба",
+      );
+    this._stageShipmentBox(s, box);
+    Object.assign(label, { boxId: box.id, employeeId, scannedAt: now() });
+    scanned.push(box.id);
+    wb.pendingBoxId = null;
   }
   finishShipmentWork(id: string, b: D.FinishShipmentWorkDto) {
     return this._command(`finishShipmentWork/${id}`, b, (s) => {

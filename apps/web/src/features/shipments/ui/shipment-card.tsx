@@ -13,6 +13,7 @@ type Props = {
   pending: boolean;
   onPrepare: (palletId: string) => void;
   onShip: () => Promise<unknown>;
+  onAssign: (employeeId: string) => Promise<unknown>;
 };
 export function ShipmentCard({
   shipment,
@@ -20,6 +21,7 @@ export function ShipmentCard({
   pending,
   onPrepare,
   onShip,
+  onAssign,
 }: Props) {
   const state = shipmentReadiness(data, shipment);
   const legacy = shipment.pickingMode !== "box" && !!shipment.employeeId;
@@ -56,19 +58,80 @@ export function ShipmentCard({
         </Badge>
       </div>
       <div className="ops-card-name">
-        {data.skus.find((item) => item.id === shipment.skuId)?.name}
+        {shipment.wb
+          ? `Поставка WB № ${shipment.wb.supplyId}`
+          : data.skus.find((item) => item.id === shipment.skuId)?.name}
       </div>
       <div className="ops-description">
         {shipment.boxesRequested} коробов · {units} раскрасок
       </div>
-      <div className="ops-sub">
-        {state.boxes
-          .map((box) => box?.code)
-          .filter(Boolean)
-          .join(" · ")}
-      </div>
+      {shipment.wb ? (
+        <div className="ops-sub">
+          {data.employees.find((person) => person.id === shipment.employeeId)
+            ?.name ?? "Свободное задание"}
+          {state.picked > 0 && (
+            <details>
+              <summary>Отобранные короба и этикетки WB</summary>
+              <ul>
+                {shipment.wb.labels
+                  .filter((label) => label.boxId)
+                  .map((label) => (
+                    <li key={label.id}>
+                      {state.boxes.find((box) => box?.id === label.boxId)?.code}{" "}
+                      · WB {label.id} ·{" "}
+                      {data.employees.find(
+                        (person) => person.id === label.employeeId,
+                      )?.name ?? "Сотрудник"}
+                    </li>
+                  ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      ) : (
+        <div className="ops-sub">
+          {state.boxes
+            .map((box) => box?.code)
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      )}
       {shipment.status === "draft" && (
         <>
+          {shipment.wb && !ready && (
+            <form
+              className="ops-action-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const id = new FormData(event.currentTarget).get("employeeId");
+                if (typeof id === "string" && id)
+                  void onAssign(id).catch(() => {});
+              }}
+            >
+              <select
+                key={shipment.employeeId ?? "free"}
+                name="employeeId"
+                aria-label="Исполнитель отбора"
+                defaultValue={shipment.employeeId ?? ""}
+                required
+              >
+                <option value="">Выберите сотрудника</option>
+                {data.employees.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                disabled={pending}
+              >
+                Назначить
+              </Button>
+            </form>
+          )}
           <ShipmentPallets
             shipment={shipment}
             data={data}
@@ -80,7 +143,9 @@ export function ShipmentCard({
               ? "Завершите уже начатую отгрузку через QR её рабочей зоны."
               : ready
                 ? "Все короба отобраны. Подтвердите отправку после передачи груза."
-                : "Отсканируйте зарезервированные короба через рабочий экран."}
+                : shipment.wb
+                  ? "На рабочем экране сотрудник сканирует место, короб и этикетку WB."
+                  : "Отсканируйте зарезервированные короба через рабочий экран."}
           </p>
           <div className="ops-action-row">
             {ready && (

@@ -1,3 +1,8 @@
+import {
+  fetchWbPackageManifest,
+  wbPackageManifest,
+} from "./providers/wb-package-manifest";
+import { ImportWbShipmentDto } from "../dto";
 import { readForecastPlanContext } from "../forecasting/forecast-storage";
 import {
   Inject,
@@ -634,6 +639,60 @@ export class MarketplaceService {
     const c = m.connections.find((c) => c.provider === provider);
     if (!c) throw new BadRequestException("Сначала подключите маркетплейс");
     return c;
+  }
+  async importWbShipment(body: ImportWbShipmentDto) {
+    const connection = await this.warehouse.authTransaction(async (tx) => {
+      await this._manager(tx, true);
+      const connection = this._connection(
+        await loadMarketplaces(tx),
+        "wildberries",
+      );
+      if (!connection.enabled)
+        throw new BadRequestException("Подключение WB выключено");
+      return connection;
+    });
+    let raw: Awaited<ReturnType<typeof fetchWbPackageManifest>>;
+    try {
+      const credentials = await this.secrets.decrypt<MarketplaceCredentials>(
+        connection.encrypted,
+        "wildberries",
+      );
+      raw = await fetchWbPackageManifest(credentials.apiKey, body.supplyId);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof MarketplaceProviderError
+          ? error.message
+          : "Не удалось загрузить поставку из WB. Проверьте номер и подключение.",
+      );
+    }
+    if (!raw.canPick)
+      throw new BadRequestException(
+        "Поставка WB уже передана или недоступна для подготовки.",
+      );
+    return this.warehouse.importWbShipment(body, async (tx) => {
+      const m = await loadMarketplaces(tx);
+      const current = this._connection(m, "wildberries");
+      if (
+        !current.enabled ||
+        current.version !== connection.version ||
+        current.encrypted !== connection.encrypted
+      )
+        throw new ConflictException(
+          "Подключение WB изменилось. Загрузите поставку снова.",
+        );
+      try {
+        return {
+          storeId: current.historyStoreId ?? "wildberries",
+          labels: wbPackageManifest(raw.packages, raw.goods, m.mappings),
+        };
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error
+            ? error.message
+            : "Не удалось сверить грузоместа WB.",
+        );
+      }
+    });
   }
   async syncMarketplace(
     b: D.SyncMarketplaceDto,

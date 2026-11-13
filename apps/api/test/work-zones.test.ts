@@ -1089,3 +1089,105 @@ test("completion preserves its result when another paused task has an unavailabl
     paused.id,
   );
 });
+
+test("one WB document retains the FIFO reservation, requires its owner and three scans, and binds each label once", async () => {
+  let s = await w.snapshot();
+  const source = await w.createShipment({
+    ...req(),
+    skuId: "sku-space",
+    boxesRequested: 1,
+  });
+  const reserved = source.shipments.find(
+    (row) => !s.shipments.some((old) => old.id === row.id),
+  )!;
+  const reservedBox = source.boxes.find(
+    (box) => box.id === reserved.boxIds[0],
+  )!;
+  const labels = [1, 2].map((i) => ({
+    id: String(i),
+    code: `$Wb;Label;${i};TAS`,
+    skuId: reservedBox.skuId,
+    units: reservedBox.units,
+  }));
+  const manifest = async () => ({
+    storeId: "test",
+    labels: structuredClone(labels),
+  });
+  const body = { ...req(), supplyId: "4567", sourceShipmentIds: [reserved.id] };
+  s = await w.importWbShipment(body, manifest);
+  const job = s.shipments.find((row) => row.wb?.supplyId === body.supplyId)!;
+  assert(job.boxIds.includes(reservedBox.id));
+  assert.equal(
+    s.shipments.some((row) => row.id === reserved.id),
+    false,
+  );
+  assert.equal(job.employeeId, null);
+  assert.equal(job.boxIds.length, 2);
+  await assert.rejects(
+    w.importWbShipment({ ...body, ...req() }, manifest),
+    /уже есть/,
+  );
+  const account = other;
+  const priorZone = s.warehouse.zoneWork.find(
+    (row) => row.employeeId === account.user.employeeId,
+  );
+  if (priorZone) await leave(account);
+  const base = `shipments/${job.id}`;
+  const claim = (actor: Browser) =>
+    call(
+      "POST",
+      `${base}/work/claim`,
+      { ...req(), employeeId: actor.user.employeeId },
+      actor,
+    );
+  const claimed = await claim(account);
+  assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
+  assert.equal((await claim(manager)).status, 403);
+  const pick = (boxCode: string, actor = account) =>
+    call(
+      "POST",
+      `${base}/work/scan`,
+      { ...req(), employeeId: actor.user.employeeId, boxCode },
+      actor,
+    );
+  const first = s.boxes.find((box) => box.id === job.boxIds[0])!;
+  const location = s.locations.find((item) => item.id === first.locationId)!;
+  assert.equal((await pick(first.code)).status, 400);
+  assert.equal((await pick(location.code, manager)).status, 403);
+  assert.equal((await pick(`Artmate-wms:location:${location.id}`)).status, 200);
+  const boxScan = await pick(first.code);
+  assert.equal(boxScan.status, 200);
+  assert.equal(
+    boxScan.body.boxes.find((box: D.BoxDto) => box.id === first.id).status,
+    "stored",
+  );
+  assert.equal((await pick("$Wb;Wrong;TAS")).status, 400);
+  const labelScan = await pick(labels[0].code);
+  assert.equal(labelScan.status, 200, JSON.stringify(labelScan.body));
+  assert.equal(labelScan.body.balance.totalUnits, s.balance.totalUnits);
+  await leave(account);
+  assert.equal((await claim(manager)).status, 403);
+  const reassign = await ok(`${base}/work/assign`, {
+    ...req(),
+    employeeId: manager.user.employeeId,
+  });
+  const state = reassign.shipments.find((row) => row.id === job.id)!;
+  assert.deepEqual(state.scannedBoxIds, [first.id]);
+  assert.equal(state.wb!.labels[0].employeeId, account.user.employeeId);
+  assert.equal((await pick(labels[1].code)).status, 403);
+  const second = reassign.boxes.find((box) => box.id === job.boxIds[1])!;
+  const nextAddress = reassign.locations.find(
+    (item) => item.id === second.locationId,
+  )!;
+  assert.equal((await pick(nextAddress.code, manager)).status, 200);
+  assert.equal((await pick(second.code, manager)).status, 200);
+  assert.equal((await pick(labels[0].code, manager)).status, 400);
+  const finished = await pick(labels[1].code, manager);
+  assert.equal(finished.status, 200, JSON.stringify(finished.body));
+  assert.equal(finished.body.balance.totalUnits, s.balance.totalUnits);
+  assert.equal(
+    finished.body.shipments.find((row: D.ShipmentDto) => row.id === job.id)
+      .status,
+    "draft",
+  );
+});

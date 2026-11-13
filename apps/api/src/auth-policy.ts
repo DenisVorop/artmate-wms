@@ -101,6 +101,8 @@ export const warehouseOperations = new Set([
   "placePutawayBox",
   "releasePutawayTask",
   "createShipment",
+  "importWbShipment",
+  "assignWbShipment",
   "shipShipment",
   "createRackSection",
   "copyRackSection",

@@ -22,13 +22,19 @@ export function employeeShippingWork(
             shipment.employeeId === employeeId &&
             shipment.workZoneId === zone?.id,
         )
-      : data.shipments.find(
-          (row) =>
-            row.pickingMode === "box" &&
-            row.status === "draft" &&
-            row.employeeId === employeeId &&
-            !row.workZoneId,
-        );
+      : data.shipments
+          .filter(
+            (row) =>
+              row.pickingMode === "box" &&
+              row.status === "draft" &&
+              row.employeeId === employeeId &&
+              !row.workZoneId,
+          )
+          .sort(
+            (a, b) =>
+              Number(employeeShippingProgress(a).complete) -
+              Number(employeeShippingProgress(b).complete),
+          )[0];
   return { assignment, zone, shipment };
 }
 

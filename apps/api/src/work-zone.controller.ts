@@ -1,3 +1,4 @@
+import { MarketplaceService } from "./marketplaces/marketplace.service";
 import {
   Body,
   Controller,
@@ -98,7 +99,33 @@ export class WorkZoneController {
 export class ShipmentWorkController {
   constructor(
     @Inject(WarehouseService) private readonly warehouse: WarehouseService,
+    @Inject(MarketplaceService)
+    private readonly marketplace: MarketplaceService,
   ) {}
+  @Post("wb/import")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "importWbShipment" })
+  @ApiBody({ type: D.ImportWbShipmentDto })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  importWbShipment(
+    @Body(pipe(D.ImportWbShipmentDto)) b: D.ImportWbShipmentDto,
+  ) {
+    return this.marketplace.importWbShipment(b);
+  }
+
+  @Post(":id/work/assign")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "assignWbShipment" })
+  @ApiParam({ name: "id", type: String })
+  @ApiBody({ type: D.AssignWbShipmentDto })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  assignWbShipment(
+    @Param("id") id: string,
+    @Body(pipe(D.AssignWbShipmentDto)) b: D.AssignWbShipmentDto,
+  ) {
+    return this.warehouse.assignWbShipment(id, b);
+  }
+
   @Post(":id/work/claim")
   @HttpCode(200)
   @ApiOperation({ operationId: "claimShipmentWork" })

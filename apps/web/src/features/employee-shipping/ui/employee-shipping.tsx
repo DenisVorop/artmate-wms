@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { MapPin, PackageCheck, Truck } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { LocationMapButton } from "@/entities/warehouse-map";
@@ -37,10 +38,14 @@ export function EmployeeShipping({
   const commands = useEmployeeShipping();
   const scans = useEmployeeScanActivity();
   const gateway = useEmployeeScanGateway();
-  const { assignment, zone, shipment } = employeeShippingWork(
-    data,
-    user?.employeeId ?? "",
-  );
+  const [dismissedId, setDismissedId] = useState<string>();
+  const {
+    assignment,
+    zone,
+    shipment: currentShipment,
+  } = employeeShippingWork(data, user?.employeeId ?? "");
+  const shipment =
+    currentShipment?.id === dismissedId ? undefined : currentShipment;
   const working =
     data.employees.find((employee) => employee.id === user?.employeeId)
       ?.status === "working";
@@ -61,6 +66,19 @@ export function EmployeeShipping({
   const nextAddress = data.locations.find(
     (location) => location.id === nextBox?.locationId,
   );
+  const wb = shipment?.wb;
+  const step = wb?.pendingBoxId
+    ? "label"
+    : wb && wb.locationId !== nextAddress?.id
+      ? "location"
+      : "box";
+  const scanLabel =
+    step === "label"
+      ? "Сканируйте этикетку WB"
+      : step === "location"
+        ? "Сканируйте QR места"
+        : "Сканируйте код короба";
+  const nextSku = data.skus.find((sku) => sku.id === nextBox?.skuId)?.name;
   const busy = commands.pending || gateway.pending || scans.pending > 0;
   const issue = !working
     ? "Начните или возобновите рабочую смену."
@@ -115,8 +133,10 @@ export function EmployeeShipping({
               <li key={row.id}>
                 <div>
                   <strong>
-                    {data.skus.find((sku) => sku.id === row.skuId)?.name ??
-                      row.code}
+                    {row.wb
+                      ? `Поставка WB № ${row.wb.supplyId}`
+                      : (data.skus.find((sku) => sku.id === row.skuId)?.name ??
+                        row.code)}
                   </strong>
                   <small>
                     {boxCount(
@@ -156,8 +176,10 @@ export function EmployeeShipping({
         <>
           <div className={styles.heading}>
             <h2>
-              {data.skus.find((sku) => sku.id === shipment.skuId)?.name ??
-                "Готовые короба"}
+              {wb
+                ? `Поставка WB № ${wb.supplyId}`
+                : (data.skus.find((sku) => sku.id === shipment.skuId)?.name ??
+                  "Готовые короба")}
             </h2>
             <p>
               {shipment.code} · {boxCount(shipment.boxesRequested)}
@@ -166,7 +188,9 @@ export function EmployeeShipping({
           <div className={`glass-panel ${styles.panel}`}>
             {progress && !progress.complete ? (
               <>
-                {direct && <h3>Возьмите и отсканируйте короб</h3>}
+                {direct && (
+                  <h3>{wb ? scanLabel : "Возьмите и отсканируйте короб"}</h3>
+                )}
                 <p className={styles.progress} role="status">
                   {progress.scanned} из {progress.total}{" "}
                   {direct ? "отобрано" : "подтверждено"}
@@ -174,8 +198,14 @@ export function EmployeeShipping({
                 {nextBox && (
                   <>
                     <div className={styles.box}>
-                      <span>Следующий короб</span>
+                      <span>{nextSku ?? "Следующий короб"}</span>
                       <strong>{nextBox.code}</strong>
+                      {step === "label" && (
+                        <small>
+                          {nextBox.units} шт. в коробе. После сигнала наклейте
+                          этикетку.
+                        </small>
+                      )}
                     </div>
                     <div className={styles.address}>
                       <MapPin size={21} />
@@ -216,7 +246,7 @@ export function EmployeeShipping({
                 )}
                 <EmployeeScan
                   contextKey={`shipping:${shipment.id}`}
-                  label="Сканируйте код короба"
+                  label={scanLabel}
                   pending={commands.pending}
                   disabled={!!issue}
                   error={commands.error}
@@ -224,7 +254,7 @@ export function EmployeeShipping({
                   onScan={(value) => commands.scan(shipment, value)}
                   onProblem={onProblem}
                 />
-                {direct && (
+                {direct && !wb && (
                   <Button
                     variant="ghost"
                     disabled={busy || scans.unsaved}
@@ -242,7 +272,13 @@ export function EmployeeShipping({
                   Отобрано {boxCount(shipment.boxesRequested)}. Отправку
                   подтверждает руководитель.
                 </p>
-                <Button disabled={busy} onClick={onQueue}>
+                <Button
+                  disabled={busy}
+                  onClick={() => {
+                    if (wb) setDismissedId(shipment.id);
+                    onQueue();
+                  }}
+                >
                   К отгрузкам
                 </Button>
               </>

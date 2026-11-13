@@ -414,7 +414,25 @@ export class EmployeeDto {
   @ApiProperty({ type: Number }) boxesToday!: number;
   @ApiProperty({ type: Number }) unitsToday!: number;
 }
+export class WbShipmentLabelDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String }) code!: string;
+  @ApiProperty({ type: String }) skuId!: string;
+  @ApiProperty({ type: Number }) units!: number;
+  @ApiPropertyOptional({ type: String }) boxId?: string;
+  @ApiPropertyOptional({ type: String }) employeeId?: string;
+  @ApiPropertyOptional({ type: String }) scannedAt?: string;
+}
+export class WbShipmentDto {
+  @ApiProperty({ type: String }) supplyId!: string;
+  @ApiProperty({ type: String }) storeId!: string;
+  @ApiProperty({ type: [WbShipmentLabelDto] }) labels!: WbShipmentLabelDto[];
+  @ApiProperty({ type: String, nullable: true }) locationId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) pendingBoxId!: string | null;
+  @ApiProperty({ type: [String] }) sourceShipmentIds!: string[];
+}
 export class ShipmentDto {
+  @ApiPropertyOptional({ type: WbShipmentDto }) wb?: WbShipmentDto;
   @ApiPropertyOptional({ type: String, enum: ["box"] }) pickingMode?: "box";
   @ApiPropertyOptional({ type: String, nullable: true }) employeeId?:
     | string
@@ -2268,6 +2286,19 @@ export class ScanShipmentWorkDto extends ClaimTaskDto {
   @MaxLength(200)
   boxCode!: string;
 }
+export class ImportWbShipmentDto extends CommandDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @Matches(/^[1-9]\d{0,19}$/)
+  supplyId!: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  sourceShipmentIds!: string[];
+}
+export class AssignWbShipmentDto extends ClaimTaskDto {}
 export class FinishShipmentWorkDto extends StartZoneWorkDto {}
 
 export class CreateBoxLabelBatchDto extends CommandDto {

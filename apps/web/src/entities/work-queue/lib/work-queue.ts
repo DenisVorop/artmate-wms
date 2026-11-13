@@ -281,8 +281,10 @@ export function buildWorkQueue(
       referenceId: shipment.id,
       kind: "shipping",
       code: shipment.code,
-      objectLabel: skus.get(shipment.skuId)?.name ?? shipment.code,
-      skuId: shipment.skuId,
+      objectLabel: shipment.wb
+        ? `Поставка WB № ${shipment.wb.supplyId}`
+        : (skus.get(shipment.skuId)?.name ?? shipment.code),
+      skuId: shipment.wb ? null : shipment.skuId,
       employeeId: shipment.employeeId ?? null,
       status: shipment.status,
       state:
