@@ -1,12 +1,13 @@
 "use client";
-import { useState } from "react";
-import { MapPin, PackageCheck, Truck } from "lucide-react";
+import { useRef, useState } from "react";
+import { History, MapPin, PackageCheck, Truck } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { LocationMapButton } from "@/entities/warehouse-map";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
 import {
   Button,
   EmployeeScan,
+  Modal,
   useEmployeeScanActivity,
   useEmployeeScanGateway,
 } from "@/shared/ui";
@@ -14,6 +15,7 @@ import {
   employeeShippingProgress,
   employeeShippingWork,
   employeeShippingScopeIssue,
+  employeeWbPickHistory,
 } from "../lib/shipping-work";
 import { useEmployeeShipping } from "../model/use-employee-shipping";
 import styles from "./employee-shipping.module.css";
@@ -39,6 +41,8 @@ export function EmployeeShipping({
   const scans = useEmployeeScanActivity();
   const gateway = useEmployeeScanGateway();
   const [dismissedId, setDismissedId] = useState<string>();
+  const [historyShipmentId, setHistoryShipmentId] = useState<string>();
+  const section = useRef<HTMLElement>(null);
   const {
     assignment,
     zone,
@@ -67,6 +71,8 @@ export function EmployeeShipping({
     (location) => location.id === nextBox?.locationId,
   );
   const wb = shipment?.wb;
+  const history = shipment && wb ? employeeWbPickHistory(shipment) : [];
+  const openHistory = historyShipmentId === shipment?.id && history.length > 0;
   const step = wb?.pendingBoxId
     ? "label"
     : wb && wb.locationId !== nextAddress?.id
@@ -111,7 +117,7 @@ export function EmployeeShipping({
       ));
   const totalUnits = boxes.reduce((sum, box) => sum + (box?.units ?? 0), 0);
   return (
-    <section className={styles.feature} aria-label="Моя отгрузка">
+    <section ref={section} className={styles.feature} aria-label="Моя отгрузка">
       {commands.notice && (
         <p className={styles.success} role="status">
           {commands.notice}
@@ -186,6 +192,44 @@ export function EmployeeShipping({
             </p>
           </div>
           <div className={`glass-panel ${styles.panel}`}>
+            {history.length > 0 && (
+              <>
+                <Button
+                  variant="secondary"
+                  className={styles.historyButton}
+                  aria-haspopup="dialog"
+                  onClick={() => setHistoryShipmentId(shipment.id)}
+                >
+                  <History size={18} aria-hidden="true" />
+                  Что уже отобрано
+                </Button>
+                <Modal
+                  open={openHistory}
+                  title="Отобранные короба"
+                  description="Номера на этикетках WB. Последний скан сверху."
+                  onClose={() => setHistoryShipmentId(undefined)}
+                  onClosed={() => {
+                    section.current
+                      ?.querySelector<HTMLInputElement>(
+                        "input[data-employee-scan-input]:not(:disabled)",
+                      )
+                      ?.focus({ preventScroll: true });
+                  }}
+                >
+                  <ol className={`${styles.review} ${styles.historyList}`}>
+                    {history.map(({ boxId, skuId, number }) => (
+                      <li key={boxId}>
+                        <span>
+                          {data.skus.find((sku) => sku.id === skuId)?.name ??
+                            "Короб"}
+                        </span>
+                        <strong>{number}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                </Modal>
+              </>
+            )}
             {progress && !progress.complete ? (
               <>
                 {direct && (

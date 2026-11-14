@@ -77,6 +77,7 @@ export function Badge({
 export function Modal({
   open,
   onClose,
+  onClosed,
   title,
   description,
   children,
@@ -84,6 +85,7 @@ export function Modal({
 }: {
   open: boolean;
   onClose: () => void;
+  onClosed?: () => void;
   title: string;
   description?: string;
   children: ReactNode;
@@ -102,6 +104,7 @@ export function Modal({
       ref={ref}
       className="modal"
       aria-labelledby={titleId}
+      onClose={onClosed}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

@@ -13,6 +13,7 @@ import {
   employeeShippingWork,
   employeeShippingProgress,
   employeeShippingScopeIssue,
+  employeeWbPickHistory,
 } from "./shipping-work";
 const shipment = (patch: Partial<ShipmentDto> = {}): ShipmentDto => ({
   id: "shipment",
@@ -113,6 +114,41 @@ test("progress counts only unique actual reserved box scans and retains the firs
     false,
   );
 });
+test("WB pick history shows printed numbers of saved scans in reverse scan order", () => {
+  const row = shipment({
+    boxIds: ["box-1", "box-2", "box-3"],
+    scannedBoxIds: ["box-2", "box-1"],
+    wb: {
+      supplyId: "42043227",
+      storeId: "wb",
+      sourceShipmentIds: [],
+      locationId: "location",
+      pendingBoxId: "box-3",
+      labels: [
+        {
+          id: "18264647",
+          code: "$Ts;first",
+          boxId: "box-1",
+          skuId: "cats",
+          units: 20,
+        },
+        {
+          id: "18264664",
+          code: "$Ts;second",
+          boxId: "box-2",
+          skuId: "dogs",
+          units: 20,
+        },
+        { id: "18264681", code: "$Ts;pending", skuId: "food", units: 20 },
+      ],
+    },
+  });
+  assert.deepEqual(employeeWbPickHistory(row), [
+    { boxId: "box-1", skuId: "cats", number: "1826 4647" },
+    { boxId: "box-2", skuId: "dogs", number: "1826 4664" },
+  ]);
+});
+
 const profile: PackagingProfileDto = {
   boxWidthMm: 400,
   boxDepthMm: 400,

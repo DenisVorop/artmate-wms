@@ -55,6 +55,24 @@ export function employeeShippingProgress(shipment: ShipmentDto) {
   };
 }
 
+export function employeeWbPickHistory(shipment: ShipmentDto) {
+  const labels = new Map(
+    shipment.wb?.labels.map((label) => [label.boxId, label]),
+  );
+  return [...new Set(shipment.scannedBoxIds)].reverse().flatMap((boxId) => {
+    const label = labels.get(boxId);
+    if (!label) return [];
+    const number = label.id.trim().slice(-8);
+    return [
+      {
+        boxId,
+        skuId: label.skuId,
+        number: number.replace(/^(\d{4})(\d{4})$/, "$1 $2"),
+      },
+    ];
+  });
+}
+
 export function employeeShippingScopeIssue(
   data: Pick<WorkspaceDto, "boxes" | "pallets" | "locations" | "movements">,
   shipment: ShipmentDto,

@@ -132,6 +132,26 @@
   color: var(--muted);
   white-space: nowrap;
 }
+.historyButton {
+  justify-self: start;
+  min-height: 44px;
+}
+.historyList {
+  max-height: min(50dvh, 420px);
+}
+.historyList li {
+  align-items: baseline;
+  font-family: var(--font-sans);
+}
+.historyList li:first-child {
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+.historyList strong {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .finish {
   min-height: 56px;
   width: 100%;
