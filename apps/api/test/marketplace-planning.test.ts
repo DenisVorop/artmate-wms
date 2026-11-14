@@ -3,6 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seedWorkspace } from "../src/seed";
 import { marketplacePlan } from "../src/marketplaces/planning";
+import { automaticTaskIntents } from "../src/work-automation/planning";
+import { migrateAddressesAndMovements } from "../src/migrations";
 import {
   MarketplaceState,
   defaultSettings,
@@ -525,6 +527,46 @@ test("automatic refresh keeps a fresh verified version usable, while stale or re
   c.syncMode = "automatic";
   m.snapshots[0].asOf = "2026-10-23T10:00:00Z";
   assert.equal(marketplacePlan(w, m, now).rows[0].dataComplete, false);
+});
+
+test("incomplete automatic imports keep box tasks eligible from the last complete fresh data", () => {
+  const { w: seed, m } = fixture();
+  const w = migrateAddressesAndMovements(seed);
+  w.sections = [];
+  w.movements = [];
+  w.pallets = w.pallets.filter((pallet) => pallet.kind === "raw");
+  for (const pallet of w.pallets) pallet.status = "stored";
+  const c = m.connections[1];
+  c.syncMode = "automatic";
+  c.lastSuccessVersion = c.version;
+  const queue = (plan: ReturnType<typeof marketplacePlan>) =>
+    automaticTaskIntents(w, plan, [], false).flatMap((intent) =>
+      intent.kind === "create"
+        ? [[intent.skuId, intent.boxesTarget, intent.purpose]]
+        : [],
+    );
+  const expected = queue(marketplacePlan(w, m, now));
+  assert.deepEqual(
+    expected,
+    Array.from({ length: 5 }, () => ["sku-cats", 1, "urgent"]),
+  );
+  for (const status of ["failed", "partial"] as const) {
+    c.syncStatus = status;
+    const plan = marketplacePlan(w, m, now);
+    assert.equal(plan.rows[0].dataComplete, true);
+    assert.deepEqual(queue(plan), expected);
+  }
+
+  m.snapshots[1].asOf = "2026-10-23T10:00:00Z";
+  const stale = marketplacePlan(w, m, now);
+  assert.equal(stale.rows[0].dataComplete, false);
+  assert.deepEqual(queue(stale), []);
+
+  m.snapshots[1].asOf = now.toISOString();
+  c.version++;
+  const replaced = marketplacePlan(w, m, now);
+  assert.equal(replaced.rows[0].dataComplete, false);
+  assert.deepEqual(queue(replaced), []);
 });
 
 test("seasonal goals preserve stock deductions, unknown blockers and invalidate an old proposal", () => {

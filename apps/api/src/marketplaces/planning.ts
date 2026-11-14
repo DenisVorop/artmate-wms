@@ -54,11 +54,18 @@ export function marketplacePlan(
       globalAdviceMessage ??= "Дождитесь загрузки данных магазина.";
       return [];
     }
-    const refreshingPrevious =
-      c.syncStatus === "running" &&
+    // Incomplete automatic attempts leave the last successful snapshot intact.
+    const usePreviousAutomaticSnapshot =
       c.syncMode === "automatic" &&
-      c.lastSuccessVersion === c.version;
-    if (c.syncStatus !== "success" && !refreshingPrevious && !savedSnapshot) {
+      c.lastSuccessVersion === c.version &&
+      (c.syncStatus === "running" ||
+        c.syncStatus === "failed" ||
+        c.syncStatus === "partial");
+    if (
+      c.syncStatus !== "success" &&
+      !usePreviousAutomaticSnapshot &&
+      !savedSnapshot
+    ) {
       global.push(`${c.provider}: последняя загрузка не завершена успешно`);
       globalAdviceMessage ??= "Обновите данные маркетплейсов.";
     }
