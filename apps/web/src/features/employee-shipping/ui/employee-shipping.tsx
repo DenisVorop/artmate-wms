@@ -16,6 +16,7 @@ import {
   employeeShippingWork,
   employeeShippingScopeIssue,
   employeeWbPickHistory,
+  employeeWbPickGroup,
 } from "../lib/shipping-work";
 import { useEmployeeShipping } from "../model/use-employee-shipping";
 import styles from "./employee-shipping.module.css";
@@ -85,6 +86,15 @@ export function EmployeeShipping({
         ? "Сканируйте QR места"
         : "Сканируйте код короба";
   const nextSku = data.skus.find((sku) => sku.id === nextBox?.skuId)?.name;
+  const pickGroup =
+    wb && shipment && nextBox
+      ? employeeWbPickGroup(data, shipment, nextBox)
+      : null;
+  const lotDate = pickGroup?.receivedAt
+    ? new Date(pickGroup.receivedAt).toLocaleDateString("ru-RU", {
+        timeZone: "Europe/Moscow",
+      })
+    : null;
   const busy = commands.pending || gateway.pending || scans.pending > 0;
   const issue = !working
     ? "Начните или возобновите рабочую смену."
@@ -243,7 +253,14 @@ export function EmployeeShipping({
                   <>
                     <div className={styles.box}>
                       <span>{nextSku ?? "Следующий короб"}</span>
-                      <strong>{nextBox.code}</strong>
+                      <strong>
+                        {pickGroup && step !== "label"
+                          ? `Взять ${boxCount(pickGroup.count)}`
+                          : nextBox.code}
+                      </strong>
+                      {step !== "label" && lotDate && (
+                        <small>Тираж от {lotDate}</small>
+                      )}
                       {step === "label" && (
                         <small>
                           {nextBox.units} шт. в коробе. После сигнала наклейте
@@ -284,8 +301,9 @@ export function EmployeeShipping({
                 )}
                 {unavailable && (
                   <p className={styles.error} role="status">
-                    Следующий короб сейчас недоступен. Можно сканировать другие
-                    короба из резерва.
+                    {wb
+                      ? "Паллета сейчас недоступна. Дождитесь окончания перемещения или сообщите руководителю."
+                      : "Следующий короб сейчас недоступен. Можно сканировать другие короба из резерва."}
                   </p>
                 )}
                 <EmployeeScan

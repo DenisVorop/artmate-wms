@@ -198,6 +198,56 @@ test("putaway reserves the loaded envelope and refuses a43rdbox or an incompatib
     /другой тематики или профиля/,
   );
 });
+test("finished putaway keeps a mixed box with the oldest receipt lot", () => {
+  const { state, location } = storage();
+  const old = {
+    id: "old",
+    skuId: "cats",
+    name: "Old",
+    receivedAt: "2026-10-01",
+  };
+  const recent = {
+    id: "recent",
+    skuId: "cats",
+    name: "New",
+    receivedAt: "2026-10-02",
+  };
+  state.lots = [recent, old];
+  const box = (lotId: string) => ({
+    skuId: "cats",
+    lotContents: [{ lotId, quantity: 20 }],
+    packagingSnapshot: overhanging,
+  });
+  const mixed = {
+    ...box(old.id),
+    lotContents: [
+      { lotId: recent.id, quantity: 10 },
+      { lotId: old.id, quantity: 10 },
+    ],
+  };
+  state.pallets.push({
+    id: "pallet",
+    kind: "finished",
+    status: "stored",
+    skuId: "cats",
+    locationId: location.id,
+    returnLocationId: null,
+    quantity: 1,
+    packagingSnapshot: overhanging,
+    ...finishedMetrics(overhanging, 1),
+  } as D.PalletDto);
+  state.boxes.push({
+    ...box(old.id),
+    palletId: "pallet",
+    status: "stored",
+  } as D.BoxDto);
+  assert.equal(putawayPlacementError(state, location, mixed), null);
+  assert.match(
+    putawayPlacementError(state, location, box(recent.id))!,
+    /другого тиража/,
+  );
+});
+
 test("mixed accumulator includes explicit loaded dimensions but an empty pallet keeps its wooden base", () => {
   const base = { ...DEMO_PACKAGING };
   const profiles = Array.from({ length: 42 }, () => ({ ...overhanging }));

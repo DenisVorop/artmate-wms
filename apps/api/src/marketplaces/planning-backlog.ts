@@ -85,6 +85,7 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
   const simulation: W.WorkspaceDto = {
     ...w,
     pallets: structuredClone(w.pallets),
+    boxes: [...w.boxes],
   };
   const storage = w.locations.filter((location) =>
     ["rack", "floor"].includes(location.kind),
@@ -101,7 +102,9 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
     (location) => routes.get(location.id)?.status !== "unreachable",
   );
   let inspected = 0;
-  function reserve(box: Pick<W.BoxDto, "skuId" | "packagingSnapshot">) {
+  type ProposedBox = Pick<W.BoxDto, "skuId" | "packagingSnapshot"> &
+    Partial<Pick<W.BoxDto, "lotContents">>;
+  function reserve(box: ProposedBox) {
     if (++inspected > 10000 || !box.packagingSnapshot) return false;
     const candidates = [...reachable].sort(
       (a, b) =>
@@ -123,11 +126,10 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
           ) || a.code.localeCompare(b.code),
     );
     const location = candidates.find(
-      (candidate) =>
-        !putawayPlacementError(simulation, candidate, box as W.BoxDto),
+      (candidate) => !putawayPlacementError(simulation, candidate, box),
     );
     if (!location) return false;
-    const pallet = simulation.pallets.find(
+    let pallet = simulation.pallets.find(
       (p) => p.status === "stored" && p.locationId === location.id,
     );
     if (pallet) {
@@ -136,8 +138,8 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
         pallet,
         finishedMetrics(box.packagingSnapshot, pallet.quantity),
       );
-    } else
-      simulation.pallets.push({
+    } else {
+      pallet = {
         id: `forecast-capacity-${inspected}`,
         skuId: box.skuId,
         kind: "finished",
@@ -147,7 +149,17 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
         quantity: 1,
         packagingSnapshot: box.packagingSnapshot,
         ...finishedMetrics(box.packagingSnapshot, 1),
-      } as W.PalletDto);
+      } as W.PalletDto;
+      simulation.pallets.push(pallet);
+    }
+    if (box.lotContents?.length)
+      simulation.boxes.push({
+        ...box,
+        id: `forecast-box-${inspected}`,
+        palletId: pallet.id,
+        locationId: location.id,
+        status: "stored",
+      } as W.BoxDto);
     return true;
   }
   // Existing unplaced boxes and committed WIP consume capacity before optional work.
@@ -183,7 +195,6 @@ export function assemblyStorageCapacity(w: W.WorkspaceDto) {
       fits = reserve({ skuId: sku.id, packagingSnapshot: sku.packaging });
   }
   return {
-    reserve: (box: Pick<W.BoxDto, "skuId" | "packagingSnapshot">) =>
-      fits && reserve(box),
+    reserve: (box: ProposedBox) => fits && reserve(box),
   };
 }

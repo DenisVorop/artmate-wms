@@ -239,11 +239,25 @@ export function assemblyMetrics(
   };
 }
 
+export function oldestBoxLot(
+  lots: D.LotDto[],
+  contents: D.LotContentDto[] = [],
+) {
+  return contents
+    .map((part) => lots.find((lot) => lot.id === part.lotId))
+    .filter((lot) => lot !== undefined)
+    .sort(
+      (a, b) =>
+        a.receivedAt.localeCompare(b.receivedAt) || a.id.localeCompare(b.id),
+    )[0];
+}
+
 /** Project capacity including all claimed/carried incoming boxes, excluding only this command's own reservation. */
 export function putawayPlacementError(
   s: D.WorkspaceDto,
   l: D.LocationDto,
-  box: D.BoxDto,
+  box: Pick<D.BoxDto, "skuId" | "packagingSnapshot"> &
+    Partial<Pick<D.BoxDto, "lotContents">>,
   ignoreTaskId?: string,
 ): string | null {
   if (!["rack", "floor"].includes(l.kind))
@@ -269,6 +283,18 @@ export function putawayPlacementError(
       ))
   )
     return "Паллета назначения участвует в перемещении или возврате";
+  const lot = oldestBoxLot(s.lots, box.lotContents);
+  if (
+    pallet &&
+    lot &&
+    s.boxes.some(
+      (stored) =>
+        stored.palletId === pallet.id &&
+        stored.status === "stored" &&
+        oldestBoxLot(s.lots, stored.lotContents)?.id !== lot.id,
+    )
+  )
+    return "На паллете короба другого тиража. Выберите отдельное место";
   const incoming = (s.putawayTasks ?? []).filter(
     (t) =>
       t.id !== ignoreTaskId &&
@@ -283,6 +309,8 @@ export function putawayPlacementError(
       !samePackaging(incomingBox.packagingSnapshot, profile)
     )
       return "Адрес зарезервирован размещением другой тематики или профиля";
+    if (lot && oldestBoxLot(s.lots, incomingBox.lotContents)?.id !== lot.id)
+      return "Адрес зарезервирован для другого тиража";
   }
   const quantity = (pallet?.quantity ?? 0) + incoming.length + 1;
   if (quantity > profile.boxesPerLayer * profile.maxLayers)

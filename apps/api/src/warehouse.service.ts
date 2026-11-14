@@ -121,6 +121,7 @@ import {
   samePackaging,
   assemblyMetrics,
   putawayPlacementError,
+  oldestBoxLot,
 } from "./physical";
 const tables = [
   "putawayTasks",
@@ -2701,7 +2702,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           ) ?? ranked.reason)
         : candidates.length
           ? ranked.reason
-          : "Нет подходящего адреса хранения с учётом тематики, профиля и входящих коробов",
+          : "Нет подходящего места для коробов этого тиража",
     };
   }
 
@@ -3088,17 +3089,22 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         for (const box of candidates.slice(0, need.count))
           selectedBoxes.add(box.id);
       }
-      // Reserve by FIFO, then visit each address together. Preserve the exact selected IDs.
+      // Reserve by FIFO, then group visits to the same address within each receipt date.
       const boxIds = [...new Set(labels.map((label) => label.skuId))]
         .flatMap((skuId) => this._boxFifo(s, skuId))
         .filter((box) => selectedBoxes.has(box.id))
         .sort((a, b) => {
           const left = find(s.locations, a.locationId!, "Адрес");
           const right = find(s.locations, b.locationId!, "Адрес");
+          const oldestA = oldestBoxLot(s.lots, a.lotContents)!;
+          const oldestB = oldestBoxLot(s.lots, b.lotContents)!;
           return (
+            oldestA.receivedAt.localeCompare(oldestB.receivedAt) ||
             left.y - right.y ||
             left.x - right.x ||
-            left.code.localeCompare(right.code, "ru", { numeric: true })
+            left.code.localeCompare(right.code, "ru", { numeric: true }) ||
+            oldestA.id.localeCompare(oldestB.id) ||
+            a.units - b.units
           );
         })
         .map((box) => box.id);
@@ -4646,12 +4652,42 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       return;
     }
     if (!wb.pendingBoxId) {
+      const candidate = s.boxes.find(
+        (item) =>
+          this._scanEntity(code, "box", item.id, item.code) ||
+          this._scanEntity(code, "box", item.code, item.code),
+      );
+      if (!candidate) fail("Отсканируйте QR короба");
+      if (scanned.includes(candidate.id))
+        fail("Этот короб уже отобран. Возьмите следующий");
+      if (!candidate.palletId || candidate.palletId !== source.pallet.id)
+        fail(`Возьмите короб с паллеты по адресу ${source.location.code}`);
+      if (candidate.skuId !== box.skuId || candidate.units !== box.units)
+        fail("Нужен короб указанной тематики и количества");
       if (
-        !this._scanEntity(code, "box", box.id, box.code) &&
-        !this._scanEntity(code, "box", box.code, box.code)
+        oldestBoxLot(s.lots, candidate.lotContents)?.id !==
+        oldestBoxLot(s.lots, box.lotContents)?.id
       )
-        fail(`Отсканируйте QR короба ${box.code}`);
-      wb.pendingBoxId = box.id;
+        fail(
+          "На этой паллете есть другой тираж. Возьмите короб указанного тиража",
+        );
+      if (
+        s.shipments.some(
+          (other) =>
+            other.id !== shipment.id &&
+            other.status === "draft" &&
+            other.boxIds.includes(candidate.id),
+        )
+      )
+        fail("Этот короб зарезервирован другой отгрузкой");
+      if (!this._shipmentBoxSource(s, candidate))
+        fail("Этот короб сейчас недоступен для отбора");
+
+      const targetIndex = shipment.boxIds.indexOf(box.id);
+      const candidateIndex = shipment.boxIds.indexOf(candidate.id);
+      if (candidateIndex >= 0) shipment.boxIds[candidateIndex] = box.id;
+      shipment.boxIds[targetIndex] = candidate.id;
+      wb.pendingBoxId = candidate.id;
       return;
     }
     if (wb.pendingBoxId !== box.id || wb.locationId !== source.location.id)

@@ -1,4 +1,5 @@
 import type {
+  BoxDto,
   ShipmentDto,
   WorkspaceDto,
   WorkZoneDto,
@@ -53,6 +54,40 @@ export function employeeShippingProgress(shipment: ShipmentDto) {
       shipment.boxIds.length === shipment.boxesRequested &&
       scanned.size === reserved.size,
   };
+}
+
+export function employeeWbPickGroup(
+  data: Pick<WorkspaceDto, "boxes" | "lots">,
+  shipment: ShipmentDto,
+  next: BoxDto,
+) {
+  const dates = new Map(data.lots.map((lot) => [lot.id, lot.receivedAt]));
+  const oldestLot = (box: BoxDto) =>
+    box.lotContents
+      .map((part) => part.lotId)
+      .sort(
+        (a, b) =>
+          (dates.get(a) ?? "").localeCompare(dates.get(b) ?? "") ||
+          a.localeCompare(b),
+      )[0];
+  const lotId = oldestLot(next);
+  const scanned = new Set(shipment.scannedBoxIds);
+  const boxes = new Map(data.boxes.map((box) => [box.id, box]));
+  let count = 0;
+  for (const id of shipment.boxIds) {
+    if (scanned.has(id)) continue;
+    const box = boxes.get(id);
+    if (
+      !box ||
+      box.palletId !== next.palletId ||
+      box.skuId !== next.skuId ||
+      box.units !== next.units ||
+      oldestLot(box) !== lotId
+    )
+      break;
+    count++;
+  }
+  return { count, receivedAt: lotId ? dates.get(lotId) : undefined };
 }
 
 export function employeeWbPickHistory(shipment: ShipmentDto) {

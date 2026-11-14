@@ -1155,10 +1155,39 @@ test("one WB document retains the FIFO reservation, requires its owner and three
   assert.equal((await pick(first.code)).status, 400);
   assert.equal((await pick(location.code, manager)).status, 403);
   assert.equal((await pick(`Artmate-wms:location:${location.id}`)).status, 200);
-  const boxScan = await pick(first.code);
-  assert.equal(boxScan.status, 200);
+  s = await w.createShipment({
+    ...req(),
+    skuId: first.skuId,
+    boxesRequested: 1,
+  });
+  const otherShipment = s.shipments.find(
+    (row) =>
+      row.id !== job.id && row.status === "draft" && row.skuId === first.skuId,
+  )!;
+  const otherBox = s.boxes.find((box) => box.id === otherShipment.boxIds[0])!;
+  const held = await pick(otherBox.code);
+  assert.equal(held.status, 400);
+  assert.match(held.body.message, /зарезервирован другой отгрузкой/);
+  const top = s.boxes.find(
+    (box) =>
+      box.palletId === first.palletId &&
+      box.status === "stored" &&
+      !s.shipments.some(
+        (row) => row.status === "draft" && row.boxIds.includes(box.id),
+      ) &&
+      box.lotContents[0]?.lotId === first.lotContents[0]?.lotId,
+  )!;
+  assert(top);
+  const boxScan = await pick(top.code);
+  assert.equal(boxScan.status, 200, JSON.stringify(boxScan.body));
+  const swapped = boxScan.body.shipments.find(
+    (row: D.ShipmentDto) => row.id === job.id,
+  );
+  assert.equal(swapped.wb.pendingBoxId, top.id);
+  assert.equal(swapped.boxIds[0], top.id);
+  assert.ok(!swapped.boxIds.includes(first.id));
   assert.equal(
-    boxScan.body.boxes.find((box: D.BoxDto) => box.id === first.id).status,
+    boxScan.body.boxes.find((box: D.BoxDto) => box.id === top.id).status,
     "stored",
   );
   assert.equal((await pick("$Wb;Wrong;TAS")).status, 400);
@@ -1172,7 +1201,7 @@ test("one WB document retains the FIFO reservation, requires its owner and three
     employeeId: manager.user.employeeId,
   });
   const state = reassign.shipments.find((row) => row.id === job.id)!;
-  assert.deepEqual(state.scannedBoxIds, [first.id]);
+  assert.deepEqual(state.scannedBoxIds, [top.id]);
   assert.equal(state.wb!.labels[0].employeeId, account.user.employeeId);
   assert.equal((await pick(labels[1].code)).status, 403);
   const second = reassign.boxes.find((box) => box.id === job.boxIds[1])!;
