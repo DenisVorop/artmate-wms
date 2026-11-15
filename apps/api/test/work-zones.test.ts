@@ -495,6 +495,18 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
   assert.equal(taken.status, 200, JSON.stringify(taken.body));
   let s: D.WorkspaceDto = taken.body;
   assert.equal(binding(s).jobId, taskId);
+  await leave();
+  const reopened = await start(assembly, worker, true);
+  assert.equal(binding(reopened).jobId, null);
+  assert.equal(
+    reopened.tasks.find((row) => row.id === taskId)?.status,
+    "paused",
+  );
+  const continued = await takeNext();
+  assert.equal(continued.status, 200, JSON.stringify(continued.body));
+  s = continued.body;
+  assert.equal(binding(s).jobId, taskId);
+  assert.equal(s.tasks.find((row) => row.id === taskId)?.status, "active");
   const t = s.tasks.find((t) => t.id === taskId)!,
     source = s.pallets.find((p) => p.id === t.reservations[0].palletId)!;
   await scanTask(taskId, "source", source.code);
@@ -527,7 +539,19 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
     400,
   );
   assert.deepEqual(await w.snapshot(), before);
-  s = await start(assembly);
+  const reopenedWithScans = await start(assembly, worker, true);
+  assert.equal(binding(reopenedWithScans).jobId, null);
+  assert.deepEqual(
+    reopenedWithScans.tasks.find((row) => row.id === taskId),
+    before.tasks.find((row) => row.id === taskId),
+  );
+  const continuedWithScans = await takeNext();
+  assert.equal(
+    continuedWithScans.status,
+    200,
+    JSON.stringify(continuedWithScans.body),
+  );
+  s = continuedWithScans.body;
   assert.equal(binding(s).jobId, taskId);
   s = await scanTask(
     taskId,

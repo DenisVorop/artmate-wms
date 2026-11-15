@@ -239,17 +239,25 @@ function EmployeeWorkspaceBody({
       ? buildWorkQueue(data).filter((job) => {
           if (
             job.kind !== queueZone.kind ||
-            job.state !== "queued" ||
             (job.employeeId && job.employeeId !== user?.employeeId)
           )
             return false;
-          if (job.kind !== "receiving") return true;
+          if (job.kind === "assembly")
+            return (
+              job.state === "queued" ||
+              (job.employeeId === user?.employeeId &&
+                (job.state === "paused" || job.state === "active"))
+            );
+          if (job.state !== "queued") return false;
           const source = data.pallets.find(
             (p) => p.id === job.palletId,
           )?.locationId;
           return !source || queueZone.locationIds.includes(source);
         })
       : [];
+  const hasAssemblyToResume = zoneJobs.some(
+    (job) => job.kind === "assembly" && job.state !== "queued",
+  );
   const zoneEntry = showZoneScan || needsZone || !!queueZone || assemblyFull;
   const suggestPutaway =
     assemblyFull ||
@@ -318,7 +326,9 @@ function EmployeeWorkspaceBody({
                 aria-pressed={!showJobs}
                 onClick={() => setShowJobs(false)}
               >
-                Текущая работа
+                {currentZone?.assignment.jobKind
+                  ? "Текущая работа"
+                  : "Задания зоны"}
               </button>
               <button
                 type="button"
@@ -637,6 +647,10 @@ function EmployeeWorkspaceBody({
                                   {job.skuName ?? job.objectLabel}
                                 </strong>
                                 <small>
+                                  {job.kind === "assembly" &&
+                                  job.state !== "queued"
+                                    ? `${job.statusLabel} · `
+                                    : ""}
                                   {job.quantityLabel}
                                   {job.kind === "receiving"
                                     ? ` · ${job.objectLabel}`
@@ -650,7 +664,9 @@ function EmployeeWorkspaceBody({
                             onClick={() => void zones.takeNext(queueZone.id)}
                           >
                             {queueZone.kind === "assembly"
-                              ? "Взять следующее задание на сборку"
+                              ? hasAssemblyToResume
+                                ? "Продолжить сборку"
+                                : "Взять следующее задание на сборку"
                               : "Взять следующую паллету"}
                           </Button>
                         </>

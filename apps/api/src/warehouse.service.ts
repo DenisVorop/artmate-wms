@@ -4292,6 +4292,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     const idle = (message: string) =>
       this._setZoneJob(s, zone, employeeId, null, null, null, message);
     if (zone.kind === "assembly") {
+      if (openQueue) {
+        idle("Начните или продолжите сборку, когда готовы.");
+        return;
+      }
       const own = s.tasks
         .filter(
           (t) =>
@@ -4323,10 +4327,6 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         }
         if (own.status !== "active") this._claimTask(s, own, employeeId);
         assign("assembly", own.id, null, "Продолжите своё задание сборки");
-        return;
-      }
-      if (openQueue) {
-        idle("Возьмите следующее задание по приоритету.");
         return;
       }
       const candidates = s.tasks
