@@ -93,10 +93,10 @@ export function OverviewScreen() {
         {cards.map(({ title, value, unit, note, href, icon: Icon }) => (
           <Link className={styles.card} key={href} href={href}>
             <div className={styles.cardHeader}>
-              <Icon className={styles.icon} size={19} aria-hidden="true" />
+              <Icon className={styles.icon} size={16} aria-hidden="true" />
               <ArrowUpRight
                 className={styles.arrow}
-                size={16}
+                size={14}
                 aria-hidden="true"
               />
             </div>
