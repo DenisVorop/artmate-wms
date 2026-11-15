@@ -1,19 +1,9 @@
-.panel {
-  padding: 22px;
-  margin: 0 0 24px;
-}
 .heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
 }
-.heading h2 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-}
-.heading p,
 .counts {
   color: var(--muted);
   font-size: 13px;
@@ -109,9 +99,6 @@
   line-height: 1.6;
 }
 @media (max-width: 640px) {
-  .panel {
-    padding: 16px;
-  }
   .heading {
     align-items: flex-start;
     flex-direction: column;

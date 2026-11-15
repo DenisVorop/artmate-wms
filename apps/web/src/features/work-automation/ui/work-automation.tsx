@@ -16,15 +16,9 @@ export function WorkAutomation() {
   const blockers =
     status?.blockers.filter((reason) => reason !== status.message) ?? [];
   return (
-    <section
-      className={`glass-panel ${styles.panel}`}
-      aria-labelledby="work-automation-title"
-    >
+    <div>
       <div className={styles.heading}>
-        <div>
-          <h2 id="work-automation-title">Автоматические задания</h2>
-          <p>Сборка по потребности склада и размещение готовых коробов.</p>
-        </div>
+        <p>Создавать задания автоматически</p>
         <button
           type="button"
           role="switch"
@@ -110,6 +104,6 @@ export function WorkAutomation() {
           </Button>
         </div>
       )}
-    </section>
+    </div>
   );
 }
