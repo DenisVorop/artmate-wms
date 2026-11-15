@@ -72,7 +72,7 @@ export function useStocktakeCommands() {
       if (epoch === getAuthEpoch()) setPending(null);
     }
   };
-  const command = (doc: StocktakeDto) => ({
+  const command = (doc: Pick<StocktakeDto, "revision">) => ({
     requestId: crypto.randomUUID(),
     expectedRevision: doc.revision,
   });
@@ -88,7 +88,7 @@ export function useStocktakeCommands() {
           mode,
         }),
       ),
-    claim: (doc: StocktakeDto) =>
+    claim: (doc: Pick<StocktakeDto, "id" | "revision">) =>
       run("claim", () => api.claimStocktake(doc.id, command(doc))),
     count: (
       doc: StocktakeDto,

@@ -1,5 +1,9 @@
+import type { ReactNode } from "react";
+import { useWorkQueueStocktakes } from "@/entities/work-queue";
+import { employeeStocktakeJobs } from "@/features/stocktakes";
 import type {
   MovementDto,
+  StocktakeSummaryDto,
   WorkspaceDto,
   WorkZoneDto,
   ZoneOfferDto,
@@ -76,32 +80,46 @@ type JobRow = {
   disabled: boolean;
   onClick: () => void;
 };
+type JobGroup = {
+  id: string;
+  name: string;
+  jobs: JobRow[];
+  footer?: ReactNode;
+};
 
 export function EmployeeZoneGuide({
   data,
   zone,
   movements,
+  employeeId,
   blocked,
+  stocktakeBlocked,
   failed,
   onRetry,
   onTake,
   onMovement,
+  onStocktake,
   onClearZone,
   onProblem,
 }: {
   data: WorkspaceDto;
   zone?: WorkZoneDto;
   movements: readonly MovementDto[];
+  employeeId: string;
   blocked: boolean;
+  stocktakeBlocked: boolean;
   failed: boolean;
   onRetry: () => void;
   onTake: (offer: ZoneOfferDto) => void;
   onMovement: (movement: MovementDto) => void;
+  onStocktake: (stocktake: StocktakeSummaryDto) => void;
   onClearZone: () => void;
   onProblem: (message: string) => void;
 }) {
   const zones = data.warehouse.workZones.filter((row) => !row.archived);
   const offers = data.zoneOffers ?? [];
+  const stocktakes = useWorkQueueStocktakes("active", !zone);
+  const inventoryJobs = employeeStocktakeJobs(stocktakes.items, employeeId);
   const movementJobs = movements.map<JobRow>((movement) => {
     const pallet = data.pallets.find((item) => item.id === movement.palletId);
     const sku = data.skus.find((item) => item.id === pallet?.skuId);
@@ -124,7 +142,7 @@ export function EmployeeZoneGuide({
       onClick: () => onMovement(movement),
     };
   });
-  const groups = (zone ? [zone] : zones).map((item) => ({
+  const groups: JobGroup[] = (zone ? [zone] : zones).map((item) => ({
     id: item.id,
     name: item.name,
     jobs: offers
@@ -145,6 +163,53 @@ export function EmployeeZoneGuide({
       }),
   }));
   const hasZoneJobs = groups.some(({ jobs }) => jobs.length > 0);
+  if (
+    !zone &&
+    (inventoryJobs.length ||
+      stocktakes.isPending ||
+      stocktakes.isError ||
+      stocktakes.hasNextPage)
+  )
+    groups.unshift({
+      id: "stocktakes",
+      name: "Инвентаризация",
+      jobs: inventoryJobs.map((doc) => ({
+        key: doc.id,
+        title: `${doc.mode === "opening" ? "Первичная инвентаризация" : "Пересчёт ячеек"} ${doc.code}`,
+        note:
+          doc.status === "review"
+            ? "На проверке"
+            : `Пересчитано ${doc.locationsCounted} из ${doc.locationsTotal}`,
+        action:
+          doc.status === "queued"
+            ? "Взять"
+            : doc.status === "review"
+              ? "Открыть"
+              : "Продолжить",
+        disabled: blocked || stocktakeBlocked,
+        onClick: () => onStocktake(doc),
+      })),
+      footer: stocktakes.isPending ? (
+        <span role="status">Загружаем инвентаризации…</span>
+      ) : stocktakes.isError ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void stocktakes.refetch()}
+        >
+          Обновить инвентаризации
+        </Button>
+      ) : stocktakes.hasNextPage ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={stocktakes.isFetching}
+          onClick={() => void stocktakes.fetchNextPage()}
+        >
+          Показать ещё
+        </Button>
+      ) : undefined,
+    });
   if (!zone && movementJobs.length > 0)
     groups.unshift({
       id: "movements",
@@ -211,7 +276,7 @@ export function EmployeeZoneGuide({
                   <th scope="col">Действие</th>
                 </tr>
               </thead>
-              {groups.map(({ id, name, jobs }) => (
+              {groups.map(({ id, name, jobs, footer }) => (
                 <tbody key={id} aria-label={name}>
                   {!zone && (
                     <tr className={styles.zoneGroup}>
@@ -220,7 +285,7 @@ export function EmployeeZoneGuide({
                       </th>
                     </tr>
                   )}
-                  {jobs.length === 0 ? (
+                  {jobs.length === 0 && !footer ? (
                     <tr>
                       <td colSpan={2} className={styles.zoneTableHint}>
                         Заданий нет
@@ -247,6 +312,13 @@ export function EmployeeZoneGuide({
                         </tr>
                       ),
                     )
+                  )}
+                  {footer && (
+                    <tr>
+                      <td colSpan={2} className={styles.zoneTableHint}>
+                        {footer}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               ))}

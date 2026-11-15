@@ -3,16 +3,14 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ClipboardCheck } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
-import { useStocktake, useStocktakes } from "@/entities/stocktake";
+import { useStocktake } from "@/entities/stocktake";
 import {
-  Badge,
   Button,
   ErrorState,
   LoadingState,
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import {
-  employeeStocktakeJobs,
   employeeStocktakeNextRow,
   employeeStocktakeCanLeave,
   lastCountedStocktakeRow,
@@ -22,32 +20,24 @@ import { useStocktakesState } from "../lib/use-stocktakes-state";
 import { useStocktakeCommands } from "../model/use-stocktake-commands";
 import { StocktakeRow } from "./stocktake-row";
 import styles from "./stocktakes.module.css";
-type Destination =
-  | { kind: "idle" }
-  | { kind: "document"; id: string }
-  | { kind: "row"; id: string };
+type Destination = { kind: "idle" } | { kind: "row"; id: string };
 export function EmployeeStocktakes({
-  initialDocumentId,
+  documentId,
   onIdle,
   onProblem,
 }: {
-  initialDocumentId?: string;
+  documentId: string;
   onIdle: () => void;
   onProblem?: (message: string) => void;
 }) {
   const { user } = useSession(),
     workspace = useWorkspace(),
-    ui = useStocktakesState(initialDocumentId),
+    ui = useStocktakesState(),
     commands = useStocktakeCommands();
   const [rowId, setRowId] = useState<string | null>(null),
     [reviewRow, setReviewRow] = useState(false),
     [destination, setDestination] = useState<Destination | null>(null);
-  const listQuery = useStocktakes({
-      bucket: "active",
-      page: ui.page,
-      pageSize: 100,
-    }),
-    docQuery = useStocktake(ui.selectedId),
+  const docQuery = useStocktake(documentId),
     doc = docQuery.data;
   const working =
       workspace.data?.employees.find((e) => e.id === user?.employeeId)
@@ -60,12 +50,7 @@ export function EmployeeStocktakes({
     activity.reportUnsaved(activityId, hasUnsavedWork);
     return () => activity.reportUnsaved(activityId, false);
   }, [activity.reportUnsaved, activityId, hasUnsavedWork]);
-  const jobs = employeeStocktakeJobs(
-    listQuery.isPlaceholderData ? [] : (listQuery.data?.items ?? []),
-    user?.employeeId ?? "",
-  );
-  const selected =
-    doc && doc.id === ui.selectedId && doc.employeeId === user?.employeeId;
+  const selected = doc && doc.employeeId === user?.employeeId;
   const rows = useMemo(
     () => stocktakeWalk(doc?.rows ?? [], workspace.data),
     [doc?.rows, workspace.data],
@@ -101,7 +86,6 @@ export function EmployeeStocktakes({
     setReviewRow(false);
     setRowId(null);
     if (next.kind === "idle") onIdle();
-    else if (next.kind === "document") ui.setSelectedId(next.id);
     else {
       setRowId(next.id);
       setReviewRow(true);
@@ -116,7 +100,7 @@ export function EmployeeStocktakes({
           disabled={busy}
           onClick={() => navigate({ kind: "idle" })}
         >
-          <ArrowLeft size={16} />К работе
+          <ArrowLeft size={16} />К заданиям
         </Button>
         <h2>
           {doc?.mode === "opening"
@@ -156,87 +140,7 @@ export function EmployeeStocktakes({
           Начните или возобновите смену на рабочем экране, чтобы считать ячейки.
         </p>
       )}
-      {!ui.selectedId ? (
-        <>
-          {listQuery.isPending ? (
-            <LoadingState label="Загружаем пересчёты…" />
-          ) : listQuery.isError ? (
-            <ErrorState
-              message="Не удалось загрузить документы пересчёта."
-              onRetry={() => void listQuery.refetch()}
-            />
-          ) : (
-            <>
-              {!jobs.length ? (
-                <div className={`glass-panel ${styles.employeeEmpty}`}>
-                  <ClipboardCheck size={28} />
-                  <h3>Пересчётов пока нет</h3>
-                  <p>Когда руководитель создаст документ, он появится здесь.</p>
-                  <Button
-                    disabled={busy}
-                    onClick={() => navigate({ kind: "idle" })}
-                  >
-                    К другим заданиям
-                  </Button>
-                </div>
-              ) : (
-                <div className={styles.employeeJobs}>
-                  {jobs.map((job) => (
-                    <button
-                      type="button"
-                      className={styles.document}
-                      key={job.id}
-                      onClick={() => navigate({ kind: "document", id: job.id })}
-                    >
-                      <div className={styles.documentTop}>
-                        <strong>{job.code}</strong>
-                        <Badge
-                          tone={job.status === "review" ? "warning" : "neutral"}
-                        >
-                          {job.status === "counting"
-                            ? "Ваша работа"
-                            : job.status === "review"
-                              ? "На проверке"
-                              : "Свободен"}
-                        </Badge>
-                      </div>
-                      <span>
-                        {job.locationsCounted} из {job.locationsTotal} ячеек
-                      </span>
-                      <small>
-                        {job.status === "queued"
-                          ? "Открыть и взять в работу"
-                          : job.status === "review"
-                            ? "Ожидает решения руководителя"
-                            : "Продолжить пересчёт"}
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {(listQuery.data?.total ?? 0) > 100 && (
-                <div className={styles.inlineActions}>
-                  <Button
-                    variant="secondary"
-                    disabled={ui.page === 1}
-                    onClick={() => ui.setPage((p) => p - 1)}
-                  >
-                    Назад
-                  </Button>
-                  <span>Страница {ui.page}</span>
-                  <Button
-                    variant="secondary"
-                    disabled={ui.page * 100 >= (listQuery.data?.total ?? 0)}
-                    onClick={() => ui.setPage((p) => p + 1)}
-                  >
-                    Далее
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      ) : docQuery.isPending ? (
+      {docQuery.isPending ? (
         <LoadingState label="Открываем ячейки…" />
       ) : !doc ? (
         <ErrorState
@@ -260,16 +164,9 @@ export function EmployeeStocktakes({
             <div>
               <strong>{doc.code}</strong>
               <p>
-                {doc.locationsCounted} из {doc.locationsTotal} ячеек пересчитано
+                Пересчитано {doc.locationsCounted} из {doc.locationsTotal}
               </p>
             </div>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => navigate({ kind: "document", id: "" })}
-            >
-              Другой документ
-            </Button>
           </section>
           {commands.error && (
             <div className={styles.error} role="alert">
@@ -313,7 +210,7 @@ export function EmployeeStocktakes({
                 disabled={busy}
                 onClick={() => navigate({ kind: "idle" })}
               >
-                К другим заданиям
+                К заданиям
               </Button>
               <details>
                 <summary>Нужен повторный подсчёт?</summary>

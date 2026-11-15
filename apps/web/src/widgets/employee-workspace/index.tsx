@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Package, Ellipsis, X } from "lucide-react";
 import { useSession } from "@/entities/session";
-import type { MovementDto, ZoneOfferDto } from "@/shared/api/generated/model";
+import type {
+  MovementDto,
+  StocktakeSummaryDto,
+  ZoneOfferDto,
+} from "@/shared/api/generated/model";
 import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
 import { useWorkspace } from "@/entities/workspace";
 import { EmployeeAssembly } from "@/features/employee-assembly";
@@ -15,7 +19,10 @@ import {
   movementClaimBlock,
 } from "@/features/employee-handling";
 import { EmployeeShipping } from "@/features/employee-shipping";
-import { EmployeeStocktakes } from "@/features/stocktakes";
+import {
+  EmployeeStocktakes,
+  useStocktakeCommands,
+} from "@/features/stocktakes";
 import {
   EmployeeShift,
   useEmployeeWorkday,
@@ -59,24 +66,29 @@ function EmployeeWorkspaceBody({
   const { user } = useSession(),
     workspace = useWorkspace(),
     day = useEmployeeWorkday(
-      initialMode === "movements" ? "zone" : initialMode,
+      initialMode === "movements" ||
+        (initialMode === "stocktakes" && !initialDocumentId)
+        ? "zone"
+        : initialMode,
     ),
     movementCommands = useWarehouseCommands(),
+    stocktakeCommands = useStocktakeCommands(),
     auth = useAuthActions(),
     scan = useEmployeeScanActivity();
   const [menu, setMenu] = useState(false),
-    [more, setMore] = useState(false),
     [help, setHelp] = useState(false),
     [password, setPassword] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
     [movementId, setMovementId] = useState<string | null>(null),
+    [selectedStocktakeId, setSelectedStocktakeId] = useState<string>(),
     [problem, setProblem] = useState<string | null>(null);
+  const stocktakeId = selectedStocktakeId ?? initialDocumentId;
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
     data && user ? employeePriority(data, user.employeeId) : null;
-  const movementOpening = useRef(false);
+  const jobOpening = useRef(false);
   const movements = employeeMovementJobs(
     data?.movements ?? [],
     user?.employeeId ?? "",
@@ -158,7 +170,12 @@ function EmployeeWorkspaceBody({
       setNotice(null);
     },
   });
-  const blocked = baseBlocked || zones.pending || movementCommands.pending;
+  const blocked =
+    baseBlocked ||
+    zones.pending ||
+    movementCommands.pending ||
+    !!stocktakeCommands.pending;
+  const stocktakeBlocked = !!priority && priority.mode !== "shipping";
   const nextDisplay = {
     userId: user?.id,
     mode: requestedMode,
@@ -187,7 +204,7 @@ function EmployeeWorkspaceBody({
   const choose = async (next: EmployeeMode, confirmed = false) => {
     if (
       jobLocked ||
-      movementOpening.current ||
+      jobOpening.current ||
       zones.pending ||
       scan.pending ||
       (scan.unsaved && !confirmed)
@@ -201,6 +218,7 @@ function EmployeeWorkspaceBody({
     if (confirmed) displayed.current.mode = next;
     day.choose(next);
     setMovementId(null);
+    setSelectedStocktakeId(undefined);
     setShowZoneScan(false);
     setProblem(null);
     day.clearError();
@@ -210,7 +228,7 @@ function EmployeeWorkspaceBody({
   const shift = async (status: "working" | "break" | "off") => {
     if (
       jobLocked ||
-      movementOpening.current ||
+      jobOpening.current ||
       zones.pending ||
       (scan.pending > 0 && status !== "working") ||
       (scan.unsaved && status !== "working") ||
@@ -241,14 +259,13 @@ function EmployeeWorkspaceBody({
       currentZone?.zone.id !== offer.zoneId ||
       blocked ||
       jobLocked ||
-      movementOpening.current
+      jobOpening.current
     )
       return;
     if ((await zones.takeJob(offer)) !== "handled") void workspace.refetch();
   };
   const openMovement = async (selected: MovementDto) => {
-    if (!user || !data || blocked || jobLocked || movementOpening.current)
-      return;
+    if (!user || !data || blocked || jobLocked || jobOpening.current) return;
     if (!selected.employeeId) {
       const reason = movementClaimBlock(data, user.employeeId, selected.id);
       if (reason) {
@@ -256,7 +273,7 @@ function EmployeeWorkspaceBody({
         return;
       }
     }
-    movementOpening.current = true;
+    jobOpening.current = true;
     setProblem(null);
     try {
       if (currentZone && !(await zones.leave())) return;
@@ -279,12 +296,32 @@ function EmployeeWorkspaceBody({
       );
       void workspace.refetch();
     } finally {
-      movementOpening.current = false;
+      jobOpening.current = false;
+    }
+  };
+  const openStocktake = async (selected: StocktakeSummaryDto) => {
+    if (blocked || jobLocked || jobOpening.current || stocktakeBlocked) return;
+    jobOpening.current = true;
+    setProblem(null);
+    try {
+      if (currentZone && !(await zones.leave())) return;
+      if (
+        selected.status === "queued" &&
+        !(await stocktakeCommands.claim(selected))
+      )
+        return;
+      setSelectedStocktakeId(selected.id);
+      setShowZoneScan(false);
+      setNotice(null);
+      setMenu(false);
+      day.choose("stocktakes");
+    } finally {
+      jobOpening.current = false;
     }
   };
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) {
-      if (jobLocked || movementOpening.current) {
+      if (jobLocked || jobOpening.current) {
         setProblem("Сначала закончите текущее задание.");
         return "blocked" as const;
       }
@@ -379,37 +416,6 @@ function EmployeeWorkspaceBody({
               )}
               {priority?.carrying && (
                 <p>Сначала поставьте переносимый товар на адрес.</p>
-              )}
-              {!jobLocked && (
-                <button onClick={() => setMore(!more)} aria-expanded={more}>
-                  Другие работы
-                </button>
-              )}
-              {more && !jobLocked && (
-                <div className={styles.submenu}>
-                  {(
-                    [
-                      ["zone", "Сканировать зону"],
-                      ["stocktakes", "Инвентаризация"],
-                    ] as [EmployeeMode, string][]
-                  ).map(([key, label]) => (
-                    <button
-                      key={key}
-                      disabled={
-                        blocked ||
-                        (!!priority &&
-                          priority.mode !== "shipping" &&
-                          priority.mode !== key)
-                      }
-                      onClick={() => void choose(key)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  {priority && !priority.carrying && (
-                    <p>Сначала завершите или приостановите текущее задание.</p>
-                  )}
-                </div>
               )}
               <button onClick={() => setHelp(!help)} aria-expanded={help}>
                 Помощь
@@ -506,11 +512,14 @@ function EmployeeWorkspaceBody({
                   </button>
                 </div>
               )}
-              {problem && (
+              {(problem || stocktakeCommands.error) && (
                 <div className={styles.warning} role="alert">
-                  <p>{problem}</p>
+                  <p>{problem || stocktakeCommands.error}</p>
                   <button
-                    onClick={() => setProblem(null)}
+                    onClick={() => {
+                      setProblem(null);
+                      stocktakeCommands.clearError();
+                    }}
                     aria-label="Скрыть сообщение"
                   >
                     <X size={17} />
@@ -567,25 +576,31 @@ function EmployeeWorkspaceBody({
                       Назад
                     </button>
                   )}
-                  {!currentZone && !zoneEntry && !jobLocked && (
-                    <button
-                      className={styles.zoneSwitch}
-                      disabled={blocked}
-                      onClick={() => setShowZoneScan(true)}
-                    >
-                      Сканировать рабочую зону
-                    </button>
-                  )}
+                  {!currentZone &&
+                    !zoneEntry &&
+                    !jobLocked &&
+                    mode !== "stocktakes" && (
+                      <button
+                        className={styles.zoneSwitch}
+                        disabled={blocked}
+                        onClick={() => setShowZoneScan(true)}
+                      >
+                        Сканировать рабочую зону
+                      </button>
+                    )}
                   {zoneEntry ? (
                     <EmployeeZoneGuide
                       data={data}
                       zone={showZoneScan ? undefined : currentZone?.zone}
                       movements={movements}
+                      employeeId={employee.id}
+                      stocktakeBlocked={stocktakeBlocked}
                       blocked={blocked}
                       failed={workspace.isError}
                       onRetry={() => void workspace.refetch()}
                       onTake={(offer) => void takeOffer(offer)}
                       onMovement={(selected) => void openMovement(selected)}
+                      onStocktake={(selected) => void openStocktake(selected)}
                       onClearZone={() => void choose("zone")}
                       onProblem={setProblem}
                     />
@@ -645,11 +660,11 @@ function EmployeeWorkspaceBody({
                           onProblem={setProblem}
                         />
                       )}
-                      {mode === "stocktakes" && (
+                      {mode === "stocktakes" && stocktakeId && (
                         <EmployeeStocktakes
-                          key={initialDocumentId ?? "queue"}
-                          initialDocumentId={initialDocumentId}
-                          onIdle={() => void choose("assembly", true)}
+                          key={stocktakeId}
+                          documentId={stocktakeId}
+                          onIdle={() => void choose("zone", true)}
                           onProblem={setProblem}
                         />
                       )}
