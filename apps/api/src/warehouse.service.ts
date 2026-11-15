@@ -24,11 +24,16 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { createDatabase, Database, Queryable } from "./database";
-import { requestAuth, projectWorkspace } from "./auth-context";
+import {
+  requestAuth,
+  projectWorkspace,
+  type RequestAuthContext,
+} from "./auth-context";
 import { linkedBarcodeOwners, skuBarcodeOwner } from "./sku-barcodes";
 import {
   consumableKey,
   consumableNames,
+  consumablesPerBox,
   consumeReservedPackaging,
   hasConsumables,
   needsConsumables,
@@ -496,9 +501,37 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         const state = await this._load(tx);
         if (requestAuth.getStore()?.http)
           await authorizeWarehouse(tx, "getWorkspace", undefined, state);
-        return projectWorkspace(state);
+        return this._workView(state);
       }),
     );
+  }
+  private _workView(
+    state: D.WorkspaceDto,
+    context: RequestAuthContext | undefined = requestAuth.getStore(),
+  ) {
+    const view = projectWorkspace(state, context);
+    const employeeId = context?.employeeId;
+    if (
+      !employeeId ||
+      !state.employees?.some(
+        (e) => e.id === employeeId && e.status === "working",
+      )
+    )
+      return view;
+    const zones = view.warehouse?.workZones?.filter((zone) => !zone.archived);
+    if (!zones?.length) return view;
+    const zoneOffers = zones.flatMap((zone) => {
+      if (
+        zone.locationIds.some((id) => {
+          const location = activeZoneLocation(state, id);
+          return !location || location.blocked;
+        })
+      )
+        return [];
+      const offer = this._zoneOffer(state, zone, employeeId);
+      return offer ? [offer] : [];
+    });
+    return { ...view, zoneOffers };
   }
   private async _readState(operation: string): Promise<D.WorkspaceDto> {
     return this.authTransaction(async (tx) => {
@@ -805,7 +838,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             throw new ConflictException(
               "Этот requestId уже использован для другой операции",
             );
-          return projectWorkspace(previous.rows[0].response, context);
+          return this._workView(previous.rows[0].response, context);
         }
         const before = structuredClone(state);
         await mutate(state, tx);
@@ -815,7 +848,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
           [body.requestId, fingerprint, JSON.stringify(state)],
         );
-        return projectWorkspace(state, context);
+        return this._workView(state, context);
       }),
     );
   }
@@ -4255,7 +4288,48 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         fail("Сначала подтвердите размещение короба в пути");
       if (current?.zoneId !== zone.id && !resumeUnbound)
         this._leaveWork(s, b.employeeId);
-      this._chooseZoneWork(s, zone, b.employeeId, b.intent === "open-queue");
+      if (b.intent === "take-next" && b.expectedJobId) {
+        const offer = this._zoneOffer(s, zone, b.employeeId);
+        if (
+          offer?.jobId !== b.expectedJobId ||
+          offer.palletId !== (b.expectedPalletId ?? null)
+        )
+          throw new ConflictException(
+            "Это задание уже недоступно. Проверьте, какая работа осталась.",
+          );
+        if (zone.kind === "shipping") {
+          const shipment = find(s.shipments, offer.jobId, "Отгрузка");
+          shipment.pickingMode ??= "box";
+          shipment.workZoneId = zone.id;
+          shipment.employeeId = b.employeeId;
+          shipment.scannedBoxIds ??= [];
+          this._setZoneJob(
+            s,
+            zone,
+            b.employeeId,
+            "shipping",
+            shipment.id,
+            null,
+            "Сканируйте короба отгрузки",
+          );
+        } else {
+          this._chooseZoneWork(s, zone, b.employeeId);
+        }
+      } else {
+        this._chooseZoneWork(
+          s,
+          zone,
+          b.employeeId,
+          b.intent === "open-queue" || b.intent === "show-offer",
+          b.intent === "show-offer",
+        );
+      }
+      if (b.intent === "show-offer") {
+        const binding = s.warehouse.zoneWork.find(
+          (w) => w.employeeId === b.employeeId,
+        );
+        if (binding) binding.manualQueue = true;
+      }
       activity(
         s,
         b.intent === "take-next"
@@ -4277,11 +4351,245 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       );
     });
   }
+  private _ownAssembly(s: D.WorkspaceDto, employeeId: string) {
+    return s.tasks
+      .filter(
+        (t) =>
+          t.employeeId === employeeId &&
+          ["active", "paused"].includes(t.status),
+      )
+      .sort(
+        (a, b) =>
+          Number(b.status === "active") - Number(a.status === "active") ||
+          Number(b.scannedUnits > 0 || b.boxCodeConfirmed) -
+            Number(a.scannedUnits > 0 || a.boxCodeConfirmed) ||
+          Number(a.autoPurpose === "backlog") -
+            Number(b.autoPurpose === "backlog") ||
+          (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+          a.id.localeCompare(b.id),
+      )[0];
+  }
+  private _assemblyZoneAvailable(s: D.WorkspaceDto, task: D.TaskDto) {
+    if (this._taskSourcesError(s, task)) return false;
+    const inProgress = task.boxCodeConfirmed || task.scannedUnits > 0;
+    if (!inProgress && assemblyAcceptanceError(s, task.skuId, task.id))
+      return false;
+    if (
+      task.reservations.reduce((units, row) => units + row.quantity, 0) <
+      task.unitsPerBox - task.scannedUnits
+    )
+      return false;
+    if (s.warehouse.consumablesEnabled && needsConsumables(task.unitsPerBox)) {
+      for (const item of D.consumableItems) {
+        const reserved = (task.consumableReservations ?? []).filter(
+          (row) =>
+            row.item === item &&
+            (s.warehouse.consumables ?? []).some(
+              (stock) =>
+                stock.item === item &&
+                stock.locationId === row.locationId &&
+                stock.quantity >= row.quantity,
+            ),
+        );
+        if (
+          reserved.reduce((units, row) => units + row.quantity, 0) <
+          consumablesPerBox[item]
+        )
+          return false;
+      }
+    }
+    return true;
+  }
+  private _nextAssembly(s: D.WorkspaceDto, employeeId: string) {
+    const candidates = s.tasks
+      .filter(
+        (t) =>
+          t.status === "queued" &&
+          (!t.employeeId || t.employeeId === employeeId) &&
+          !t.scannedUnits &&
+          !t.boxCodeConfirmed,
+      )
+      .sort(assemblyQueueOrder(s.tasks, employeeId));
+    return candidates.find((t) => this._assemblyZoneAvailable(s, t));
+  }
+  private _receivingZoneOffer(
+    s: D.WorkspaceDto,
+    zone: D.WorkZoneDto,
+    employeeId: string,
+  ) {
+    const claims = new Set(
+      s.warehouse.zoneWork
+        .filter(
+          (w) =>
+            w.employeeId !== employeeId &&
+            w.jobKind === "receiving" &&
+            this._zoneJobActive(s, w),
+        )
+        .map((w) => `${w.jobId}/${w.palletId}`),
+    );
+    for (const r of [...s.receipts]
+      .filter((r) => r.status !== "completed")
+      .sort(
+        (a, b) =>
+          a.receivedAt.localeCompare(b.receivedAt) ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id),
+      ))
+      for (const row of [...r.pallets].sort((a, b) =>
+        a.palletId.localeCompare(b.palletId),
+      )) {
+        const p = s.pallets.find((p) => p.id === row.palletId);
+        if (
+          row.placedAt ||
+          !p ||
+          p.status !== "awaiting_placement" ||
+          (p.locationId && !zone.locationIds.includes(p.locationId)) ||
+          claims.has(`${r.id}/${p.id}`)
+        )
+          continue;
+        if (
+          !s.locations.some(
+            (l) =>
+              ["rack", "floor"].includes(l.kind) && !placementError(s, l, p),
+          )
+        )
+          continue;
+        return { jobId: r.id, palletId: p.id };
+      }
+    return null;
+  }
+  private _zoneOffer(
+    s: D.WorkspaceDto,
+    zone: D.WorkZoneDto,
+    employeeId: string,
+  ): D.ZoneOfferDto | null {
+    const ownAssembly = this._ownAssembly(s, employeeId);
+    const openBox = !!(
+      ownAssembly?.boxCodeConfirmed || ownAssembly?.scannedUnits
+    );
+    const movement = s.movements.find(
+      (m) =>
+        m.employeeId === employeeId &&
+        ["in_transit", "planned"].includes(m.status),
+    );
+    const putaway = this._activePutaway(s, employeeId);
+    if (
+      movement?.status === "in_transit" ||
+      putaway?.status === "in_transit" ||
+      (openBox && zone.kind !== "assembly")
+    )
+      return null;
+    const offer = (
+      jobId: string,
+      palletId: string | null = null,
+      resume = false,
+      inProgress = false,
+    ) => ({
+      zoneId: zone.id,
+      jobId,
+      palletId,
+      resume,
+      inProgress,
+    });
+    if (zone.kind === "assembly") {
+      if (movement?.autoPurpose === "accessible_raw") return null;
+      const task = ownAssembly ?? this._nextAssembly(s, employeeId);
+      return task && this._assemblyZoneAvailable(s, task)
+        ? offer(task.id, null, !!ownAssembly, openBox)
+        : null;
+    }
+    if (zone.kind === "receiving") {
+      const current = s.warehouse.zoneWork.find(
+        (w) =>
+          w.zoneId === zone.id &&
+          w.employeeId === employeeId &&
+          w.jobKind === "receiving" &&
+          this._zoneJobActive(s, w),
+      );
+      if (current?.jobId) return offer(current.jobId, current.palletId, true);
+      const next = this._receivingZoneOffer(s, zone, employeeId);
+      return next ? offer(next.jobId, next.palletId) : null;
+    }
+    if (zone.kind === "putaway") {
+      if (movement) return null;
+      const task = s.putawayTasks.find((t) => {
+        if (
+          !zone.locationIds.includes(t.fromLocationId) ||
+          !(
+            t.status === "queued" ||
+            (t.status === "claimed" && t.employeeId === employeeId)
+          )
+        )
+          return false;
+        const box = s.boxes.find((row) => row.id === t.boxId);
+        const pallet = s.pallets.find((p) => p.id === t.fromPalletId);
+        const location = s.locations.find((l) => l.id === t.fromLocationId);
+        if (
+          !box ||
+          !pallet ||
+          !location ||
+          box.status !== "stored" ||
+          box.palletId !== pallet.id ||
+          box.locationId !== location.id ||
+          pallet.status !== "stored" ||
+          pallet.locationId !== location.id ||
+          !this._isActiveLocation(s, location.id) ||
+          location.blocked ||
+          s.movements.some(
+            (m) =>
+              m.palletId === pallet.id &&
+              ["planned", "in_transit"].includes(m.status),
+          )
+        )
+          return false;
+        return s.locations.some(
+          (l) =>
+            (t.status !== "claimed" || l.id === t.toLocationId) &&
+            !putawayPlacementError(s, l, box, t.id),
+        );
+      });
+      return task ? offer(task.id) : null;
+    }
+    if (zone.kind === "shipping") {
+      const own = s.shipments.find(
+        (x) =>
+          x.status === "draft" &&
+          x.employeeId === employeeId &&
+          !this._shipmentPickComplete(x),
+      );
+      const available = (x: D.ShipmentDto) => {
+        if (x.workZoneId && x.workZoneId !== zone.id) return false;
+        const scanned = new Set(x.scannedBoxIds);
+        return (
+          x.boxIds.length > 0 &&
+          x.boxIds.every((id) => {
+            const box = s.boxes.find((b) => b.id === id);
+            return scanned.has(id) || (box && this._shipmentBoxSource(s, box));
+          })
+        );
+      };
+      const next =
+        own ??
+        s.shipments.find(
+          (x) => x.status === "draft" && !x.employeeId && available(x),
+        );
+      return next && available(next)
+        ? offer(
+            next.id,
+            null,
+            !!own,
+            !!(own?.scannedBoxIds?.length || own?.wb?.pendingBoxId),
+          )
+        : null;
+    }
+    return null;
+  }
   private _chooseZoneWork(
     s: D.WorkspaceDto,
     zone: D.WorkZoneDto,
     employeeId: string,
     openQueue = false,
+    showOffer = false,
   ) {
     const assign = (
       kind: string,
@@ -4296,22 +4604,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         idle("Начните или продолжите сборку, когда готовы.");
         return;
       }
-      const own = s.tasks
-        .filter(
-          (t) =>
-            t.employeeId === employeeId &&
-            ["active", "paused"].includes(t.status),
-        )
-        .sort(
-          (a, b) =>
-            Number(b.status === "active") - Number(a.status === "active") ||
-            Number(b.scannedUnits > 0 || b.boxCodeConfirmed) -
-              Number(a.scannedUnits > 0 || a.boxCodeConfirmed) ||
-            Number(a.autoPurpose === "backlog") -
-              Number(b.autoPurpose === "backlog") ||
-            (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
-            a.id.localeCompare(b.id),
-        )[0];
+      const own = this._ownAssembly(s, employeeId);
       if (own) {
         const sourceError = this._taskSourcesError(s, own);
         if (own.status === "paused" && sourceError) {
@@ -4329,20 +4622,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         assign("assembly", own.id, null, "Продолжите своё задание сборки");
         return;
       }
-      const candidates = s.tasks
-        .filter(
-          (t) =>
-            t.status === "queued" &&
-            (!t.employeeId || t.employeeId === employeeId) &&
-            !t.scannedUnits &&
-            !t.boxCodeConfirmed,
-        )
-        .sort(assemblyQueueOrder(s.tasks, employeeId));
-      const t = candidates.find(
-        (t) =>
-          !this._taskSourcesError(s, t) &&
-          !assemblyAcceptanceError(s, t.skuId, t.id),
-      );
+      const t = this._nextAssembly(s, employeeId);
       if (t) {
         this._claimTask(s, t, employeeId);
         assign("assembly", t.id, null, "Задание сборки взято в работу");
@@ -4365,51 +4645,16 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         idle("Возьмите следующую паллету на размещение.");
         return;
       }
-      const claims = new Set(
-        s.warehouse.zoneWork
-          .filter(
-            (w) =>
-              w.employeeId !== employeeId &&
-              w.jobKind === "receiving" &&
-              this._zoneJobActive(s, w),
-          )
-          .map((w) => `${w.jobId}/${w.palletId}`),
-      );
-      for (const r of [...s.receipts]
-        .filter((r) => r.status !== "completed")
-        .sort(
-          (a, b) =>
-            a.receivedAt.localeCompare(b.receivedAt) ||
-            a.createdAt.localeCompare(b.createdAt) ||
-            a.id.localeCompare(b.id),
-        ))
-        for (const row of [...r.pallets].sort((a, b) =>
-          a.palletId.localeCompare(b.palletId),
-        )) {
-          const p = s.pallets.find((p) => p.id === row.palletId);
-          if (
-            row.placedAt ||
-            !p ||
-            p.status !== "awaiting_placement" ||
-            (p.locationId && !zone.locationIds.includes(p.locationId)) ||
-            claims.has(`${r.id}/${p.id}`)
-          )
-            continue;
-          if (
-            !s.locations.some(
-              (l) =>
-                ["rack", "floor"].includes(l.kind) && !placementError(s, l, p),
-            )
-          )
-            continue;
-          assign(
-            "receiving",
-            r.id,
-            p.id,
-            "Разместите выбранную входящую паллету по сканам",
-          );
-          return;
-        }
+      const next = this._receivingZoneOffer(s, zone, employeeId);
+      if (next) {
+        assign(
+          "receiving",
+          next.jobId,
+          next.palletId,
+          "Разместите выбранную входящую паллету по сканам",
+        );
+        return;
+      }
       idle("Нет свободных входящих паллет с доступным местом хранения");
     } else if (zone.kind === "putaway") {
       const own = this._activePutaway(s, employeeId);
@@ -4421,6 +4666,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       }
       idle("Возьмите любой готовый короб и отсканируйте его QR");
     } else if (zone.kind === "shipping") {
+      if (showOffer) {
+        idle("");
+        return;
+      }
       const own = s.shipments.find(
         (x) =>
           x.employeeId === employeeId &&
@@ -4489,7 +4738,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     );
     if (!z) return;
     this._clearZoneJob(s, employeeId, "Выбираем следующее задание");
-    this._chooseZoneWork(s, z, employeeId);
+    this._chooseZoneWork(s, z, employeeId, !!w.manualQueue, !!w.manualQueue);
   }
   private _shipmentWorkError(
     s: D.WorkspaceDto,

@@ -27,11 +27,13 @@ const boxCount = (count: number) =>
 export function EmployeeShipping({
   data,
   onIdle,
+  onQueue,
   onProblem,
   shipmentId,
 }: {
   data: WorkspaceDto;
   onIdle: () => void;
+  onQueue?: () => void;
   onProblem?: (message: string) => void;
   shipmentId?: string;
 }) {
@@ -333,7 +335,9 @@ export function EmployeeShipping({
                 </p>
                 <Button
                   disabled={busy}
-                  onClick={() => setDismissedId(shipment.id)}
+                  onClick={() =>
+                    onQueue ? onQueue() : setDismissedId(shipment.id)
+                  }
                 >
                   К отгрузкам
                 </Button>

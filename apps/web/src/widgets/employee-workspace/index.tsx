@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Package, Ellipsis, X } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
-import { assemblyNeedsClearing, buildWorkQueue } from "@/entities/work-queue";
 import { EmployeeAssembly } from "@/features/employee-assembly";
 import {
   EmployeePutaway,
@@ -27,13 +26,13 @@ import {
   Button,
   EmployeeScanBoundary,
   EmployeeScanGateway,
-  EmployeeScan,
   EmployeeWorkDevice,
   EmployeeDeviceControls,
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import styles from "./workspace.module.css";
 import { EmployeeJobList } from "./employee-job-list";
+import { EmployeeZoneGuide } from "./employee-zone-guide";
 export function EmployeeWorkspace(props: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
@@ -69,7 +68,8 @@ function EmployeeWorkspaceBody({
     [password, setPassword] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
-    [problem, setProblem] = useState<string | null>(null);
+    [problem, setProblem] = useState<string | null>(null),
+    [putawayStarted, setPutawayStarted] = useState<string | null>(null);
   const [selectedShipmentId, setSelectedShipmentId] =
     useState(initialShipmentId);
   const workPanel = useRef<HTMLDivElement>(null);
@@ -108,21 +108,23 @@ function EmployeeWorkspaceBody({
         (t) => t.id === previous.jobId && t.status === "completed",
       )
     )
-      complete("Задание сборки завершено.");
+      complete("Короб собран.");
     if (
       previous.jobKind === "putaway" &&
       data.putawayTasks.some(
         (t) => t.id === previous.jobId && t.status === "completed",
       )
-    )
+    ) {
+      setPutawayStarted(null);
       complete("Короб размещён на хранение.");
+    }
     if (
       previous.jobKind === "receiving" &&
       data.pallets.some(
         (p) => p.id === previous.palletId && p.status === "stored",
       )
     )
-      complete("Паллета размещена и зачислена на баланс.");
+      complete("Паллета на месте.");
   }, [data, liveZone?.assignment]);
   const requestedMode: EmployeeMode =
     employee?.status !== "working"
@@ -131,10 +133,7 @@ function EmployeeWorkspaceBody({
         ? priority.mode
         : day.mode === "shift"
           ? "shift"
-          : ((liveZone?.zone.kind as EmployeeMode | undefined) ??
-            (day.mode === "stocktakes" || day.mode === "movements"
-              ? day.mode
-              : (priority?.mode ?? day.mode)));
+          : ((liveZone?.zone.kind as EmployeeMode | undefined) ?? day.mode);
   const baseBlocked = scan.pending > 0 || scan.unsaved;
   const zones = useEmployeeZone({
     blocked: baseBlocked,
@@ -145,6 +144,7 @@ function EmployeeWorkspaceBody({
       setMenu(false);
       setShowZoneScan(false);
       setShowJobs(false);
+      setPutawayStarted(null);
       setNotice(null);
     },
   });
@@ -156,25 +156,11 @@ function EmployeeWorkspaceBody({
     key: liveZone
       ? `${liveZone.zone.id}:${liveZone.assignment.jobId}:${liveZone.assignment.palletId}`
       : "manual",
-    fullAssembly:
-      requestedMode === "assembly" &&
-      data?.assemblyPressure?.level === "full" &&
-      !data.tasks.some(
-        (task) =>
-          task.employeeId === user?.employeeId &&
-          ["active", "paused"].includes(task.status) &&
-          (task.boxCodeConfirmed || task.scannedUnits > 0),
-      ),
   };
   const displayed = useRef(nextDisplay);
   if (!blocked || displayed.current.userId !== user?.id)
     displayed.current = nextDisplay;
-  const {
-    mode,
-    zone: currentZone,
-    key,
-    fullAssembly: assemblyFull,
-  } = displayed.current;
+  const { mode, zone: currentZone, key } = displayed.current;
 
   useEffect(() => {
     if (!blocked) return;
@@ -227,60 +213,38 @@ function EmployeeWorkspaceBody({
     !currentZone &&
     !priority?.carrying &&
     ["zone", "assembly", "receiving", "putaway", "shipping"].includes(mode);
-  const queueZone =
-    currentZone &&
-    !currentZone.assignment.jobKind &&
-    (currentZone.zone.kind === "assembly" ||
-      currentZone.zone.kind === "receiving")
-      ? currentZone.zone
-      : undefined;
-  const zoneJobs =
-    data && queueZone
-      ? buildWorkQueue(data).filter((job) => {
-          if (
-            job.kind !== queueZone.kind ||
-            (job.employeeId && job.employeeId !== user?.employeeId)
-          )
-            return false;
-          if (job.kind === "assembly")
-            return (
-              job.state === "queued" ||
-              (job.employeeId === user?.employeeId &&
-                (job.state === "paused" || job.state === "active"))
-            );
-          if (job.state !== "queued") return false;
-          const source = data.pallets.find(
-            (p) => p.id === job.palletId,
-          )?.locationId;
-          return !source || queueZone.locationIds.includes(source);
-        })
-      : [];
-  const hasAssemblyToResume = zoneJobs.some(
-    (job) => job.kind === "assembly" && job.state !== "queued",
+  const offer = data?.zoneOffers?.find(
+    (candidate) => candidate.zoneId === currentZone?.zone.id,
   );
-  const zoneEntry = showZoneScan || needsZone || !!queueZone || assemblyFull;
-  const suggestPutaway =
-    assemblyFull ||
-    (!priority &&
-      (!currentZone || currentZone.zone.kind === "assembly") &&
-      assemblyNeedsClearing(data?.assemblyPressure));
+  const putawayReadyToScan =
+    currentZone?.zone.kind === "putaway" &&
+    putawayStarted === currentZone.zone.id &&
+    !!offer;
+  const zoneEntry =
+    showZoneScan ||
+    needsZone ||
+    (!!currentZone &&
+      !currentZone.assignment.jobKind &&
+      !priority?.carrying &&
+      !putawayReadyToScan);
+  const takeOffer = async () => {
+    if (!offer || !currentZone || blocked) return;
+    const taken = await zones.takeNext(offer);
+    if (taken !== "handled") {
+      void workspace.refetch();
+      return;
+    }
+    if (currentZone.zone.kind === "putaway")
+      setPutawayStarted(currentZone.zone.id);
+  };
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) return zones.intercept(value);
     if (zoneEntry) {
-      setProblem(
-        "Нужен QR рабочей зоны с таблички. Код короба или адреса не выбирает работу.",
-      );
+      setProblem("Сканируйте QR на табличке зоны.");
       return "blocked" as const;
     }
     return "pass" as const;
   };
-  const zoneNames: Record<string, string> = {
-    receiving: "Приёмка",
-    assembly: "Сборка",
-    putaway: "Размещение коробов",
-    shipping: "Отгрузка",
-  };
-
   const content = (
     <EmployeeScanGateway
       intercept={intercept}
@@ -470,7 +434,7 @@ function EmployeeWorkspaceBody({
             </section>
           )}
           <main id="employee-main" className={styles.main}>
-            {workspace.isError && data && (
+            {workspace.isError && data && !zoneEntry && (
               <div className={styles.warning} role="status">
                 <p>
                   Связь со складом нестабильна. Показаны последние загруженные
@@ -586,19 +550,27 @@ function EmployeeWorkspaceBody({
                 />
               ) : (
                 <>
-                  {currentZone && (
+                  {currentZone && !showZoneScan && (
                     <div className={styles.zoneHeading}>
                       <div>
-                        <small>{zoneNames[currentZone.zone.kind]}</small>
                         <strong>{currentZone.zone.name}</strong>
                       </div>
                       <button
                         disabled={blocked}
                         onClick={() => setShowZoneScan((value) => !value)}
                       >
-                        {showZoneScan ? "Назад в зону" : "Сменить зону"}
+                        Сменить зону
                       </button>
                     </div>
+                  )}
+                  {currentZone && showZoneScan && (
+                    <button
+                      className={styles.zoneSwitch}
+                      disabled={blocked}
+                      onClick={() => setShowZoneScan(false)}
+                    >
+                      Назад
+                    </button>
                   )}
                   {!currentZone && !zoneEntry && (
                     <button
@@ -610,80 +582,16 @@ function EmployeeWorkspaceBody({
                     </button>
                   )}
                   {zoneEntry ? (
-                    <section
-                      className={styles.zoneEntry}
-                      aria-label="Выбор рабочей зоны"
-                    >
-                      <h2>
-                        {suggestPutaway
-                          ? data?.assemblyPressure?.boxes
-                            ? "Освободите место на сборочной паллете"
-                            : "Дождитесь свободного места"
-                          : queueZone && !showZoneScan
-                            ? zoneJobs.length
-                              ? "Задания зоны"
-                              : "В этой зоне пока нет заданий"
-                            : "Сканируйте QR рабочей зоны"}
-                      </h2>
-                      <p>
-                        {suggestPutaway && data?.assemblyPressure
-                          ? `${data.assemblyPressure!.message} ${
-                              data.assemblyPressure!.boxes > 0
-                                ? "Сканируйте QR зоны размещения, затем любой готовый короб."
-                                : "Дождитесь свободного места или сканируйте QR другой рабочей зоны."
-                            }`
-                          : queueZone && !showZoneScan && zoneJobs.length
-                            ? currentZone?.assignment.message
-                            : !queueZone || showZoneScan
-                              ? "После скана появятся задания этой зоны."
-                              : null}
-                      </p>
-                      {queueZone && !showZoneScan && zoneJobs.length > 0 && (
-                        <>
-                          <ul className={styles.zoneQueue}>
-                            {zoneJobs.map((job) => (
-                              <li key={job.id}>
-                                <strong>
-                                  {job.skuName ?? job.objectLabel}
-                                </strong>
-                                <small>
-                                  {job.kind === "assembly" &&
-                                  job.state !== "queued"
-                                    ? `${job.statusLabel} · `
-                                    : ""}
-                                  {job.quantityLabel}
-                                  {job.kind === "receiving"
-                                    ? ` · ${job.objectLabel}`
-                                    : ""}
-                                </small>
-                              </li>
-                            ))}
-                          </ul>
-                          <Button
-                            disabled={blocked || assemblyFull}
-                            onClick={() => void zones.takeNext(queueZone.id)}
-                          >
-                            {queueZone.kind === "assembly"
-                              ? hasAssemblyToResume
-                                ? "Продолжить сборку"
-                                : "Взять следующее задание на сборку"
-                              : "Взять следующую паллету"}
-                          </Button>
-                        </>
-                      )}
-                      {(needsZone ||
-                        showZoneScan ||
-                        !!queueZone ||
-                        assemblyFull) && (
-                        <EmployeeScan
-                          contextKey={`zone-entry:${user?.id}:${currentZone?.zone.id ?? "idle"}:${showZoneScan}`}
-                          label="Сканируйте QR рабочей зоны"
-                          disabled={zones.pending}
-                          onScan={async () => false}
-                          onProblem={setProblem}
-                        />
-                      )}
-                    </section>
+                    <EmployeeZoneGuide
+                      data={data}
+                      zone={showZoneScan ? undefined : currentZone?.zone}
+                      offer={showZoneScan ? undefined : offer}
+                      blocked={blocked}
+                      failed={workspace.isError}
+                      onRetry={() => void workspace.refetch()}
+                      onTake={() => void takeOffer()}
+                      onProblem={setProblem}
+                    />
                   ) : (
                     <>
                       {mode === "assembly" && (
@@ -722,6 +630,10 @@ function EmployeeWorkspaceBody({
                           key={key}
                           data={data}
                           shipmentId={selectedShipmentId}
+                          onQueue={() => {
+                            if (currentZone)
+                              void zones.showOffer(currentZone.zone.id);
+                          }}
                           onIdle={() => void choose("zone")}
                           onProblem={setProblem}
                         />

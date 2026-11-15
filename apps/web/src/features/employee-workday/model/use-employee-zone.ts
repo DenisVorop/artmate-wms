@@ -3,7 +3,8 @@ import { useRef } from "react";
 import { useSession } from "@/entities/session";
 import type { EmployeeScanDisposition } from "@/shared/ui";
 import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
-import { isWorkZoneScan } from "../lib/zone-work";
+import { isWorkZoneScan, workZonePrefix } from "../lib/zone-work";
+import type { ZoneOfferDto } from "@/shared/api/generated/model";
 export function useEmployeeZone({
   blocked,
   onProblem,
@@ -18,7 +19,8 @@ export function useEmployeeZone({
     lock = useRef(false);
   const start = async (
     zoneCode: string,
-    intent: "open-queue" | "take-next",
+    intent: "show-offer" | "take-next",
+    offer?: ZoneOfferDto,
   ): Promise<EmployeeScanDisposition> => {
     if (!isWorkZoneScan(zoneCode)) return "pass";
     if (blocked || lock.current) {
@@ -35,6 +37,8 @@ export function useEmployeeZone({
         employeeId: user.employeeId,
         zoneCode: zoneCode.trim(),
         intent,
+        expectedJobId: offer?.jobId,
+        expectedPalletId: offer?.palletId ?? undefined,
       });
       onStarted();
       return "handled";
@@ -51,9 +55,10 @@ export function useEmployeeZone({
   };
   return {
     pending: commands.pending,
-    intercept: (value: string) => start(value, "open-queue"),
-    takeNext: (zoneId: string) =>
-      start(`artmate-wms:work-zone:${zoneId}`, "take-next"),
+    intercept: (value: string) => start(value, "show-offer"),
+    showOffer: (zoneId: string) => start(workZonePrefix + zoneId, "show-offer"),
+    takeNext: (offer: ZoneOfferDto) =>
+      start(workZonePrefix + offer.zoneId, "take-next", offer),
     leave: async () => {
       if (blocked || lock.current || !user) return false;
       lock.current = true;

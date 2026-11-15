@@ -270,22 +270,6 @@
 .zoneSwitch {
   margin-bottom: 16px;
 }
-.zoneEntry {
-  padding: 32px 0;
-}
-.zoneEntry h2 {
-  font-size: 28px;
-  letter-spacing: -0.04em;
-  line-height: 1.15;
-  margin-bottom: 14px;
-}
-.zoneEntry > p {
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.55;
-  margin-bottom: 32px;
-}
-
 .completion {
   display: flex;
   gap: 12px;
@@ -441,22 +425,44 @@
   gap: 12px;
 }
 
-.zoneQueue {
+.zoneGuide {
   display: grid;
-  gap: 0.35rem;
-  list-style: none;
+  gap: 20px;
+  padding: 24px 0;
+}
+.zoneGuide h2 {
+  margin: 0;
+  max-width: 25ch;
+  font-size: clamp(29px, 5vw, 40px);
+  line-height: 1.13;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+.zoneGuide > button {
+  min-height: 54px;
+  font-size: 18px;
+  width: 100%;
+  max-width: 320px;
+}
+.zoneEmpty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+.zoneDirectory {
   padding: 0;
   margin: 0;
-  max-height: 15rem;
-  overflow: auto;
+  list-style: none;
 }
-.zoneQueue li {
-  display: grid;
-  gap: 0.2rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.65rem;
+.zoneDirectory li {
+  display: flex;
+  gap: 8px 16px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  font-size: 16px;
 }
-.zoneQueue small {
+.zoneDirectory li span:last-child {
   color: var(--muted);
 }

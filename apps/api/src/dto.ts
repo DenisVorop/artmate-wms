@@ -209,6 +209,7 @@ export class ZoneWorkDto {
   jobKind!: string | null;
   @ApiProperty({ type: String, nullable: true }) jobId!: string | null;
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiPropertyOptional({ type: Boolean }) manualQueue?: boolean;
   @ApiProperty({ type: String }) message!: string;
 }
 export const consumableItems = ["individual_box", "transport_carton"] as const;
@@ -593,7 +594,15 @@ export class AssemblyPressureDto {
   @ApiProperty({ type: Number, nullable: true }) capacityBoxes!: number | null;
   @ApiProperty({ type: String }) message!: string;
 }
+export class ZoneOfferDto {
+  @ApiProperty({ type: String }) zoneId!: string;
+  @ApiProperty({ type: String }) jobId!: string;
+  @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
+  @ApiProperty({ type: Boolean }) resume!: boolean;
+  @ApiProperty({ type: Boolean }) inProgress!: boolean;
+}
 export class WorkspaceDto {
+  @ApiPropertyOptional({ type: [ZoneOfferDto] }) zoneOffers?: ZoneOfferDto[];
   @ApiPropertyOptional({ type: AssemblyPressureDto })
   assemblyPressure?: AssemblyPressureDto;
   @ApiPropertyOptional({ type: [AddressHoldDto] })
@@ -2278,10 +2287,22 @@ export class StartZoneWorkDto extends ClaimTaskDto {
   @MinLength(1)
   @MaxLength(200)
   zoneCode!: string;
-  @ApiPropertyOptional({ enum: ["open-queue", "take-next"] })
+  @ApiPropertyOptional({ enum: ["open-queue", "take-next", "show-offer"] })
   @ValidateIf((_o, v) => v !== undefined)
-  @IsIn(["open-queue", "take-next"])
-  intent?: "open-queue" | "take-next";
+  @IsIn(["open-queue", "take-next", "show-offer"])
+  intent?: "open-queue" | "take-next" | "show-offer";
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  expectedJobId?: string;
+  @ApiPropertyOptional({ type: String })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  expectedPalletId?: string;
 }
 export class ScanShipmentWorkDto extends ClaimTaskDto {
   @ApiProperty({ type: String })

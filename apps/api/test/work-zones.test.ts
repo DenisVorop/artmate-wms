@@ -363,7 +363,7 @@ test("work-zone DTO, auto identity, separate stable QR, strict null/partial upda
     code(spare),
   );
 });
-test("receiving claims are atomic per pallet, actor protected, QR never admits stock, place selects next in one command and shift releases reservations", async () => {
+test("receiving offers do not assign a pallet, stale offers cannot take another pallet, and placement offers the next without claiming it", async () => {
   await w.createReceipt({
     ...req(),
     receivedAt: "2020-01-01T09:00:00Z",
@@ -377,18 +377,48 @@ test("receiving claims are atomic per pallet, actor protected, QR never admits s
   });
   const before = await w.snapshot(),
     ledger = (await w.getStockLedger({})).summary.eventsCount;
-  const open = await start(receiving, worker, true);
+  const look = (actor: Browser) =>
+    ok(
+      "work-zones/start",
+      {
+        ...req(),
+        employeeId: actor.user.employeeId,
+        zoneCode: code(receiving),
+        intent: "show-offer",
+      },
+      actor,
+    );
+  const take = (actor: Browser, offer: D.ZoneOfferDto) =>
+    call(
+      "POST",
+      "work-zones/start",
+      {
+        ...req(),
+        employeeId: actor.user.employeeId,
+        zoneCode: code(receiving),
+        intent: "take-next",
+        expectedJobId: offer.jobId,
+        expectedPalletId: offer.palletId,
+      },
+      actor,
+    );
+  const [open, openOther] = await Promise.all([look(worker), look(other)]);
   assert.equal(binding(open).jobId, null);
-  const [one, two] = await Promise.all([
-    start(receiving),
-    start(receiving, other),
-  ]);
-  const a = binding(one),
-    b = binding(two, other);
+  assert.equal(binding(openOther, other).jobId, null);
+  const offer = open.zoneOffers!.find((row) => row.zoneId === receiving.id)!;
+  const otherOffer = openOther.zoneOffers!.find(
+    (row) => row.zoneId === receiving.id,
+  )!;
+  assert.equal(otherOffer.palletId, offer.palletId);
+  const taken = await take(worker, offer);
+  assert.equal(taken.status, 200, JSON.stringify(taken.body));
+  assert.equal((await take(other, otherOffer)).status, 409);
+  const a = binding(taken.body),
+    b = binding(await start(receiving, other), other);
   assert.equal(a.jobKind, "receiving");
   assert.notEqual(a.palletId, b.palletId);
-  assert.equal(one.warehouse.zoneWork.length, 1);
-  assert.deepEqual(one.balance, before.balance);
+  assert.equal(taken.body.warehouse.zoneWork.length, 1);
+  assert.deepEqual(taken.body.balance, before.balance);
   assert.equal((await w.getStockLedger({})).summary.eventsCount, ledger);
   const wrong = await call(
     "POST",
@@ -416,9 +446,14 @@ test("receiving claims are atomic per pallet, actor protected, QR never admits s
     worker,
   );
   assert.equal(placed.balance.rawUnits, before.balance.rawUnits + 10);
-  assert.notEqual(binding(placed).palletId, p.id);
-  assert.notEqual(binding(placed).palletId, b.palletId);
-  assert.equal(binding(placed).jobId, a.jobId);
+  assert.equal(binding(placed).jobId, null);
+  assert.equal(binding(placed).palletId, null);
+  const nextOffer = placed.zoneOffers?.find(
+    (row) => row.zoneId === receiving.id,
+  );
+  assert.ok(nextOffer?.palletId);
+  assert.notEqual(nextOffer.palletId, p.id);
+  assert.notEqual(nextOffer.palletId, b.palletId);
   const replay = await ok(
     `receipts/${a.jobId}/pallets/${p.id}/place`,
     body,
@@ -487,11 +522,35 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
       worker,
     );
   assert.equal((await takeNext()).status, 400);
-  const open = await start(assembly, worker, true);
+  const offerBody = (expectedJobId?: string) => ({
+    ...req(),
+    employeeId: worker.user.employeeId,
+    zoneCode: code(assembly),
+    intent: expectedJobId ? "take-next" : "show-offer",
+    expectedJobId,
+  });
+  const open = await ok("work-zones/start", offerBody(), worker);
   assert.equal(binding(open).jobId, null);
   assert.equal(open.tasks.find((row) => row.id === taskId)?.status, "queued");
+  assert.equal(
+    open.zoneOffers?.find((row) => row.zoneId === assembly.id)?.jobId,
+    taskId,
+  );
   assert.equal((await directClaim()).status, 403);
-  const taken = await takeNext();
+  const stale = await call(
+    "POST",
+    "work-zones/start",
+    offerBody(secondTaskId),
+    worker,
+  );
+  assert.equal(stale.status, 409);
+  assert.equal(binding(await w.snapshot()).jobId, null);
+  const taken = await call(
+    "POST",
+    "work-zones/start",
+    offerBody(taskId),
+    worker,
+  );
   assert.equal(taken.status, 200, JSON.stringify(taken.body));
   let s: D.WorkspaceDto = taken.body;
   assert.equal(binding(s).jobId, taskId);
