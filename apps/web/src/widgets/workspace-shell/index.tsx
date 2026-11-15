@@ -10,6 +10,7 @@ import { Modal, Input, Button } from "@/shared/ui";
 import { useSession } from "@/entities/session";
 import { ChangePasswordModal, useAuthActions } from "@/features/auth";
 import sessionStyles from "./session-controls.module.css";
+import themeStyles from "./workspace-theme.module.css";
 
 import { navigationLinks } from "./navigation";
 import { WorkspaceSidebar } from "./workspace-sidebar";
@@ -17,14 +18,20 @@ import { WorkspaceSidebar } from "./workspace-sidebar";
 export function WorkspaceShell({
   children,
   showFooter = true,
+  theme = "dark",
 }: {
   children: ReactNode;
   showFooter?: boolean;
+  theme?: "light" | "dark";
 }) {
   const { user } = useSession();
   if (user?.role !== "employee")
     return (
-      <ManagerWorkspaceShell name={user?.name} showFooter={showFooter}>
+      <ManagerWorkspaceShell
+        name={user?.name}
+        showFooter={showFooter}
+        theme={theme}
+      >
         {children}
       </ManagerWorkspaceShell>
     );
@@ -60,10 +67,12 @@ function ManagerWorkspaceShell({
   children,
   name,
   showFooter,
+  theme,
 }: {
   children: ReactNode;
   name?: string;
   showFooter: boolean;
+  theme: "light" | "dark";
 }) {
   const pathname = usePathname();
   const auth = useAuthActions();
@@ -152,7 +161,9 @@ function ManagerWorkspaceShell({
     ({ status }) => status === "working" || status === "break",
   ).length;
   return (
-    <div className="workspace-layout">
+    <div
+      className={`workspace-layout${theme === "light" ? ` ${themeStyles.light} ${themeStyles.layout}` : ""}`}
+    >
       <a className="skip-link" href="#workspace-main">
         К содержимому
       </a>
