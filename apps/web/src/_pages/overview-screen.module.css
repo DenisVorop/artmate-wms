@@ -1,22 +1,30 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 10px;
   margin-top: 24px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 
 .card {
   display: flex;
   min-width: 0;
-  min-height: 160px;
+  min-height: 148px;
   flex-direction: column;
-  padding: 16px;
+  padding: 13px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   transition:
     background-color 150ms,
     border-color 150ms;
+}
+
+.card:focus-visible {
+  outline-offset: -3px;
 }
 
 .card:hover {
@@ -29,7 +37,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 11px;
 }
 
 .icon {
@@ -43,10 +51,12 @@
 }
 
 .title {
+  min-height: 2.7em;
   font-size: 13px;
   font-weight: 650;
   line-height: 1.35;
-  margin-bottom: 9px;
+  margin-bottom: 5px;
+  hyphens: auto;
 }
 
 .value {
@@ -54,8 +64,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 6px;
-  margin-top: auto;
-  font-size: clamp(27px, 4vw, 36px);
+  font-size: clamp(25px, 2.75vw, 34px);
   font-weight: 650;
   letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
@@ -85,14 +94,8 @@
 
 @media (max-width: 680px) {
   .grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(5, minmax(148px, 1fr));
     margin-top: 17px;
-  }
-
-  .card {
-    min-height: 148px;
-    padding: 13px;
   }
 }
 
