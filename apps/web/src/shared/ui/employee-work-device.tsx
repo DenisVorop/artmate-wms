@@ -20,7 +20,6 @@ const Context = createContext({
   active: false,
   screen: "off" as ScreenAwakeState,
   audio: "locked" as ScanAudioState,
-  test: () => {},
   play: (_kind: ScanSound) => {},
 });
 export const useEmployeeScanFeedback = () => useContext(Context);
@@ -98,12 +97,6 @@ export function EmployeeWorkDevice({
       active,
       screen,
       audio,
-      test: () => {
-        const audio = scanAudio.current;
-        audio?.unlock(() => {
-          if (scanAudio.current === audio) audio.play("success");
-        });
-      },
       play: (kind: ScanSound) => {
         if (active) scanAudio.current?.play(kind);
       },
@@ -119,49 +112,22 @@ export function EmployeeDeviceControls({
   details?: boolean;
 }) {
   const device = useEmployeeScanFeedback();
-  const activate = () => {
-    device.test();
-    requestAnimationFrame(() => {
-      if (document.querySelector("dialog[open]")) return;
-      const input = [
-        ...document.querySelectorAll<HTMLInputElement>(
-          "input[data-employee-scan-input]:not(:disabled)",
-        ),
-      ].find((element) => element.getClientRects().length > 0);
-      input?.focus({ preventScroll: true });
-    });
-  };
-  if (!device.active) return null;
-  if (!details && device.screen !== "unavailable") return null;
+  const screenUnavailable = device.active && device.screen === "unavailable";
+  const audioUnavailable =
+    device.active && details && device.audio === "unavailable";
+  if (!screenUnavailable && !audioUnavailable) return null;
+
   return (
     <div className={styles.controls}>
-      {(details || device.screen === "unavailable") && (
+      {screenUnavailable && (
         <p role="status">
-          {device.screen === "on"
-            ? "Экран остаётся включённым"
-            : device.screen === "requesting"
-              ? "Включаем рабочий экран…"
-              : "Телефон может погасить экран. Проверьте энергосбережение и откройте WMS по HTTPS."}
+          Телефон может погасить экран. Проверьте энергосбережение и откройте
+          WMS по HTTPS.
         </p>
       )}
-      {details &&
-        (device.audio === "unavailable" ? (
-          <p role="status">
-            Звук недоступен. Проверяйте результат скана на экране.
-          </p>
-        ) : (
-          <button
-            type="button"
-            className="button button--secondary"
-            onClick={activate}
-          >
-            Проверить звук
-          </button>
-        ))}
-      {details && (
-        <p>
-          Короткий высокий сигнал — скан принят. Громкий низкий гудок — ошибка:
-          остановитесь и посмотрите на экран. Проверьте громкость телефона.
+      {audioUnavailable && (
+        <p role="status">
+          Звук недоступен. Проверяйте результат скана на экране.
         </p>
       )}
     </div>
