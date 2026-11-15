@@ -1,21 +1,9 @@
 "use client";
+
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useSession } from "@/entities/session";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ClipboardList,
-  RefreshCw,
-  TriangleAlert,
-} from "lucide-react";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import {
-  Badge,
-  Button,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from "@/shared/ui";
+import { Button, ErrorState, LoadingState } from "@/shared/ui";
 import { number } from "@/shared/lib/format";
 import { ledgerPageCount, ledgerResultRange } from "../lib/ledger-filter";
 import { ledgerDate, signedLedgerQuantity } from "../lib/ledger-view";
@@ -24,242 +12,173 @@ import { useLedgerResults } from "../model/use-ledger-results";
 import { LedgerFilters } from "./ledger-filters";
 import { LedgerEvent } from "./ledger-event";
 import styles from "./stock-ledger.module.css";
-function ManagerStockLedgerFeature({
-  data,
-  onCorrection,
-}: {
-  data: WorkspaceDto;
-  onCorrection?: () => void;
-}) {
+
+type Props = { data: WorkspaceDto; onCorrection?: () => void };
+
+function ManagerStockLedgerFeature({ data, onCorrection }: Props) {
   const ui = useLedgerState();
   const query = useLedgerResults(ui.filters, ui.page);
   const result = query.isPlaceholderData ? undefined : query.data;
-  const pages = result ? ledgerPageCount(result.total, result.pageSize) : 1;
-  const range = result
-    ? ledgerResultRange(result.page, result.pageSize, result.total)
-    : { from: 0, to: 0 };
   const summary = query.data?.summary;
+
   return (
     <div className={styles.feature}>
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">ТОВАРНЫЙ УЧЁТ · ИСТОРИЯ</p>
-          <h1 className="page-heading">Журнал учёта</h1>
-          <p className="page-description">
-            Приход, сборка, размещение, отгрузки и корректировки — с составом
-            каждой операции.
-          </p>
-        </div>
-        <div className={styles.actions}>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={query.isFetching}
-            aria-busy={query.isFetching}
-            onClick={() => void query.refetch()}
-          >
-            <RefreshCw size={14} />
-            Обновить журнал
-          </Button>
-          {onCorrection && (
-            <Button onClick={onCorrection}>
-              <ClipboardList size={15} />
-              Корректировка остатка
-            </Button>
-          )}
-        </div>
-      </header>
-      {summary && (
-        <>
-          <div className={styles.metrics}>
-            <div className={`glass-panel ${styles.metric}`}>
-              <span>По журналу, шт.</span>
-              <strong>{number(summary.ledgerUnits)}</strong>
-            </div>
-            <div className={`glass-panel ${styles.metric}`}>
-              <span>На балансе склада, шт.</span>
-              <strong>{number(summary.onHandUnits)}</strong>
-            </div>
-            <div className={`glass-panel ${styles.metric}`}>
-              <span>Сверка журнала и баланса</span>
-              <Badge tone={summary.reconciled ? "success" : "warning"}>
-                {summary.reconciled ? (
-                  <>
-                    <Check size={13} />
-                    Совпадает
-                  </>
-                ) : (
-                  <>
-                    <TriangleAlert size={13} />
-                    Есть расхождение
-                  </>
-                )}
-              </Badge>
-            </div>
-          </div>
-          <section
-            className={`glass-panel ${styles.boundary}`}
-            aria-label="Граница доступной истории"
-          >
-            <span className={styles.boundaryIcon}>
-              <ClipboardList size={18} />
-            </span>
-            <div>
-              <strong>История с {ledgerDate(summary.startedAt)}</strong>
-              <p>
-                В этот момент зафиксирован начальный остаток. Операции до начала
-                журнала не восстановлены. Событий с начала учёта:{" "}
-                {number(summary.eventsCount)}.
-              </p>
-              {!summary.reconciled && (
-                <p className={styles.reconciliationWarning}>
-                  Разница между журналом и балансом:{" "}
-                  {signedLedgerQuantity(
-                    summary.ledgerUnits - summary.onHandUnits,
-                  )}{" "}
-                  шт. Проверьте операции и фактический остаток до корректировки.
-                </p>
-              )}
-            </div>
-          </section>
-        </>
-      )}
+      <h1 className="page-heading">Журнал учёта</h1>
       <LedgerFilters data={data} values={ui.filters} onApply={ui.apply} />
       <section
-        className={`glass-panel ${styles.results}`}
-        aria-label="События журнала"
+        className={styles.results}
+        aria-label="Операции"
         aria-busy={query.isFetching}
       >
-        <div className={styles.resultHeading}>
-          <h2>Операции</h2>
-          <span>
-            {result
-              ? `${number(result.total)} по выбранным фильтрам`
-              : "Загружаем историю"}
-          </span>
-          {query.isFetching && result && (
-            <span role="status" className={styles.refreshing}>
-              Обновляем…
-            </span>
-          )}
-        </div>
+        {summary && !summary.reconciled && (
+          <p className={styles.warning} role="status">
+            Расхождение{" "}
+            {signedLedgerQuantity(summary.ledgerUnits - summary.onHandUnits)}{" "}
+            шт. · по журналу {number(summary.ledgerUnits)} шт. · на балансе{" "}
+            {number(summary.onHandUnits)} шт.
+          </p>
+        )}
         {query.isError && result && (
           <div className={styles.readError} role="alert">
-            <p>
-              Не удалось обновить журнал. Показана последняя загруженная версия;
-              фильтры сохранены.
-            </p>
+            Не удалось обновить журнал.
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
               disabled={query.isFetching}
               onClick={() => void query.refetch()}
             >
-              Повторить загрузку
+              Повторить
             </Button>
           </div>
         )}
         {query.isPending || query.isPlaceholderData ? (
-          <LoadingState label="Загружаем операции учёта…" />
+          <LoadingState label="Загружаем операции…" />
         ) : !result ? (
           <ErrorState
-            message="Не удалось загрузить журнал. Фильтры сохранены: измените их или повторите загрузку."
+            message="Не удалось загрузить журнал."
             onRetry={() => void query.refetch()}
           />
-        ) : result.items.length ? (
-          <div className={styles.events}>
-            {result.items.map((event) => (
-              <LedgerEvent
-                key={event.id}
-                event={event}
-                expanded={ui.expanded.has(event.id)}
-                onExpanded={(open) => ui.setEventExpanded(event.id, open)}
-              />
-            ))}
-          </div>
         ) : (
-          <EmptyState
-            title={
-              result.total > 0
-                ? "На этой странице нет операций"
-                : "Операции не найдены"
-            }
-            description={
-              result.total > 0
-                ? "Вернитесь на первую страницу, чтобы увидеть актуальные результаты."
-                : "Измените фильтры или дождитесь новых операций. Начальный остаток отмечает границу доступной истории."
-            }
-            action={
-              result.total > 0 ? (
-                <Button variant="secondary" onClick={() => ui.setPage(1)}>
-                  На первую страницу
-                </Button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    ui.apply({
-                      kind: "",
-                      skuId: "",
-                      employeeId: "",
-                      from: "",
-                      to: "",
-                      search: "",
-                      pageSize: 25,
-                    })
-                  }
-                >
-                  Показать все операции
-                </Button>
-              )
-            }
-          />
-        )}
-        {result && (
-          <nav className={styles.pagination} aria-label="Страницы журнала">
-            <span>
-              {number(range.from)}–{number(range.to)} из {number(result.total)}
-            </span>
-            <div>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={query.isFetching || result.page <= 1}
-                onClick={() => ui.setPage(Math.max(1, result.page - 1))}
-              >
-                <ArrowLeft size={14} />
-                Назад
-              </Button>
-              <span>
-                Страница {result.page} из {pages}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={query.isFetching || result.page >= pages}
-                onClick={() => ui.setPage(result.page + 1)}
-              >
-                Далее
-                <ArrowRight size={14} />
-              </Button>
+          <>
+            <div
+              className={styles.tableScroll}
+              role="region"
+              aria-label="Таблица операций"
+              tabIndex={0}
+            >
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">Операция</th>
+                    <th scope="col">
+                      Дата и время <small>МСК</small>
+                    </th>
+                    <th scope="col">Исполнитель</th>
+                    <th scope="col" className={styles.quantity}>
+                      Изменение, шт.
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.items.length > 0 ? (
+                    result.items.map((event) => (
+                      <LedgerEvent
+                        key={event.id}
+                        event={event}
+                        expanded={ui.expanded.has(event.id)}
+                        onExpanded={(open) =>
+                          ui.setEventExpanded(event.id, open)
+                        }
+                      />
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className={styles.empty}>
+                        Операции не найдены.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          </nav>
+            <LedgerPagination
+              result={result}
+              pending={query.isFetching}
+              onPage={ui.setPage}
+            />
+          </>
+        )}
+        {(summary || onCorrection) && (
+          <footer className={styles.footer}>
+            {summary && <span>История с {ledgerDate(summary.startedAt)}</span>}
+            {onCorrection && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-haspopup="dialog"
+                onClick={onCorrection}
+              >
+                Корректировка остатка
+              </Button>
+            )}
+          </footer>
         )}
       </section>
     </div>
   );
 }
 
-export function StockLedgerFeature(
-  props: Parameters<typeof ManagerStockLedgerFeature>[0],
-) {
+function LedgerPagination({
+  result,
+  pending,
+  onPage,
+}: {
+  result: { page: number; pageSize: number; total: number };
+  pending: boolean;
+  onPage: (page: number) => void;
+}) {
+  const { page, pageSize, total } = result;
+  const pages = ledgerPageCount(total, pageSize);
+  if (pages <= 1 && page <= 1) return null;
+
+  const { from, to } = ledgerResultRange(page, pageSize, total);
+  return (
+    <nav className={styles.pagination} aria-label="Страницы журнала">
+      <span>
+        {number(from)}–{number(to)} из {number(total)}
+      </span>
+      <div>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={pending || page <= 1}
+          onClick={() => onPage(Math.min(page - 1, pages))}
+          aria-label="Предыдущая страница"
+        >
+          <ArrowLeft size={15} aria-hidden="true" />
+        </Button>
+        <span>
+          {page} / {pages}
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={pending || page >= pages}
+          onClick={() => onPage(page + 1)}
+          aria-label="Следующая страница"
+        >
+          <ArrowRight size={15} aria-hidden="true" />
+        </Button>
+      </div>
+    </nav>
+  );
+}
+
+export function StockLedgerFeature(props: Props) {
   const { isManager } = useSession();
   return isManager ? (
     <ManagerStockLedgerFeature {...props} />
   ) : (
-    <EmptyState
-      title="Журнал доступен менеджеру"
-      description="Для работы с заданиями откройте сборку или размещение коробов."
-    />
+    <p>Журнал доступен руководителю.</p>
   );
 }

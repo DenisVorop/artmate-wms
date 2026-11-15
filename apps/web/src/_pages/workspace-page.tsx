@@ -64,7 +64,10 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
     return <EmployeeWorkspace key={view} initialMode={workerModes[view]} />;
   const Feature = views[view];
   const light =
-    view === "overview" || view === "warehouse" || view === "inventory";
+    view === "overview" ||
+    view === "warehouse" ||
+    view === "inventory" ||
+    view === "stock-ledger";
   return (
     <WorkspaceShell showFooter={!light} theme={light ? "light" : "dark"}>
       <Feature />

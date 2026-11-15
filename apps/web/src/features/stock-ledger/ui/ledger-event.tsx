@@ -1,8 +1,8 @@
 "use client";
+
 import Link from "next/link";
-import { ChevronDown, ArrowRightLeft } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { StockLedgerEventDto } from "@/shared/api/generated/model";
-import { Badge } from "@/shared/ui";
 import {
   ledgerActor,
   ledgerContainerLabels,
@@ -14,6 +14,7 @@ import {
   signedLedgerQuantity,
 } from "../lib/ledger-view";
 import styles from "./stock-ledger.module.css";
+
 export function LedgerEvent({
   event,
   expanded,
@@ -23,109 +24,132 @@ export function LedgerEvent({
   expanded: boolean;
   onExpanded: (open: boolean) => void;
 }) {
+  const label =
+    event.referenceType === "stocktake"
+      ? "Инвентаризация"
+      : ledgerKindLabels[event.kind];
+  const detailsId = `ledger-event-${event.id}`;
+
   return (
-    <details
-      className={styles.event}
-      open={expanded}
-      onToggle={(e) => onExpanded(e.currentTarget.open)}
-    >
-      <summary className={styles.eventHeader}>
-        <span className={styles.eventIcon}>
-          <ArrowRightLeft size={17} />
-        </span>
-        <span className={styles.eventIdentity}>
-          <strong>
-            {event.referenceType === "stocktake"
-              ? "Инвентаризация"
-              : ledgerKindLabels[event.kind]}
-          </strong>
-          <span>
-            {ledgerDate(event.createdAt)} · {ledgerActor(event)}
-          </span>
-          {event.referenceCode && <code>{event.referenceCode}</code>}
-        </span>
-        <span className={styles.eventQuantity}>
-          <strong data-tone={ledgerDeltaTone(event.unitsDelta)}>
-            {signedLedgerQuantity(event.unitsDelta)}
-            <small> шт.</small>
-          </strong>
-          <span>{ledgerEventMeaning(event)}</span>
-        </span>
-        <ChevronDown className={styles.chevron} size={17} />
-      </summary>
+    <>
+      <tr className={styles.event} data-expanded={expanded || undefined}>
+        <th scope="row">
+          <button
+            type="button"
+            className={styles.eventToggle}
+            aria-expanded={expanded}
+            aria-controls={expanded ? detailsId : undefined}
+            onClick={() => onExpanded(!expanded)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+            <span>
+              {label}
+              {event.referenceCode && (
+                <span className={styles.secondary}>{event.referenceCode}</span>
+              )}
+            </span>
+          </button>
+        </th>
+        <td className={styles.date}>
+          <time dateTime={event.createdAt}>{ledgerDate(event.createdAt)}</time>
+        </td>
+        <td>{ledgerActor(event)}</td>
+        <td
+          className={styles.quantity}
+          data-tone={ledgerDeltaTone(event.unitsDelta)}
+          title={ledgerEventMeaning(event)}
+        >
+          {signedLedgerQuantity(event.unitsDelta)}
+        </td>
+      </tr>
       {expanded && (
-        <div className={styles.eventBody}>
-          {event.referenceType === "stocktake" && event.referenceId && (
-            <Link
-              className="button button--secondary button--sm"
-              href={`/stocktakes?stocktakeId=${encodeURIComponent(event.referenceId)}`}
-            >
-              Открыть инвентаризацию {event.referenceCode}
-            </Link>
-          )}
-          {event.reason && (
-            <p className={styles.reason}>
-              <strong>Причина</strong>
-              {event.reason}
-            </p>
-          )}
-          <div className={styles.lineHeading}>
-            <span>Изменения по остаткам</span>
-            <span>Строк: {event.lines.length.toLocaleString("ru-RU")}</span>
-          </div>
-          {event.lines.length === 0 ? (
-            <p className={styles.help}>
-              В этой операции нет изменений по партиям и местам.
-            </p>
-          ) : (
-            <div className={styles.lines}>
-              {event.lines.map((line, index) => (
-                <article
-                  key={`${line.skuId}:${line.containerId}:${line.lotId}:${index}`}
-                  className={styles.line}
-                >
-                  <div className={styles.lineIdentity}>
-                    <strong>{line.skuName}</strong>
-                    <span>{line.skuCode}</span>
-                    <Badge>{ledgerStageLabels[line.stage]}</Badge>
-                  </div>
-                  <div className={styles.lineFacts}>
-                    <span>
-                      Партия: <strong>{line.lotName}</strong>
-                      {line.receivedAt && ` · ${ledgerDate(line.receivedAt)}`}
-                    </span>
-                    <span>
-                      {ledgerContainerLabels[line.containerType]}:{" "}
-                      <code>{line.containerCode}</code>
-                      {line.palletCode &&
-                        line.palletCode !== line.containerCode && (
-                          <>
-                            {" "}
-                            · паллета <code>{line.palletCode}</code>
-                          </>
-                        )}
-                    </span>
-                    <span>
-                      Адрес: <code>{line.locationCode ?? "Не указан"}</code>
-                    </span>
-                  </div>
-                  <strong
-                    className={styles.lineQuantity}
-                    data-tone={ledgerDeltaTone(line.quantityDelta)}
-                  >
-                    {signedLedgerQuantity(line.quantityDelta)}
-                    <small> шт.</small>
-                  </strong>
-                </article>
-              ))}
-            </div>
-          )}
-          <p className={styles.help}>
-            Партии, адреса и названия зафиксированы на момент операции. Знак
-            показывает изменение именно этой строки.
-          </p>
-        </div>
+        <tr>
+          <td colSpan={4} className={styles.detailCell} id={detailsId}>
+            <LedgerEventDetails event={event} />
+          </td>
+        </tr>
       )}
-    </details>
+    </>
+  );
+}
+
+function LedgerEventDetails({ event }: { event: StockLedgerEventDto }) {
+  return (
+    <div className={styles.detail}>
+      {event.referenceType === "stocktake" && event.referenceId && (
+        <Link
+          className={styles.documentLink}
+          href={`/stocktakes?stocktakeId=${encodeURIComponent(event.referenceId)}`}
+        >
+          Открыть инвентаризацию {event.referenceCode}
+        </Link>
+      )}
+      {event.reason && (
+        <p className={styles.reason}>
+          <strong>Причина</strong> {event.reason}
+        </p>
+      )}
+      {event.lines.length === 0 ? (
+        <p className={styles.secondary}>Изменений по партиям и адресам нет.</p>
+      ) : (
+        <table className={styles.lines} aria-label="Изменения по партиям">
+          <thead>
+            <tr>
+              <th scope="col">Товар</th>
+              <th scope="col">Партия</th>
+              <th scope="col">Грузоместо</th>
+              <th scope="col">Адрес</th>
+              <th scope="col">Этап</th>
+              <th scope="col" className={styles.quantity}>
+                Изменение, шт.
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {event.lines.map((line, index) => (
+              <tr
+                key={`${line.skuId}:${line.containerId}:${line.lotId}:${index}`}
+              >
+                <th scope="row">
+                  {line.skuName}
+                  <span className={styles.secondary}>{line.skuCode}</span>
+                </th>
+                <td>
+                  {line.lotName}
+                  {line.receivedAt && (
+                    <time
+                      className={styles.secondary}
+                      dateTime={line.receivedAt}
+                    >
+                      {ledgerDate(line.receivedAt)}
+                    </time>
+                  )}
+                </td>
+                <td>
+                  <span className={styles.code}>{line.containerCode}</span>
+                  <span className={styles.secondary}>
+                    {ledgerContainerLabels[line.containerType]}
+                  </span>
+                  {line.palletCode &&
+                    line.palletCode !== line.containerCode && (
+                      <span className={styles.secondary}>
+                        Паллета {line.palletCode}
+                      </span>
+                    )}
+                </td>
+                <td>{line.locationCode ?? "—"}</td>
+                <td>{ledgerStageLabels[line.stage]}</td>
+                <td
+                  className={styles.quantity}
+                  data-tone={ledgerDeltaTone(line.quantityDelta)}
+                >
+                  {signedLedgerQuantity(line.quantityDelta)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
