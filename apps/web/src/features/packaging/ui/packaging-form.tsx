@@ -39,12 +39,7 @@ export function PackagingForm({
     ["maxLayers", "Максимум слоёв"],
   ];
   return (
-    <Modal
-      open
-      title={`Упаковка · ${sku.name}`}
-      onClose={onClose}
-      description="Размеры и проверенная схема укладки"
-    >
+    <Modal open title={`Упаковка · ${sku.name}`} onClose={onClose}>
       <form
         className="ops-form ops-profile-form"
         onSubmit={handleSubmit(async (values) => {
@@ -59,6 +54,7 @@ export function PackagingForm({
             <label key={field}>
               {label}
               <input
+                className="input"
                 type="number"
                 min={
                   field === "loadWidthMm"
@@ -91,6 +87,7 @@ export function PackagingForm({
             <label>
               Один полный короб, кг
               <input
+                className="input"
                 type="number"
                 step="0.01"
                 min={0.01}
@@ -109,6 +106,7 @@ export function PackagingForm({
             <label>
               Пустой поддон, кг
               <input
+                className="input"
                 type="number"
                 step="0.1"
                 min={0.1}

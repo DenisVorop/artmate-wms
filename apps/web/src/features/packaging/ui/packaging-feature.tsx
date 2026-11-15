@@ -1,86 +1,88 @@
 "use client";
-import { usePackagingState } from "../lib/use-packaging-state";
-import { Box, Settings2 } from "lucide-react";
+
 import { useWorkspace } from "@/entities/workspace";
 import { Button } from "@/shared/ui";
+import { usePackagingState } from "../lib/use-packaging-state";
 import { PackagingForm } from "./packaging-form";
+import styles from "./packaging.module.css";
+
 export function PackagingFeature() {
   const { data } = useWorkspace();
   const { selectedId, setSelectedId } = usePackagingState();
   if (!data) return null;
-  const selected = data.skus.find((s) => s.id === selectedId);
+  const skus = [...data.skus].sort((a, b) =>
+    a.name.localeCompare(b.name, "ru"),
+  );
+  const selected = skus.find((sku) => sku.id === selectedId);
+
   return (
-    <section
-      className="ops-profile-block"
-      id="packaging-profiles"
-      aria-label="Профили упаковки"
-    >
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ГАБАРИТЫ И УКЛАДКА</p>
-          <h2 className="section-title">Профили упаковки</h2>
-          <p className="page-description">
-            Вместимость считается по размерам упаковки и схеме укладки.
-          </p>
+    <section id="packaging-profiles" aria-label="Профили упаковки">
+      {skus.length ? (
+        <div
+          className={styles.scroll}
+          role="region"
+          aria-label="Таблица упаковки"
+          tabIndex={0}
+        >
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                {[
+                  "Товар",
+                  "Короб, мм",
+                  "Поддон, мм",
+                  "Груз с поддоном, мм",
+                  "Укладка",
+                  "Действие",
+                ].map((label) => (
+                  <th key={label} scope="col">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {skus.map((sku) => {
+                const profile = sku.packaging;
+                return (
+                  <tr key={sku.id}>
+                    <th scope="row">{sku.name}</th>
+                    <td className={styles.dimensions}>
+                      {profile.boxWidthMm} × {profile.boxDepthMm} ×{" "}
+                      {profile.boxHeightMm}
+                    </td>
+                    <td className={styles.dimensions}>
+                      {profile.palletWidthMm} × {profile.palletDepthMm}
+                    </td>
+                    <td className={styles.dimensions}>
+                      {profile.loadWidthMm ?? profile.palletWidthMm} ×{" "}
+                      {profile.loadDepthMm ?? profile.palletDepthMm} ×{" "}
+                      {profile.palletBaseHeightMm +
+                        profile.maxLayers * profile.boxHeightMm}
+                    </td>
+                    <td className={styles.dimensions}>
+                      {profile.boxesPerLayer} × {profile.maxLayers} ={" "}
+                      {profile.boxesPerLayer * profile.maxLayers} кор.
+                    </td>
+                    <td>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedId(sku.id)}
+                        aria-label={`Настроить упаковку ${sku.name}`}
+                      >
+                        Настроить
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
-      <div className="ops-profile-grid">
-        {data.skus.map((s) => {
-          const p = s.packaging;
-          return (
-            <article key={s.id} className="glass-panel ops-panel">
-              <div className="ops-profile-title">
-                <h3>
-                  <Box size={16} /> {s.name}
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedId(s.id)}
-                  aria-label={`Настроить упаковку ${s.name}`}
-                >
-                  <Settings2 size={15} />
-                  Настроить
-                </Button>
-              </div>
-              <div className="ops-profile-facts">
-                <div>
-                  <span>Короб, Ш × Г × В</span>
-                  <strong>
-                    {p.boxWidthMm} × {p.boxDepthMm} × {p.boxHeightMm} мм
-                  </strong>
-                </div>
-                <div>
-                  <span>Схема укладки</span>
-                  <strong>
-                    {p.boxesPerLayer} × {p.maxLayers} ={" "}
-                    {p.boxesPerLayer * p.maxLayers} коробов
-                  </strong>
-                </div>
-                <div>
-                  <span>Поддон</span>
-                  <strong>
-                    {p.palletWidthMm} × {p.palletDepthMm} мм
-                  </strong>
-                </div>
-                <div>
-                  <span>Груз с поддоном, Ш × Г</span>
-                  <strong>
-                    {p.loadWidthMm ?? p.palletWidthMm} ×{" "}
-                    {p.loadDepthMm ?? p.palletDepthMm} мм
-                  </strong>
-                </div>
-                <div>
-                  <span>Предельная высота</span>
-                  <strong>
-                    {p.palletBaseHeightMm + p.maxLayers * p.boxHeightMm} мм
-                  </strong>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      ) : (
+        <p className={styles.empty}>Товаров нет</p>
+      )}
       {selected && (
         <PackagingForm
           key={selected.id}

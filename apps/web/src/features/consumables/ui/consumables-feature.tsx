@@ -89,22 +89,13 @@ export function ConsumablesFeature({ data }: { data: WorkspaceDto }) {
 
   return (
     <section
-      className="ops-profile-block"
+      className={styles.panel}
       id="consumables"
-      aria-labelledby="consumables-title"
+      aria-label="Остатки упаковки"
     >
-      <div className="page-header">
-        <div>
-          <h2 className="section-title" id="consumables-title">
-            Расходники для сборки
-          </h2>
-          <p className="page-description">
-            На один короб раскрасок уходит 20 поштучных коробок и один
-            транспортный короб.
-          </p>
-        </div>
+      <div className={styles.meta}>
         <Badge tone={enabled ? "success" : "neutral"}>
-          {enabled ? "Учёт включён" : "Первичный ввод"}
+          {enabled ? "Учёт включён" : "Учёт выключен"}
         </Badge>
       </div>
       <div className="ops-profile-grid">

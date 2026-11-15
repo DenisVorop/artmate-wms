@@ -1,3 +1,11 @@
+.panel {
+  padding: 12px 16px 16px;
+}
+
+.meta {
+  margin-bottom: 10px;
+}
+
 .totals {
   display: flex;
   flex-wrap: wrap;

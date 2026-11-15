@@ -63,7 +63,8 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
   if (user.role === "employee" && workerModes[view])
     return <EmployeeWorkspace key={view} initialMode={workerModes[view]} />;
   const Feature = views[view];
-  const light = view === "overview" || view === "warehouse";
+  const light =
+    view === "overview" || view === "warehouse" || view === "inventory";
   return (
     <WorkspaceShell showFooter={!light} theme={light ? "light" : "dark"}>
       <Feature />
