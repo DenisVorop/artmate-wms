@@ -4,6 +4,7 @@ import type {
   WorkspaceDto,
 } from "@/shared/api/generated/model";
 export type PutawayTab = "queued" | "mine" | "completed";
+export type PutawayFilter = "open" | "active" | PutawayTab;
 export const putawayStatusLabels: Record<PutawayTaskDto["status"], string> = {
   queued: "Свободно",
   claimed: "Ожидает забора",
@@ -15,35 +16,55 @@ export const isActivePutaway = (task: PutawayTaskDto) =>
 type QueueData = Pick<WorkspaceDto, "putawayTasks"> & {
   boxes: Pick<WorkspaceDto["boxes"][number], "id" | "code">[];
   skus: Pick<WorkspaceDto["skus"][number], "id" | "name">[];
+  employees?: Pick<EmployeeDto, "id" | "name">[];
 };
+export function matchesPutawayFilter(
+  task: PutawayTaskDto,
+  filter: PutawayFilter,
+  actorId: string,
+): boolean {
+  switch (filter) {
+    case "open":
+      return task.status !== "completed";
+    case "active":
+      return isActivePutaway(task);
+    case "mine":
+      return !!actorId && task.employeeId === actorId && isActivePutaway(task);
+    default:
+      return task.status === filter;
+  }
+}
+
 export function putawayQueue(
   data: QueueData,
-  tab: PutawayTab,
+  filter: PutawayFilter,
   actorId: string,
   search = "",
 ) {
   const query = search.trim().toLocaleLowerCase("ru-RU");
+  const boxes = new Map(data.boxes.map((box) => [box.id, box.code]));
+  const products = new Map(data.skus.map((sku) => [sku.id, sku.name]));
+  const employees = new Map(
+    data.employees?.map((employee) => [employee.id, employee.name]),
+  );
   return data.putawayTasks
-    .filter(
-      (task) =>
-        (tab === "queued"
-          ? task.status === "queued"
-          : tab === "mine"
-            ? !!actorId && task.employeeId === actorId && isActivePutaway(task)
-            : task.status === "completed") &&
-        (!query ||
-          [
-            task.code,
-            data.boxes.find((box) => box.id === task.boxId)?.code,
-            data.skus.find((sku) => sku.id === task.skuId)?.name,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLocaleLowerCase("ru-RU")
-            .includes(query)),
-    )
+    .filter((task) => {
+      if (!matchesPutawayFilter(task, filter, actorId)) return false;
+      if (!query) return true;
+      const searchable = [
+        task.code,
+        boxes.get(task.boxId),
+        products.get(task.skuId),
+        task.employeeId ? employees.get(task.employeeId) : undefined,
+      ];
+      return searchable
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("ru-RU")
+        .includes(query);
+    })
     .sort((a, b) =>
-      tab === "completed"
+      filter === "completed"
         ? (b.completedAt ?? "").localeCompare(a.completedAt ?? "") ||
           b.id.localeCompare(a.id)
         : a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
@@ -63,17 +84,16 @@ export function putawayClaimBlocked(
     };
   if (task.status !== "queued")
     return {
-      message:
-        "Это размещение уже взято или завершено. Обновлённый статус указан в карточке.",
+      message: "Задание уже взято или завершено.",
     };
   const primary = data.tasks.find(
     (item) => item.employeeId === actor.id && item.status === "active",
   );
   if (primary)
     return {
-      message: `У сотрудника в работе сборка ${primary.code}. Для добровольного размещения сначала поставьте её на паузу. Текущий короб и его состав сохранятся.`,
+      message: `Поставьте сборку ${primary.code} на паузу.`,
       href: "/assembly",
-      linkLabel: "Открыть сборку и поставить на паузу",
+      linkLabel: "Открыть сборку",
     };
   const movement = data.movements.find(
     (item) =>
@@ -82,7 +102,7 @@ export function putawayClaimBlocked(
   );
   if (movement)
     return {
-      message: `Сначала завершите перемещение ${movement.code}. Сотрудник не может одновременно перевозить паллету и размещать отдельный короб.`,
+      message: `Сначала завершите перемещение ${movement.code}.`,
       href: "/movements",
       linkLabel: "Открыть перемещения",
     };

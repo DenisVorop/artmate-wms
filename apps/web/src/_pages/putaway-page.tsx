@@ -8,7 +8,7 @@ export function PutawayPage() {
   if (user?.role === "employee")
     return <EmployeeWorkspace initialMode="putaway" />;
   return (
-    <WorkspaceShell>
+    <WorkspaceShell theme="light" showFooter={false}>
       <PutawayFeature />
     </WorkspaceShell>
   );

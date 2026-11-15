@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { ArrowRight, Check, Printer } from "lucide-react";
+import { ArrowRight, Printer } from "lucide-react";
 import type {
   EmployeeDto,
   PutawayTaskDto,
@@ -49,6 +49,7 @@ export function PutawayDetails({
   const suggested = options.data?.locations.find(
     (item) => item.id === options.data?.suggestedLocationId,
   );
+  const destination = target ?? suggested;
   const block = putawayClaimBlocked(task, actor, data);
   const workingOwn = canWorkPutaway(task, actor);
   return (
@@ -69,15 +70,16 @@ export function PutawayDetails({
           >
             {putawayStatusLabels[task.status]}
           </Badge>
-          <h2>{sku?.name ?? "Тематика недоступна"}</h2>
+          <h2>{sku?.name ?? "Товар недоступен"}</h2>
           <p>
-            <span className={styles.code}>
-              {task.code} · {box?.code ?? task.boxId}
-            </span>
-            <br />
-            Один короб
-            {box ? ` · ${box.units.toLocaleString("ru-RU")} раскрасок` : ""}
-            {owner ? ` · ${owner.name}` : ""}
+            {task.code}
+            {box && (
+              <>
+                {" "}
+                · {box.code} · {box.units.toLocaleString("ru-RU")} шт.
+              </>
+            )}
+            {owner && <> · {owner.name}</>}
           </p>
         </div>
         {box && (
@@ -94,139 +96,95 @@ export function PutawayDetails({
       </div>
       <div className={styles.addresses}>
         <div className={styles.address}>
-          <span>С накопительной паллеты</span>
-          <strong>{source?.code ?? task.fromLocationId}</strong>
-          <span>{sourcePallet?.code ?? task.fromPalletId}</span>
+          <span>Откуда</span>
+          <strong>{source?.code ?? "Адрес недоступен"}</strong>
+          {sourcePallet && <span>{sourcePallet.code}</span>}
         </div>
-        <ArrowRight size={20} className={styles.arrow} />
+        <ArrowRight size={20} className={styles.arrow} aria-hidden="true" />
         <div className={styles.address} data-target="true">
           <span>
-            {task.status === "completed"
-              ? "Размещено на хранение"
-              : task.toLocationId
-                ? "Зарезервированное хранение"
-                : "Адрес хранения"}
+            {task.status === "queued" ? "Предлагаемый адрес" : "Куда"}
           </span>
           <strong>
-            {target?.code ??
-              (task.toLocationId ? "Адрес недоступен" : "После взятия")}
+            {destination?.code ??
+              (task.toLocationId ? "Адрес недоступен" : "—")}
           </strong>
-          <span>
-            {task.status === "in_transit"
-              ? "Короб сейчас у сотрудника"
-              : (target?.name ?? "Паллета одной тематики")}
-          </span>
+          {destination && <span>{destination.name}</span>}
         </div>
       </div>
       {task.status === "queued" && (
         <div className={styles.body}>
-          <h3>Добровольное размещение</h3>
-          <p className={styles.help}>
-            Сборка уже закончила этот короб. Возьмите второстепенное задание,
-            когда готовы перенести его с общего накопителя на паллету своей
-            тематики.
-          </p>
           {options.isPending && (
-            <p className={styles.info} role="status">
-              Подбираем совместимую паллету хранения или свободный адрес…
+            <p className={styles.help} role="status">
+              Подбираем адрес…
             </p>
           )}
           {options.isError && (
             <div className={styles.readError} role="alert">
-              <p>
-                Не удалось обновить варианты хранения. При взятии сервер снова
-                проверит свободное место.
-              </p>
+              Не удалось подобрать адрес.
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 onClick={() => void options.refetch()}
                 disabled={options.isFetching || pending}
               >
-                Повторить подбор
+                Повторить
               </Button>
-            </div>
-          )}
-          {suggested && (
-            <div className={styles.options}>
-              <h3>Рекомендуемый адрес</h3>
-              <strong>{suggested.code}</strong>
-              <p className={styles.help}>
-                {suggested.name} · полезные размеры{" "}
-                {suggested.availableWidthMm / 10} ×{" "}
-                {suggested.availableDepthMm / 10} см · высота до{" "}
-                {suggested.maxHeightMm / 10} см
-                {suggested.maxWeightKg === null
-                  ? ""
-                  : ` · до ${suggested.maxWeightKg} кг`}
-              </p>
-              {options.data?.recommendation && (
-                <p className={styles.help}>
-                  {options.data.recommendation.explanation}
-                </p>
-              )}
-              <p className={styles.help}>
-                Адрес будет выбран и зарезервирован сервером при взятии. Здесь
-                хранится одна тематика с совместимым профилем короба.
-              </p>
             </div>
           )}
           {options.data && !suggested && (
             <div className={styles.info}>
-              <p>
-                {options.data.reason ??
-                  "Нет подходящего места хранения. Короб остаётся на накопителе; задание не будет взято без адреса."}
-              </p>
-              <Link href="/warehouse" target="_blank" rel="noopener noreferrer">
-                Проверить карту склада ↗
-              </Link>
-              <div style={{ marginTop: 10 }}>
+              <p>{options.data.reason ?? "Нет подходящего места хранения."}</p>
+              <div className={styles.actions}>
+                <Link
+                  href="/warehouse"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Открыть карту склада
+                </Link>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={pending || options.isFetching}
                   onClick={() => void options.refetch()}
                 >
-                  Обновить подбор
+                  Проверить снова
                 </Button>
               </div>
             </div>
           )}
-          {block && (
-            <div className={styles.info}>
-              <p>{block.message}</p>
+          {block ? (
+            <p className={styles.help}>
+              {block.message}
               {block.href && (
-                <Link
-                  href={block.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {block.linkLabel} ↗
-                </Link>
+                <>
+                  {" "}
+                  <Link href={block.href}>{block.linkLabel}</Link>
+                </>
               )}
-            </div>
+            </p>
+          ) : (
+            <Button
+              className={styles.claim}
+              disabled={
+                pending || options.isPending || (!!options.data && !suggested)
+              }
+              onClick={() => void onClaim()}
+              aria-busy={pending}
+            >
+              Взять задание
+            </Button>
           )}
-          <Button
-            disabled={
-              pending ||
-              !!block ||
-              options.isPending ||
-              (!!options.data && !suggested)
-            }
-            onClick={() => void onClaim()}
-            aria-busy={pending}
-          >
-            Взять размещение
-          </Button>
         </div>
       )}
       {(task.status === "claimed" || task.status === "in_transit") && (
         <div className={styles.body}>
           {!workingOwn ? (
             <p className={styles.info}>
-              Задание закреплено за сотрудником{" "}
-              {owner?.name ?? "недоступным в справочнике"}. Действия доступны
-              этому сотруднику в его учётной записи на смене.
+              {task.employeeId === actor?.id
+                ? "Начните смену, чтобы продолжить задание."
+                : "Сканы принимает только учётная запись исполнителя."}
             </p>
           ) : (
             <>
@@ -235,50 +193,25 @@ export function PutawayDetails({
                   ? "Заберите короб с накопителя"
                   : "Доставьте короб на хранение"}
               </h3>
-              <p className={styles.help}>
-                {task.status === "claimed"
-                  ? "Найдите короб на общей паллете сборки. Сканируйте его этикетку, затем QR исходного адреса. Только после подтверждения короб окажется у сотрудника."
-                  : "Сканируйте ту же этикетку короба, затем QR зарезервированного адреса. Сервер повторно проверит вместимость и поместит короб на паллету его тематики."}
-              </p>
               <PutawayScanForm
                 key={`${task.id}:${task.status}`}
                 phase={task.status === "claimed" ? "take" : "place"}
                 pending={pending}
                 onScan={onScan}
               />
-              {task.status === "claimed" ? (
-                <div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void onRelease()}
-                    disabled={pending || !canReleasePutaway(task, actor)}
-                  >
-                    Вернуть в очередь
-                  </Button>
-                  <p className={styles.help}>
-                    Доступно до забора короба. Резерв адреса освободится, короб
-                    останется на накопителе.
-                  </p>
-                </div>
-              ) : (
-                <p className={styles.info}>
-                  Короб уже у сотрудника. Сначала разместите его: вернуть
-                  задание в очередь или завершить смену во время переноса
-                  нельзя.
-                </p>
+              {canReleasePutaway(task, actor) && (
+                <Button
+                  className={styles.claim}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void onRelease()}
+                  disabled={pending}
+                >
+                  Вернуть в очередь
+                </Button>
               )}
             </>
           )}
-        </div>
-      )}
-      {task.status === "completed" && (
-        <div className={styles.notice} style={{ marginTop: 20 }} role="status">
-          <Check size={17} />
-          <span>
-            Размещение завершено. Короб передан на тематическую паллету
-            хранения. Адреса и исполнитель ниже — история этой операции.
-          </span>
         </div>
       )}
       {error && (
@@ -306,10 +239,7 @@ export function PutawayDetails({
             Размещено: <strong>{putawayDate(task.completedAt)}</strong>
           </span>
         )}
-        <span>
-          Время указано по Москве. Перенос не меняет количество товара на
-          балансе.
-        </span>
+        <span>МСК</span>
       </div>
     </section>
   );

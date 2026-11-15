@@ -24,22 +24,20 @@ test("Захват ведёт к своему заданию с зарезерв
   assert.match(claimed.notice, /зарезервирован/);
   const taken = putawayTransition("take", task("in_transit"));
   assert.equal(taken.tab, "mine");
-  assert.match(taken.notice, /Освободить задание после забора нельзя/);
+  assert.match(taken.notice, /Короб забран/);
 });
 test("После доставки UI выбирает историю того же задания, а не автоматически следующую работу", () => {
   const result = putawayTransition("place", task("completed"));
   assert.equal(result.tab, "completed");
   assert.equal(result.selectedId, "put-1");
-  assert.match(result.notice, /Баланс сохранён/);
-  assert.match(result.notice, /по желанию/);
+  assert.match(result.notice, /Короб размещён/);
 });
 test("Возврат до забора освобождает место и показывает queued, не имитируя физического переноса", () => {
   const queued = task("queued");
   const result = putawayTransition("release", queued);
   assert.equal(result.tab, "queued");
   assert.equal(result.selectedId, queued.id);
-  assert.match(result.notice, /Резерв адреса снят/);
-  assert.match(result.notice, /остаётся на накопительной паллете/);
+  assert.match(result.notice, /Адрес освобождён/);
   assert.equal(queued.toLocationId, null);
 });
 test("Повтор со свежим отличающимся статусом сообщает подтверждение, не делает дополнительного перехода состояния", () => {
@@ -48,5 +46,5 @@ test("Повтор со свежим отличающимся статусом �
   assert.equal(result.tab, "mine");
   assert.equal(result.selectedId, carried.id);
   assert.equal(carried.status, "in_transit");
-  assert.match(result.notice, /подтверждено сервером/);
+  assert.match(result.notice, /Статус задания обновлён/);
 });

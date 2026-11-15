@@ -1,24 +1,14 @@
 "use client";
 import { useSession } from "@/entities/session";
-import Link from "next/link";
-import { ArrowRight, Check, Search, UserRound } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
-import {
-  Badge,
-  Button,
-  EmptyState,
-  ErrorState,
-  Input,
-  LoadingState,
-} from "@/shared/ui";
-import { number } from "@/shared/lib/format";
+import { Button, ErrorState, LoadingState } from "@/shared/ui";
 import type { PutawayScanValues } from "../lib/putaway-form";
 import {
-  isActivePutaway,
+  matchesPutawayFilter,
   putawayTaskVisible,
   putawayQueue,
-  putawayStatusLabels,
-  type PutawayTab,
 } from "../lib/putaway-queue";
 import {
   putawayTransition,
@@ -27,18 +17,22 @@ import {
 import { usePutawayState } from "../lib/use-putaway-state";
 import { usePutaway } from "../model/use-putaway";
 import { PutawayDetails } from "./putaway-details";
+import { PutawayTaskList } from "./putaway-task-list";
 import styles from "./putaway.module.css";
-const tabs: { value: PutawayTab; label: string }[] = [
-  { value: "queued", label: "Очередь" },
-  { value: "mine", label: "Мои активные" },
-  { value: "completed", label: "История" },
-];
 export function PutawayFeature() {
   const { user, isManager } = useSession();
   const actorId = user?.employeeId ?? "";
   const workspace = useWorkspace();
   const commands = usePutaway();
   const ui = usePutawayState();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousSelection = useRef(ui.selectedId);
+  useLayoutEffect(() => {
+    if (previousSelection.current !== ui.selectedId) {
+      previousSelection.current = ui.selectedId;
+      heading.current?.focus();
+    }
+  }, [ui.selectedId]);
   if (workspace.isPending) return <LoadingState />;
   if (!workspace.data)
     return <ErrorState onRetry={() => void workspace.refetch()} />;
@@ -49,12 +43,14 @@ export function PutawayFeature() {
     ),
   };
   const actor = data.employees.find((employee) => employee.id === actorId);
-  const tasks = putawayQueue(data, ui.tab, actorId, ui.search);
-  const selected =
-    data.putawayTasks.find((task) => task.id === ui.selectedId) ?? tasks[0];
-  const mine = data.putawayTasks.filter(
-    (task) => task.employeeId === actorId && isActivePutaway(task),
-  );
+  const tasks = putawayQueue(data, ui.filter, actorId, ui.search);
+  const selected = data.putawayTasks.find((task) => task.id === ui.selectedId);
+
+  const selectTask = (id: string | null) => {
+    ui.setSelectedId(id);
+    ui.setNotice("");
+    commands.clearError();
+  };
   const execute = async (
     action: PutawayAction,
     values?: PutawayScanValues,
@@ -77,9 +73,13 @@ export function PutawayFeature() {
       );
       if (updated) {
         const transition = putawayTransition(action, updated);
-        ui.setTab(transition.tab);
+        if (
+          ui.filter !== "open" &&
+          !matchesPutawayFilter(updated, ui.filter, actorId)
+        ) {
+          ui.setFilter(transition.tab);
+        }
         ui.setSelectedId(transition.selectedId);
-        ui.setSearch("");
         ui.setNotice(transition.notice);
       }
       return !!result;
@@ -89,253 +89,68 @@ export function PutawayFeature() {
   };
   return (
     <div className={styles.feature}>
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ВТОРОСТЕПЕННЫЕ ЗАДАНИЯ</p>
-          <h1 className="page-heading">Размещение коробов</h1>
-          <p className="page-description">
-            По желанию: с общей паллеты сборки на хранение по тематикам.
-          </p>
-        </div>
-        <Link href="/assembly" className="button button--secondary">
-          К сборке
-          <ArrowRight size={15} />
-        </Link>
-      </div>
-      <div className={styles.metrics}>
-        <div className={`glass-panel ${styles.metric}`}>
-          <span>Коробов в очереди</span>
-          <strong>
-            {number(
-              data.putawayTasks.filter((task) => task.status === "queued")
-                .length,
-            )}
-          </strong>
-        </div>
-        <div className={`glass-panel ${styles.metric}`}>
-          <span>Мои активные размещения</span>
-          <strong>{number(mine.length)}</strong>
-        </div>
-        <div className={`glass-panel ${styles.metric}`}>
-          <span>В истории размещений</span>
-          <strong>
-            {number(
-              data.putawayTasks.filter((task) => task.status === "completed")
-                .length,
-            )}
-          </strong>
-        </div>
-      </div>
-      <section
-        className={`glass-panel ${styles.actor}`}
-        aria-label="Текущий исполнитель"
-      >
-        <div className={styles.actorIntro}>
-          <strong>
-            <UserRound size={16} />
-            {actor?.name ?? user?.name ?? "Текущий сотрудник"}
-          </strong>
-          <p className={styles.help}>
-            Операции выполняются от вашей учётной записи.
-          </p>
-          {actor?.status !== "working" && (
-            <p className={styles.help}>
-              Для выполнения задания начните свою смену.{" "}
-              <Link href="/team">Моя смена →</Link>
-            </p>
-          )}
-        </div>
-        {mine[0] && selected?.id !== mine[0].id && (
+      <header className={styles.pageHeader}>
+        <h1 className="page-heading" ref={heading} tabIndex={-1}>
+          Размещение коробов
+        </h1>
+        {selected && (
           <Button
-            size="sm"
             variant="secondary"
             disabled={commands.pending}
-            onClick={() =>
-              (() => {
-                ui.setTab("mine");
-                ui.setSelectedId(mine[0].id);
-                ui.setSearch("");
-              })()
-            }
+            onClick={() => selectTask(null)}
           >
-            К моему заданию
+            <ArrowLeft size={15} aria-hidden="true" />К списку
           </Button>
         )}
-      </section>
+      </header>
       {ui.notice && (
-        <div className={styles.notice} role="status">
-          <Check size={17} />
-          <span>{ui.notice}</span>
-          {ui.tab === "completed" && (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={commands.pending}
-              onClick={() => {
-                ui.setTab("queued");
-                ui.setSearch("");
-                ui.setSelectedId(null);
-                commands.clearError();
-              }}
-            >
-              Вернуться к очереди
-            </Button>
-          )}
-        </div>
+        <p className={styles.notice} role="status">
+          {ui.notice}
+        </p>
       )}
       {workspace.isError && (
         <div className={styles.readError} role="alert">
-          <p>
-            Не удалось обновить данные. Показана последняя версия; введённые
-            коды сохранены.
-          </p>
+          Не удалось обновить задания.
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
             disabled={commands.pending}
             onClick={() => void workspace.refetch()}
           >
-            Обновить данные
+            Повторить
           </Button>
         </div>
       )}
-      <div className={styles.layout}>
-        <section
-          className={`glass-panel ${styles.queue}`}
-          aria-label="Очередь размещений"
-        >
-          <div className={styles.queueTools}>
-            <div className={styles.tabs} aria-label="Показать размещения">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  type="button"
-                  aria-pressed={ui.tab === tab.value}
-                  disabled={commands.pending}
-                  onClick={() => {
-                    ui.setTab(tab.value);
-                    ui.setSelectedId(null);
-                    commands.clearError();
-                  }}
-                >
-                  {tab.label} · {putawayQueue(data, tab.value, actorId).length}
-                </button>
-              ))}
-            </div>
-            <label className={styles.search}>
-              <Search size={15} />
-              <Input
-                aria-label="Поиск размещения"
-                placeholder="Короб, задание или тематика"
-                value={ui.search}
-                disabled={commands.pending}
-                onChange={(event) => ui.setSearch(event.target.value)}
-              />
-            </label>
-          </div>
-          <div className={styles.taskList}>
-            {tasks.map((task) => {
-              const box = data.boxes.find((item) => item.id === task.boxId);
-              const source = data.locations.find(
-                (item) => item.id === task.fromLocationId,
-              );
-              const pallet = data.pallets.find(
-                (item) => item.id === task.fromPalletId,
-              );
-              return (
-                <button
-                  type="button"
-                  className={styles.card}
-                  key={task.id}
-                  aria-pressed={selected?.id === task.id}
-                  disabled={commands.pending}
-                  onClick={() => {
-                    ui.setSelectedId(task.id);
-                    commands.clearError();
-                  }}
-                >
-                  <span className={styles.cardTop}>
-                    <strong>{box?.code ?? task.code}</strong>
-                    <Badge
-                      tone={
-                        task.status === "completed"
-                          ? "success"
-                          : task.status === "in_transit"
-                            ? "warning"
-                            : "neutral"
-                      }
-                    >
-                      {putawayStatusLabels[task.status]}
-                    </Badge>
-                  </span>
-                  <span className={styles.cardName}>
-                    {data.skus.find((item) => item.id === task.skuId)?.name ??
-                      "Тематика недоступна"}
-                  </span>
-                  <span className={styles.help}>
-                    {pallet?.code ?? "Исходная паллета"} ·{" "}
-                    {source?.code ?? "Адрес недоступен"}
-                  </span>
-                  <span className={styles.cardBottom}>
-                    <span>{task.code}</span>
-                    <span>1 короб{box ? ` · ${box.units} шт.` : ""}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {!tasks.length && (
-            <EmptyState
-              title={
-                ui.search
-                  ? "Ничего не найдено"
-                  : ui.tab === "queued"
-                    ? "Очередь пока пуста"
-                    : ui.tab === "mine"
-                      ? "Нет активного размещения"
-                      : "История пока пуста"
-              }
-              description={
-                ui.search
-                  ? "Попробуйте другой код или тематику."
-                  : ui.tab === "queued"
-                    ? "После закрытия короба на сборке здесь автоматически появится добровольное задание на его размещение."
-                    : ui.tab === "mine"
-                      ? actor
-                        ? "Выберите короб в очереди и возьмите его по желанию."
-                        : "Начните свою смену, чтобы взять размещение."
-                      : "Здесь сохранятся подтверждённые доставки коробов на хранение."
-              }
-            />
-          )}
-        </section>
-        {selected ? (
-          <PutawayDetails
-            key={selected.id}
-            task={selected}
-            data={data}
-            actor={actor}
-            pending={commands.pending}
-            error={commands.error}
-            onClaim={async () => {
-              await execute("claim");
-            }}
-            onScan={(values) =>
-              execute(selected.status === "claimed" ? "take" : "place", values)
-            }
-            onRelease={async () => {
-              await execute("release");
-            }}
-          />
-        ) : (
-          <section className={`glass-panel ${styles.detail}`}>
-            <EmptyState
-              title="Один короб — одно размещение"
-              description="Выберите задание. Сначала подтвердите забор с накопителя, затем доставку на зарезервированное хранение."
-            />
-          </section>
-        )}
-      </div>
+      {selected ? (
+        <PutawayDetails
+          key={selected.id}
+          task={selected}
+          data={data}
+          actor={actor}
+          pending={commands.pending}
+          error={commands.error}
+          onClaim={async () => {
+            await execute("claim");
+          }}
+          onScan={(values) =>
+            execute(selected.status === "claimed" ? "take" : "place", values)
+          }
+          onRelease={async () => {
+            await execute("release");
+          }}
+        />
+      ) : (
+        <PutawayTaskList
+          data={data}
+          tasks={tasks}
+          filter={ui.filter}
+          search={ui.search}
+          showMine={!!actor}
+          onFilter={ui.setFilter}
+          onSearch={ui.setSearch}
+          onSelect={selectTask}
+        />
+      )}
     </div>
   );
 }

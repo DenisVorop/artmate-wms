@@ -96,6 +96,7 @@ test("Очередь — свободные короба, мои — тольк�
     putawayTasks: [queued, claimed, carrying, foreign, done],
     boxes: [{ id: "box-1", code: "BOX-001" }],
     skus: [{ id: "cats", name: "Котики-2" }],
+    employees: [actor, { ...actor, id: "other", name: "Марина" }],
   };
   assert.deepEqual(
     putawayQueue(data, "queued", "actor").map((t) => t.id),
@@ -104,6 +105,14 @@ test("Очередь — свободные короба, мои — тольк�
   assert.deepEqual(
     putawayQueue(data, "mine", "actor").map((t) => t.id),
     ["carry", "claim"],
+  );
+  assert.deepEqual(
+    putawayQueue(data, "open", "actor").map((t) => t.id),
+    ["carry", "claim", "other", "put-1"],
+  );
+  assert.deepEqual(
+    putawayQueue(data, "active", "actor", "марина").map((t) => t.id),
+    ["other"],
   );
   assert.equal(putawayQueue(data, "mine", "").length, 0);
   assert.deepEqual(

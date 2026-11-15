@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ScanLine } from "lucide-react";
 import { Button, Input } from "@/shared/ui";
 import {
   emptyPutawayScans,
@@ -44,9 +43,7 @@ export function PutawayScanForm({
     >
       <fieldset disabled={pending} className={styles.fieldset}>
         <label className="field">
-          <span className={styles.scanStep}>
-            <span>1</span>Код короба
-          </span>
+          Код короба
           <Input
             className={styles.scanInput}
             autoComplete="off"
@@ -70,12 +67,7 @@ export function PutawayScanForm({
           )}
         </label>
         <label className="field">
-          <span className={styles.scanStep}>
-            <span>2</span>
-            {phase === "take"
-              ? "Адрес накопительной паллеты"
-              : "Зарезервированный адрес хранения"}
-          </span>
+          {phase === "take" ? "Адрес сборки" : "Адрес хранения"}
           <Input
             className={styles.scanInput}
             autoComplete="off"
@@ -103,13 +95,8 @@ export function PutawayScanForm({
         </label>
       </fieldset>
       <Button type="submit" disabled={pending} aria-busy={pending}>
-        <ScanLine size={15} />
         {phase === "take" ? "Забрать короб" : "Разместить короб"}
       </Button>
-      <p className={styles.help}>
-        Поля заполняются сканером или вручную. Показанные коды не подставляются
-        автоматически.
-      </p>
     </form>
   );
 }

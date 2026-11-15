@@ -1,14 +1,14 @@
 "use client";
 import { useState } from "react";
-import type { PutawayTab } from "./putaway-queue";
+import type { PutawayFilter } from "./putaway-queue";
 export function usePutawayState() {
-  const [tab, setTab] = useState<PutawayTab>("queued");
+  const [filter, setFilter] = useState<PutawayFilter>("open");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   return {
-    tab,
-    setTab,
+    filter,
+    setFilter,
     selectedId,
     setSelectedId,
     search,
