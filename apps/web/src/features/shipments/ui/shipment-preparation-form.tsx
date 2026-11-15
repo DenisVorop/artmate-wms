@@ -1,11 +1,9 @@
 "use client";
 import { useEffect } from "react";
-import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowDownToLine, ArrowRight } from "lucide-react";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { Button, Modal } from "@/shared/ui";
+import { Button, Modal, Select } from "@/shared/ui";
 import {
   preparationSchema,
   type PreparationValues,
@@ -52,14 +50,17 @@ export function ShipmentPreparationForm({
   return (
     <Modal
       open={!!palletId}
-      onClose={onClose}
-      title="Подготовить к отгрузке"
-      description="Спустить паллету в зону отбора с доступом с четырёх сторон."
+      onClose={() => {
+        if (!pending) onClose();
+      }}
+      title="Спустить паллету"
     >
       {pallet && (
         <form
-          className="ops-form"
+          className={styles.form}
+          aria-busy={pending}
           onSubmit={handleSubmit(async (values) => {
+            if (pending) return;
             try {
               await onCreate(values);
               onClose();
@@ -82,9 +83,9 @@ export function ShipmentPreparationForm({
               · {pallet.quantity} коробов на паллете
             </small>
           </div>
-          <label>
+          <label className="field">
             Адрес отбора
-            <select {...register("toLocationId")}>
+            <Select disabled={pending} {...register("toLocationId")}>
               <option value="">Выберите свободный адрес</option>
               {targets.map((location) => {
                 const hint = pickingHint(data, location.id, pallet);
@@ -99,9 +100,9 @@ export function ShipmentPreparationForm({
                   </option>
                 );
               })}
-            </select>
+            </Select>
             {errors.toLocationId && (
-              <span className="ops-field-error">
+              <span className={styles.fieldError}>
                 {errors.toLocationId.message}
               </span>
             )}
@@ -112,9 +113,9 @@ export function ShipmentPreparationForm({
               создайте на карте адрес с доступом с четырёх сторон.
             </div>
           )}
-          <label>
+          <label className="field">
             Исполнитель
-            <select {...register("employeeId")}>
+            <Select disabled={pending} {...register("employeeId")}>
               <option value="">Выберите сотрудника на смене</option>
               {data.employees
                 .filter((item) => item.status === "working")
@@ -123,16 +124,15 @@ export function ShipmentPreparationForm({
                     {employee.name}
                   </option>
                 ))}
-            </select>
+            </Select>
             {errors.employeeId && (
-              <span className="ops-field-error">
+              <span className={styles.fieldError}>
                 {errors.employeeId.message}
               </span>
             )}
           </label>
           <p className={styles.note}>
-            Исходный адрес сохранится для возврата остатка. После создания
-            задания подтвердите забор и размещение в разделе «Перемещения».
+            Исходный адрес сохранится для возврата остатка.
           </p>
           {error && (
             <div className="ops-error" role="alert">
@@ -140,13 +140,8 @@ export function ShipmentPreparationForm({
             </div>
           )}
           <Button type="submit" disabled={pending || !hasAvailableTarget}>
-            <ArrowDownToLine size={16} />
-            {pending ? "Создаём…" : "Создать задание на спуск"}
+            {pending ? "Создаём…" : "Создать задание"}
           </Button>
-          <Link href="/movements" className="button button--ghost">
-            Открыть перемещения
-            <ArrowRight size={15} />
-          </Link>
         </form>
       )}
     </Modal>

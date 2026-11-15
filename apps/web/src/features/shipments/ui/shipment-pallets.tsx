@@ -1,21 +1,29 @@
 "use client";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowRight, CheckCircle2 } from "lucide-react";
-import type { ShipmentDto, WorkspaceDto } from "@/shared/api/generated/model";
+import type { WorkspaceDto } from "@/shared/api/generated/model";
 import { Button } from "@/shared/ui";
-import { shipmentReadiness } from "../lib/shipment-readiness";
+import type { shipmentReadiness } from "../lib/shipment-readiness";
 import styles from "./shipments.module.css";
 
 type Props = {
-  shipment: ShipmentDto;
+  readiness: ReturnType<typeof shipmentReadiness>;
   data: WorkspaceDto;
   pending: boolean;
   onPrepare: (palletId: string) => void;
 };
-export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
-  const readiness = shipmentReadiness(data, shipment);
+export function ShipmentPallets({
+  readiness,
+  data,
+  pending,
+  onPrepare,
+}: Props) {
+  const missing = readiness.boxes.some(
+    (box) => !box || (box.status !== "staged" && !box.palletId),
+  );
+  if (!readiness.pallets.length && !missing) return null;
   return (
-    <div className={styles.pallets}>
+    <section className={styles.pallets} aria-labelledby="shipment-pallets">
+      <h3 id="shipment-pallets">Паллеты</h3>
       {readiness.pallets.map((pallet) => {
         const location = data.locations.find(
           (item) => item.id === pallet.locationId,
@@ -60,33 +68,29 @@ export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
               </span>
             </div>
             <div className={styles.palletAddress}>
-              Адрес:{" "}
+              Адрес{" "}
               <strong>
                 {location?.code ??
                   (pallet.status === "in_transit" ? "в пути" : "не назначен")}
               </strong>
               {held && (
                 <span>
-                  Возврат: <strong>{held.code}</strong>
+                  Возврат <strong>{held.code}</strong>
                 </span>
               )}
             </div>
             {requiresPutaway ? (
-              <Link href="/putaway" className="text-link">
-                Сначала разместите короба по тематикам <ArrowRight size={14} />
+              <Link href="/putaway" className={styles.textLink}>
+                Разместить короба
               </Link>
             ) : movement ? (
-              <Link href="/movements" className="text-link">
+              <Link href="/movements" className={styles.textLink}>
                 {movement.status === "in_transit"
-                  ? "Паллета в пути — подтвердить размещение"
-                  : "Перемещение запланировано — выполнить задание"}
-                <ArrowRight size={14} />
+                  ? "Паллета в пути"
+                  : "Перемещение запланировано"}
               </Link>
             ) : ready ? (
-              <div className={styles.ready}>
-                <CheckCircle2 size={14} />
-                Готова к отбору
-              </div>
+              <p className={styles.ready}>Готова к отбору</p>
             ) : location?.kind === "rack" && location.level > 2 ? (
               <Button
                 size="sm"
@@ -94,27 +98,22 @@ export function ShipmentPallets({ shipment, data, pending, onPrepare }: Props) {
                 disabled={pending || pallet.status !== "stored" || putawayHold}
                 onClick={() => onPrepare(pallet.id)}
               >
-                <ArrowDownToLine size={14} />
                 Спустить паллету
               </Button>
             ) : null}
             {putawayHold && (
               <p className={styles.note}>
-                Паллета ожидает размещение зарезервированных коробов. Завершите
-                его перед перемещением.
+                Сначала завершите размещение коробов на эту паллету.
               </p>
             )}
           </div>
         );
       })}
-      {readiness.boxes.some(
-        (box) => !box || (box.status !== "staged" && !box.palletId),
-      ) && (
+      {missing && (
         <p className={styles.note}>
-          Часть коробов находится в размещении или без паллеты. Завершите
-          размещение перед отправкой.
+          Часть коробов ещё не на паллетах хранения.
         </p>
       )}
-    </div>
+    </section>
   );
 }
