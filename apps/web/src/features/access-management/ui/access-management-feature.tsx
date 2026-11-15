@@ -2,21 +2,19 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Plus, ShieldCheck } from "lucide-react";
 import { useSession } from "@/entities/session";
 import type {
   AuthAccountDto,
+  EmployeeDto,
   WorkspaceDto,
 } from "@/shared/api/generated/model";
 import {
   Badge,
   Button,
-  EmptyState,
   ErrorState,
   Input,
   LoadingState,
   Modal,
-  Select,
 } from "@/shared/ui";
 import {
   accessCreateSchema,
@@ -32,7 +30,13 @@ import {
 import { useAccessManagement } from "../model/use-access-management";
 import { RoleFields } from "./role-fields";
 import styles from "./access.module.css";
-export function AccessManagementFeature({ data }: { data: WorkspaceDto }) {
+export function AccessManagementFeature({
+  data,
+  employee,
+}: {
+  data: WorkspaceDto;
+  employee?: EmployeeDto;
+}) {
   const session = useSession();
   const model = useAccessManagement();
   const [creating, setCreating] = useState(false);
@@ -43,102 +47,117 @@ export function AccessManagementFeature({ data }: { data: WorkspaceDto }) {
   const resetAccount = accounts.find((item) => item.id === resetId);
   const revokeAccount = accounts.find((item) => item.id === revokeId);
   if (!session.isManager) return null;
+  const employeeAccount =
+    employee && accounts.find(({ employeeId }) => employeeId === employee.id);
+  const visibleAccounts = employee
+    ? employeeAccount
+      ? [employeeAccount]
+      : []
+    : accounts.filter(
+        ({ employeeId }) => !data.employees.some(({ id }) => id === employeeId),
+      );
+  const renderAccount = (account: AuthAccountDto) => (
+    <AccountCard
+      key={account.id}
+      account={account}
+      accounts={accounts}
+      own={account.id === session.user?.id}
+      pending={model.pending}
+      onRole={async (role) => {
+        const success = await model.update(account.id, { role });
+        if (success) setNotice("Роль сохранена.");
+        return success;
+      }}
+      onBlock={async () => {
+        if (await model.update(account.id, { blocked: !account.blocked })) {
+          setNotice(
+            account.blocked ? "Вход снова разрешён." : "Вход заблокирован.",
+          );
+        }
+      }}
+      onReset={() => {
+        model.clearError();
+        setResetId(account.id);
+      }}
+      onRevoke={() => {
+        model.clearError();
+        setRevokeId(account.id);
+      }}
+    />
+  );
+  if (!employee && visibleAccounts.length === 0) return null;
+
   return (
-    <section className={styles.feature} aria-label="Доступ сотрудников">
-      <div className={styles.header}>
-        <div>
-          <h2>
-            <ShieldCheck size={21} />
-            Доступ сотрудников
-          </h2>
-          <p>
-            Личные учётные записи связаны с существующими сотрудниками. Аккаунты
-            и история не удаляются.
-          </p>
-        </div>
-        <Button
-          disabled={model.pending}
-          onClick={() => {
-            model.clearError();
-            setCreating(true);
-          }}
-        >
-          <Plus size={16} />
-          Создать доступ
-        </Button>
-      </div>
+    <section
+      className={styles.feature}
+      aria-label={employee ? "Доступ" : "Отдельные учётные записи"}
+    >
+      {employee ? (
+        <>
+          <h3>Доступ</h3>
+          {model.query.isPending ? (
+            <p className={styles.help} role="status">
+              Загружаем доступ…
+            </p>
+          ) : model.query.isError && !model.query.data ? (
+            <p className={styles.error} role="alert">
+              Не удалось загрузить доступ.{" "}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void model.query.refetch()}
+              >
+                Повторить
+              </Button>
+            </p>
+          ) : employeeAccount ? (
+            renderAccount(employeeAccount)
+          ) : (
+            <div className={styles.actions}>
+              <span className={styles.help}>Учётной записи нет</span>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={model.pending}
+                onClick={() => {
+                  model.clearError();
+                  setCreating(true);
+                }}
+              >
+                Создать доступ
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <details className={styles.disclosure}>
+          <summary>Отдельные учётные записи</summary>
+          {visibleAccounts.map((account) => (
+            <details key={account.id} className={styles.accountDisclosure}>
+              <summary>{account.name}</summary>
+              {renderAccount(account)}
+            </details>
+          ))}
+        </details>
+      )}
+      {model.query.isError && model.query.data && (
+        <p className={styles.error} role="status">
+          Не удалось обновить доступ. Показаны последние данные.
+        </p>
+      )}
       {notice && (
         <p className={styles.notice} role="status">
           {notice}
         </p>
-      )}
-      {model.query.isPending ? (
-        <LoadingState label="Загружаем учётные записи…" />
-      ) : model.query.isError && !model.query.data ? (
-        <ErrorState onRetry={() => void model.query.refetch()} />
-      ) : (
-        <>
-          {model.query.isError && (
-            <p className={styles.error} role="alert">
-              Не удалось обновить список. Показаны последние данные.
-            </p>
-          )}
-          <div className={styles.cards}>
-            {accounts.map((account) => (
-              <AccountCard
-                key={account.id}
-                account={account}
-                accounts={accounts}
-                own={account.id === session.user?.id}
-                pending={model.pending}
-                onRole={async (role) => {
-                  const success = await model.update(account.id, { role });
-                  if (success)
-                    setNotice(
-                      `Роль для ${account.name} сохранена. Изменение прав применяется к его доступу.`,
-                    );
-                  return success;
-                }}
-                onBlock={async () => {
-                  if (
-                    await model.update(account.id, {
-                      blocked: !account.blocked,
-                    })
-                  )
-                    setNotice(
-                      account.blocked
-                        ? `Вход для ${account.name} снова разрешён.`
-                        : `Доступ для ${account.name} заблокирован; сеансы завершены.`,
-                    );
-                }}
-                onReset={() => {
-                  model.clearError();
-                  setResetId(account.id);
-                }}
-                onRevoke={() => {
-                  model.clearError();
-                  setRevokeId(account.id);
-                }}
-              />
-            ))}
-          </div>
-          {!accounts.length && (
-            <EmptyState
-              title="Учётных записей нет"
-              description="Создайте доступ для сотрудника, который уже есть в команде."
-            />
-          )}
-        </>
       )}
       {model.error && !creating && !resetId && !revokeId && (
         <p className={styles.error} role="alert">
           {model.error}
         </p>
       )}
-      {creating && (
+      {creating && employee && !employeeAccount && (
         <CreateAccessForm
-          data={data}
-          accounts={accounts}
+          employee={employee}
           pending={model.pending}
           error={model.error}
           onClose={() => setCreating(false)}
@@ -146,7 +165,7 @@ export function AccessManagementFeature({ data }: { data: WorkspaceDto }) {
             if (await model.create(values)) {
               setCreating(false);
               setNotice(
-                "Доступ создан. Передайте сотруднику временный пароль: при первом входе его нужно сменить.",
+                "Доступ создан. При первом входе сотрудник сменит временный пароль.",
               );
             }
           }}
@@ -172,15 +191,14 @@ export function AccessManagementFeature({ data }: { data: WorkspaceDto }) {
         <Modal
           open
           title={`Завершить сеансы: ${revokeAccount.name}`}
-          description={`Логин ${revokeAccount.login}. Все устройства этой учётной записи выйдут из склада. Для продолжения потребуется вход с текущим паролем.`}
+          description={`Логин ${revokeAccount.login}. Для продолжения работы потребуется новый вход.`}
           onClose={() => {
             if (!model.pending) setRevokeId(null);
           }}
         >
           <div className={styles.form}>
             <p className={styles.info}>
-              Активных сеансов сейчас: {revokeAccount.activeSessions}. Пароль и
-              роль останутся прежними.
+              Активных сеансов: {revokeAccount.activeSessions}
             </p>
             {model.error && (
               <p className={styles.error} role="alert">
@@ -242,30 +260,22 @@ function AccountCard({
   }, [account.role, touched]);
   const last = isLastManager(account, accounts);
   return (
-    <article className={`glass-panel ${styles.card}`}>
-      <div className={styles.cardHeader}>
-        <div>
-          <h3>
-            {account.name}
-            {own ? " · вы" : ""}
-          </h3>
-          <code>{account.login}</code>
-        </div>
-        <Badge tone={account.blocked ? "danger" : "success"}>
+    <div className={styles.account}>
+      <div className={styles.accountHeader}>
+        <span>
+          Логин <b>{account.login}</b>
+          {own && " · вы"}
+        </span>
+        <Badge tone={account.blocked ? "danger" : "neutral"}>
           {account.blocked
             ? "Вход заблокирован"
             : accessRoleLabels[account.role]}
         </Badge>
       </div>
-      <div className={styles.badges}>
-        {account.mustChangePassword && (
-          <Badge tone="warning">Нужна смена временного пароля</Badge>
-        )}
-      </div>
       <div className={styles.facts}>
-        <span>Создан: {accessDate(account.createdAt)}</span>
         <span>Последний вход: {accessDate(account.lastLoginAt)}</span>
         <span>Активных сеансов: {account.activeSessions}</span>
+        {account.mustChangePassword && <span>Ожидает смены пароля</span>}
       </div>
       <div className={styles.roleForm}>
         <RoleFields
@@ -277,79 +287,68 @@ function AccountCard({
           disabled={pending}
           lastManager={last}
         />
-        <p className={styles.help}>
-          Роль руководителя открывает управление складом и доступом. Смена роли
-          завершает сеансы сотрудника.
-        </p>
-        {last && (
-          <p className={styles.help}>
-            Это последний активный руководитель. Его доступ нельзя заблокировать
-            или понизить.
-          </p>
+        {last && <p className={styles.help}>Последний активный руководитель</p>}
+        {dirty && (
+          <div>
+            <p className={styles.help}>Смена роли завершит все сеансы.</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending || (last && role === "employee")}
+              onClick={async () => {
+                if (await onRole(role)) setTouched(false);
+              }}
+            >
+              Сохранить роль
+            </Button>
+          </div>
         )}
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={pending || !dirty || (last && role === "employee")}
-          onClick={async () => {
-            if (await onRole(role)) setTouched(false);
-          }}
-        >
-          Сохранить роль
-        </Button>
       </div>
       <div className={styles.cardFooter}>
         <div className={styles.actions}>
-          <Button
-            size="sm"
-            variant={account.blocked ? "secondary" : "ghost"}
-            disabled={pending || (last && !account.blocked)}
-            onClick={() => void onBlock()}
-          >
-            {account.blocked ? "Разрешить вход" : "Заблокировать вход"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending || own}
-            onClick={onReset}
-          >
-            <KeyRound size={14} />
-            Сбросить пароль
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending || account.activeSessions === 0}
-            onClick={onRevoke}
-          >
-            Завершить сеансы
-          </Button>
+          {(!last || account.blocked) && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending}
+              onClick={() => void onBlock()}
+            >
+              {account.blocked ? "Разрешить вход" : "Заблокировать вход"}
+            </Button>
+          )}
+          {!own && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending}
+              onClick={onReset}
+            >
+              Сбросить пароль
+            </Button>
+          )}
+          {account.activeSessions > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending}
+              onClick={onRevoke}
+            >
+              Завершить сеансы
+            </Button>
+          )}
         </div>
-        {own && (
-          <p className={styles.help}>
-            Свой пароль можно изменить в меню профиля слева: «Сменить пароль».
-          </p>
-        )}
-        <p className={styles.help}>
-          {account.blocked
-            ? "Разрешение входа вернёт доступ с действующим паролем. Задания и резервы сохраняются."
-            : "Блокировка запрещает вход и завершает все сеансы; её можно снять. Задания и резервы сохраняются."}
-        </p>
       </div>
-    </article>
+    </div>
   );
 }
 function CreateAccessForm({
-  data,
-  accounts,
+  employee,
   pending,
   error,
   onClose,
   onSave,
 }: {
-  data: WorkspaceDto;
-  accounts: AuthAccountDto[];
+  employee: EmployeeDto;
   pending: boolean;
   error: string | null;
   onClose: () => void;
@@ -358,21 +357,16 @@ function CreateAccessForm({
   const form = useForm<AccessCreateValues>({
     resolver: zodResolver(accessCreateSchema),
     defaultValues: {
-      employeeId: "",
+      employeeId: employee.id,
       login: "",
       password: "",
       role: "employee",
     },
   });
-  const available = data.employees.filter(
-    (employee) =>
-      !accounts.some((account) => account.employeeId === employee.id),
-  );
   return (
     <Modal
       open
-      title="Создать доступ сотруднику"
-      description="Одна учётная запись на одного существующего сотрудника. Пароль будет временным."
+      title={`Создать доступ для ${employee.name}`}
       onClose={() => {
         if (!pending) onClose();
       }}
@@ -386,31 +380,6 @@ function CreateAccessForm({
         })}
       >
         <fieldset disabled={pending} className={styles.fieldset}>
-          <label className="field">
-            Сотрудник
-            <Select
-              {...form.register("employeeId")}
-              aria-invalid={!!form.formState.errors.employeeId}
-            >
-              <option value="">Выберите сотрудника</option>
-              {available.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </Select>
-            {form.formState.errors.employeeId && (
-              <span className={styles.error}>
-                {form.formState.errors.employeeId.message}
-              </span>
-            )}
-          </label>
-          {!available.length && (
-            <p className={styles.info}>
-              У всех сотрудников уже есть доступ. Сначала добавьте сотрудника в
-              команду.
-            </p>
-          )}
           <label className="field">
             Логин
             <Input
@@ -449,9 +418,7 @@ function CreateAccessForm({
           />
         </fieldset>
         <p className={styles.help}>
-          Минимум 12 символов. При первом входе сотрудник задаст свой пароль.
-          Передайте ему временный пароль лично: здесь он не сохраняется для
-          повторного просмотра.
+          Минимум 12 символов. Сотрудник сменит пароль при первом входе.
         </p>
         {error && (
           <p className={styles.error} role="alert">
@@ -462,11 +429,7 @@ function CreateAccessForm({
           <Button variant="secondary" disabled={pending} onClick={onClose}>
             Отмена
           </Button>
-          <Button
-            type="submit"
-            disabled={pending || !available.length}
-            aria-busy={pending}
-          >
+          <Button type="submit" disabled={pending} aria-busy={pending}>
             Создать доступ
           </Button>
         </div>
@@ -495,7 +458,7 @@ function ResetAccessForm({
     <Modal
       open
       title={`Временный пароль: ${account.name}`}
-      description={`Логин ${account.login}. Сброс завершит все сеансы; перед доступом к складу владелец должен будет сменить пароль.`}
+      description={`Логин ${account.login}. Сброс завершит все сеансы. Сотрудник сменит пароль при следующем входе.`}
       onClose={() => {
         if (!pending) onClose();
       }}
@@ -523,10 +486,7 @@ function ResetAccessForm({
             </span>
           )}
         </label>
-        <p className={styles.help}>
-          От 12 до 128 символов. Передайте пароль сотруднику; повторный просмотр
-          недоступен.
-        </p>
+        <p className={styles.help}>От 12 до 128 символов.</p>
         {error && (
           <p className={styles.error} role="alert">
             {error}

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Play, Pause, LogOut, ArrowUpRight, Clock3 } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import type {
   EmployeeDto,
   EmployeePerformanceDto,
@@ -51,13 +51,29 @@ const jobLabel = (kind: string, status: string) => {
             : "в работе";
   return `${task} · ${state}`;
 };
-export function EmployeeCard({
-  employee: e,
+export const shiftLabels = {
+  working: "На смене",
+  break: "Перерыв",
+  off: "Вне смены",
+} satisfies Record<EmployeeDto["status"], string>;
+
+export function ShiftStatus({ status }: { status: EmployeeDto["status"] }) {
+  const tone =
+    status === "working"
+      ? "success"
+      : status === "break"
+        ? "warning"
+        : "neutral";
+  return <Badge tone={tone}>{shiftLabels[status]}</Badge>;
+}
+
+export function EmployeeDetails({
+  employee,
   performance,
   metricDay,
   data,
   pending,
-  created,
+  error,
   onShift,
 }: {
   employee: EmployeeDto;
@@ -65,156 +81,141 @@ export function EmployeeCard({
   metricDay?: string;
   data: WorkspaceDto;
   pending: boolean;
-  created: boolean;
-  onShift: (id: string, status: "working" | "break" | "off") => void;
+  error: string | null;
+  onShift: (status: "working" | "break" | "off") => void;
 }) {
-  const blocker = shiftStopBlocker(data, e.id);
-  const impact = shiftStopImpact(data, e.id);
+  const blocker = shiftStopBlocker(data, employee.id);
+  const impact = shiftStopImpact(data, employee.id);
   const shift = performance?.currentShift;
   const metrics = performance?.metrics;
+  const metricsDate =
+    metricDay &&
+    new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+    }).format(new Date(`${metricDay}T00:00:00Z`));
+
   return (
-    <article
-      className={`glass-panel ops-panel ${created ? styles.created : ""}`}
-    >
-      <div className="ops-team-head">
-        <div className="ops-avatar">{e.initials}</div>
-        <div className={styles.person}>
-          <h2>{e.name}</h2>
-          <span className="ops-description">{e.role}</span>
+    <>
+      <section className={styles.detailSection} aria-label="Смена">
+        <div className={styles.shiftHeader}>
+          {employee.role && <span>{employee.role}</span>}
+          <ShiftStatus status={employee.status} />
         </div>
-        <Badge
-          tone={
-            e.status === "working"
-              ? "success"
-              : e.status === "break"
-                ? "warning"
-                : "neutral"
-          }
+        {shift && (
+          <div className={styles.shiftTime}>
+            <p>
+              {shift.origin === "observed_from_migration"
+                ? "Учёт смены с "
+                : "Смена с "}
+              {timestamp(shift.startedAt)}
+              {shift.status === "break" && (
+                <> · перерыв с {timestamp(shift.periodStartedAt)}</>
+              )}
+            </p>
+            <p>
+              Без перерывов {shiftDuration(shift.workingSeconds)} · перерывы{" "}
+              {shiftDuration(shift.breakSeconds)}
+            </p>
+          </div>
+        )}
+        {employee.status !== "off" && (blocker || impact) && (
+          <p className={blocker ? styles.blocker : styles.muted}>
+            {blocker || impact}
+          </p>
+        )}
+        {error && (
+          <p className={styles.error} role="alert">
+            {error}
+          </p>
+        )}
+        <div className={styles.shiftActions}>
+          {employee.status !== "working" && (
+            <Button
+              size="sm"
+              onClick={() => onShift("working")}
+              disabled={pending}
+            >
+              {employee.status === "break"
+                ? "Продолжить смену"
+                : "Начать смену"}
+            </Button>
+          )}
+          {employee.status === "working" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onShift("break")}
+              disabled={pending || !!blocker}
+            >
+              Перерыв
+            </Button>
+          )}
+          {employee.status !== "off" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onShift("off")}
+              disabled={pending || !!blocker}
+            >
+              Завершить смену
+            </Button>
+          )}
+        </div>
+      </section>
+      {!!performance?.currentJobs.length && (
+        <section className={styles.detailSection} aria-label="Текущие задания">
+          <h3>Текущие задания</h3>
+          <ul className={styles.jobs}>
+            {performance.currentJobs.map((job) => (
+              <li key={`${job.kind}/${job.id}`}>
+                <Link href={jobRoute(job.kind, job.id)}>
+                  {job.code}
+                  <ArrowUpRight size={12} aria-hidden="true" />
+                </Link>
+                <span>
+                  {jobLabel(job.kind, job.status)} · {job.description}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section className={styles.detailSection} aria-label="Выработка">
+        {metrics && (
+          <>
+            <h3>Выработка{metricsDate && ` за ${metricsDate}`}</h3>
+            <dl className={styles.metrics}>
+              <div>
+                <dt>Коробов собрано</dt>
+                <dd>{number(metrics.boxesPacked)}</dd>
+              </div>
+              <div>
+                <dt>Товаров упаковано</dt>
+                <dd>{number(metrics.unitsPacked)}</dd>
+              </div>
+              <div>
+                <dt>Паллет принято</dt>
+                <dd>{number(metrics.receiptPalletsPlaced)}</dd>
+              </div>
+              <div>
+                <dt>Коробов размещено</dt>
+                <dd>{number(metrics.putawayBoxesPlaced)}</dd>
+              </div>
+              <div>
+                <dt>Паллет перемещено</dt>
+                <dd>{number(metrics.movementPalletsPlaced)}</dd>
+              </div>
+            </dl>
+          </>
+        )}
+        <Link
+          className={styles.historyLink}
+          href={`/performance?employeeId=${encodeURIComponent(employee.id)}`}
         >
-          {e.status === "working"
-            ? "На смене"
-            : e.status === "break"
-              ? "Перерыв"
-              : "Вне смены"}
-        </Badge>
-      </div>
-      {shift && (
-        <div className={styles.shiftTime}>
-          <Clock3 size={14} />
-          <span>
-            {shift.origin === "observed_from_migration"
-              ? "Учёт смены с "
-              : "Смена с "}
-            {timestamp(shift.startedAt)}
-            {shift.status === "break" && (
-              <> · перерыв с {timestamp(shift.periodStartedAt)}</>
-            )}
-          </span>
-          <span>
-            Без перерывов {shiftDuration(shift.workingSeconds)} · перерывы{" "}
-            {shiftDuration(shift.breakSeconds)}
-          </span>
-        </div>
-      )}
-      <div className={styles.currentWork}>
-        <span className="ops-description">Сейчас</span>
-        {performance ? (
-          performance.currentJobs.length ? (
-            <ul className={styles.jobs}>
-              {performance.currentJobs.map((job) => (
-                <li key={`${job.kind}/${job.id}`}>
-                  <Link href={jobRoute(job.kind, job.id)}>
-                    {job.code}
-                    <ArrowUpRight size={12} />
-                  </Link>
-                  <span>
-                    {jobLabel(job.kind, job.status)} · {job.description}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="ops-description">Нет текущих заданий</span>
-          )
-        ) : (
-          <span className="ops-description">Занятость загружается…</span>
-        )}
-      </div>
-      <p className={styles.metricPeriod}>
-        {metricDay
-          ? `Работа за ${new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow" }).format(new Date(`${metricDay}T00:00:00Z`))} · МСК`
-          : "Показатели загружаются…"}
-      </p>
-      <div className="ops-team-stat">
-        <div>
-          <strong>{metrics ? number(metrics.boxesPacked) : "—"}</strong>
-          <span>коробов закрыто</span>
-        </div>
-        <div>
-          <strong>{metrics ? number(metrics.unitsPacked) : "—"}</strong>
-          <span>раскрасок в них</span>
-        </div>
-      </div>
-      <dl className={styles.placementMetrics}>
-        <div>
-          <dt>Паллет принято</dt>
-          <dd>{metrics ? number(metrics.receiptPalletsPlaced) : "—"}</dd>
-        </div>
-        <div>
-          <dt>Коробов размещено</dt>
-          <dd>{metrics ? number(metrics.putawayBoxesPlaced) : "—"}</dd>
-        </div>
-        <div>
-          <dt>Паллет перемещено</dt>
-          <dd>{metrics ? number(metrics.movementPalletsPlaced) : "—"}</dd>
-        </div>
-      </dl>
-      {e.status !== "off" && (blocker || impact) && (
-        <p className={blocker ? styles.blocker : styles.impact}>
-          {blocker || impact}
-        </p>
-      )}
-      <div className="ops-action-row">
-        {e.status !== "working" && (
-          <Button
-            size="sm"
-            onClick={() => onShift(e.id, "working")}
-            disabled={pending}
-          >
-            <Play size={14} />
-            {e.status === "break" ? "Продолжить смену" : "Начать смену"}
-          </Button>
-        )}
-        {e.status === "working" && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onShift(e.id, "break")}
-            disabled={pending || !!blocker}
-          >
-            <Pause size={14} />
-            Перерыв
-          </Button>
-        )}
-        {e.status !== "off" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onShift(e.id, "off")}
-            disabled={pending || !!blocker}
-          >
-            <LogOut size={14} />
-            Завершить смену
-          </Button>
-        )}
-      </div>
-      <Link
-        className={styles.historyLink}
-        href={`/performance?employeeId=${encodeURIComponent(e.id)}`}
-      >
-        История смен и выработка
-        <ArrowUpRight size={14} />
-      </Link>
-    </article>
+          История смен и выработка
+          <ArrowUpRight size={14} aria-hidden="true" />
+        </Link>
+      </section>
+    </>
   );
 }

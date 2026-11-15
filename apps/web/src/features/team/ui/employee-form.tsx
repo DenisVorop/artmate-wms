@@ -39,12 +39,7 @@ export function EmployeeForm({
     if (!pending) onClose();
   };
   return (
-    <Modal
-      open={open}
-      onClose={close}
-      title="Добавить сотрудника"
-      description="Сотрудник появится вне смены. После добавления можно начать смену."
-    >
+    <Modal open={open} onClose={close} title="Добавить сотрудника">
       <form
         className="ops-form"
         onSubmit={handleSubmit(async (values) => {

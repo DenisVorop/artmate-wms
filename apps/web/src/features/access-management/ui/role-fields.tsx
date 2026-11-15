@@ -20,18 +20,12 @@ export function RoleFields({
         <label className={styles.role} key={role}>
           <input
             type="radio"
+            name={name}
             checked={value === role}
             disabled={lastManager && role === "employee"}
             onChange={() => onChange(role)}
           />
-          <span>
-            <strong>{role === "manager" ? "Руководитель" : "Сотрудник"}</strong>
-            <small>
-              {role === "manager"
-                ? "Управление складом и доступом"
-                : "Своя смена и рабочие задания"}
-            </small>
-          </span>
+          {role === "manager" ? "Руководитель" : "Сотрудник"}
         </label>
       ))}
     </fieldset>

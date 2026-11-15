@@ -1,159 +1,214 @@
 "use client";
-import Link from "next/link";
+import type { ReactNode } from "react";
+import { Search, UserPlus } from "lucide-react";
 import { useWorkforceReport } from "@/entities/workforce";
-import { EmployeeCard } from "./employee-card";
-import { useSession } from "@/entities/session";
-import { Users, UserPlus, ArrowUpRight } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
+import type { EmployeeDto, WorkspaceDto } from "@/shared/api/generated/model";
 import {
-  Badge,
   Button,
-  LoadingState,
   ErrorState,
-  EmptyState,
+  Input,
+  LoadingState,
+  Modal,
+  Select,
 } from "@/shared/ui";
 import { useShift } from "../model/use-shift";
 import { useTeamState } from "../lib/use-team-state";
+import { EmployeeDetails, ShiftStatus, shiftLabels } from "./employee-card";
 import { EmployeeForm } from "./employee-form";
 import styles from "./team.module.css";
-export function TeamFeature() {
-  const { user, isManager } = useSession();
+
+export function TeamFeature({
+  employeeAccess,
+  otherAccounts,
+}: {
+  employeeAccess: (employee: EmployeeDto, data: WorkspaceDto) => ReactNode;
+  otherAccounts: (data: WorkspaceDto) => ReactNode;
+}) {
   const { data, isPending, isError, refetch } = useWorkspace();
   const performance = useWorkforceReport({});
-  const c = useShift();
+  const commands = useShift();
   const ui = useTeamState();
+
   if (isPending) return <LoadingState />;
-  if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
-  const employees = data.employees.filter(
-    (employee) => isManager || employee.id === user?.employeeId,
+  if (!data) return <ErrorState onRetry={() => void refetch()} />;
+
+  const selected = data.employees.find(
+    (employee) => employee.id === ui.selectedId,
   );
+  const reports = new Map(
+    performance.data?.employees.map((row) => [row.employeeId, row]),
+  );
+  const search = ui.search.trim().toLocaleLowerCase("ru-RU");
+  const employees = data.employees.filter(
+    ({ name, role, status }) =>
+      (!ui.status || status === ui.status) &&
+      (!search ||
+        [name, role].some((value) =>
+          value.toLocaleLowerCase("ru-RU").includes(search),
+        )),
+  );
+
   return (
-    <>
+    <section className={styles.feature}>
       <div className="page-header">
-        <div>
-          <p className="eyebrow">ЛЮДИ И РЕЗУЛЬТАТЫ</p>
-          <h1 className="page-heading">
-            {isManager ? "Команда" : "Моя смена"}
-          </h1>
-          <p className="page-description">
-            {isManager
-              ? "Смены, текущая занятость и выполненная работа за сегодня по московскому времени."
-              : "Ваша смена, текущие задания и выполненная работа за сегодня по московскому времени."}
-          </p>
-        </div>
-        <div className={styles.actions}>
-          <Link href="/performance" className="button button--secondary">
-            <ArrowUpRight size={16} />
-            Смены и выработка
-          </Link>
-          <Badge>
-            <Users size={14} />{" "}
-            {employees.filter((e) => e.status !== "off").length} на смене
-          </Badge>
-          {isManager && (
-            <Button
-              onClick={() => {
-                c.clearError();
-                ui.setCreateOpen(true);
-              }}
-              disabled={c.pending}
-            >
-              <UserPlus size={16} />
-              Добавить сотрудника
-            </Button>
-          )}
-        </div>
-      </div>
-      {c.error && !ui.createOpen && (
-        <div className="ops-error" role="alert">
-          {c.error}
-        </div>
-      )}
-      {data.employees.some(
-        (employee) =>
-          employee.id === ui.createdEmployeeId && employee.status === "off",
-      ) && (
-        <div className={styles.notice} role="status">
-          Сотрудник добавлен вне смены. Сотрудник может начать свою смену после
-          входа; руководитель также может открыть её в карточке.
-        </div>
-      )}
-      {isManager && employees.length === 0 && (
-        <section className="glass-panel">
-          <EmptyState
-            title="Добавьте первого сотрудника"
-            description="После добавления откройте смену. Тогда сотрудник сможет размещать паллеты и выполнять задания."
-            action={
-              <Button
-                onClick={() => {
-                  c.clearError();
-                  ui.setCreateOpen(true);
-                }}
-              >
-                <UserPlus size={16} />
-                Добавить сотрудника
-              </Button>
-            }
-          />
-        </section>
-      )}
-      {performance.isError && (
-        <div className={styles.notice} role="status">
-          Не удалось обновить выработку.{" "}
-          {performance.data
-            ? "Показаны последние полученные показатели."
-            : "Количество выполненной работы пока недоступно."}{" "}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void performance.refetch()}
-          >
-            Повторить загрузку
-          </Button>
-        </div>
-      )}
-      <div className="ops-employee-grid">
-        {employees.map((employee) => (
-          <EmployeeCard
-            key={employee.id}
-            employee={employee}
-            performance={performance.data?.employees.find(
-              (row) => row.employeeId === employee.id,
-            )}
-            metricDay={performance.data?.from}
-            data={data}
-            pending={c.pending}
-            created={ui.createdEmployeeId === employee.id}
-            onShift={(id, status) =>
-              void c.setShift(id, status).catch(() => {})
-            }
-          />
-        ))}
-      </div>
-      {isManager && (
-        <EmployeeForm
-          open={ui.createOpen}
-          pending={c.pending}
-          error={c.error}
-          onClose={() => ui.setCreateOpen(false)}
-          onCreate={async (values) => {
-            const beforeIds = new Set(
-              data.employees.map((employee) => employee.id),
-            );
-            const updated = await c.create(values);
-            const created =
-              updated.employees.find(
-                (employee) => !beforeIds.has(employee.id),
-              ) ??
-              updated.employees.find(
-                (employee) =>
-                  employee.name.toLocaleLowerCase("ru-RU") ===
-                  values.name.trim().toLocaleLowerCase("ru-RU"),
-              );
-            ui.setCreatedEmployeeId(created?.id ?? null);
+        <h1 className="page-heading">Команда</h1>
+        <Button
+          disabled={commands.pending}
+          onClick={() => {
+            commands.clearError();
+            ui.setCreateOpen(true);
           }}
-        />
+        >
+          <UserPlus size={16} aria-hidden="true" />
+          Добавить сотрудника
+        </Button>
+      </div>
+
+      <div
+        className={styles.filters}
+        role="group"
+        aria-label="Фильтры сотрудников"
+      >
+        <label className="field">
+          Поиск
+          <span className={styles.search}>
+            <Search size={16} aria-hidden="true" />
+            <Input
+              type="search"
+              value={ui.search}
+              placeholder="Имя или должность"
+              onChange={(event) => ui.setSearch(event.target.value)}
+            />
+          </span>
+        </label>
+        <label className="field">
+          Статус смены
+          <Select
+            value={ui.status}
+            onChange={(event) => ui.setStatus(event.target.value)}
+          >
+            <option value="">Все статусы</option>
+            {Object.entries(shiftLabels).map(([status, label]) => (
+              <option key={status} value={status}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </label>
+      </div>
+
+      <div
+        className={styles.tableScroll}
+        role="region"
+        aria-label="Список сотрудников"
+        tabIndex={0}
+      >
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th scope="col">Сотрудник</th>
+              <th scope="col">Должность</th>
+              <th scope="col">Статус смены</th>
+              <th scope="col" className={styles.numeric}>
+                Текущие задания
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((employee) => (
+              <tr key={employee.id}>
+                <th scope="row">
+                  <button
+                    className={styles.employeeName}
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={() => {
+                      commands.clearError();
+                      ui.setSelectedId(employee.id);
+                    }}
+                  >
+                    {employee.name}
+                  </button>
+                </th>
+                <td>{employee.role || "—"}</td>
+                <td>
+                  <ShiftStatus status={employee.status} />
+                </td>
+                <td className={styles.numeric}>
+                  {reports.get(employee.id)?.currentJobs.length ?? "—"}
+                </td>
+              </tr>
+            ))}
+            {employees.length === 0 && (
+              <tr>
+                <td colSpan={4} className={styles.empty}>
+                  {data.employees.length
+                    ? "Сотрудники не найдены"
+                    : "Сотрудников пока нет"}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {(isError || performance.isError) && (
+        <p className={styles.muted} role="status">
+          {isError
+            ? "Не удалось обновить команду."
+            : "Не удалось обновить данные по заданиям."}{" "}
+          <button
+            className={styles.employeeName}
+            type="button"
+            onClick={() => void (isError ? refetch() : performance.refetch())}
+          >
+            Повторить
+          </button>
+        </p>
       )}
-    </>
+      {otherAccounts(data)}
+      <EmployeeForm
+        open={ui.createOpen}
+        pending={commands.pending}
+        error={commands.error}
+        onClose={() => ui.setCreateOpen(false)}
+        onCreate={async (values) => {
+          const beforeIds = new Set(data.employees.map(({ id }) => id));
+          const updated = await commands.create(values);
+          const created = updated.employees.find(
+            ({ id }) => !beforeIds.has(id),
+          );
+          if (created) {
+            ui.setSearch("");
+            ui.setStatus("");
+            ui.setSelectedId(created.id);
+          }
+        }}
+      />
+      <Modal
+        open={!!selected}
+        onClose={() => {
+          if (!commands.pending) ui.setSelectedId(null);
+        }}
+        title={selected?.name ?? "Сотрудник"}
+      >
+        {selected && (
+          <div className={styles.details}>
+            <EmployeeDetails
+              employee={selected}
+              performance={reports.get(selected.id)}
+              metricDay={performance.data?.from}
+              data={data}
+              pending={commands.pending}
+              error={commands.error}
+              onShift={(status) =>
+                void commands.setShift(selected.id, status).catch(() => {})
+              }
+            />
+            {employeeAccess(selected, data)}
+          </div>
+        )}
+      </Modal>
+    </section>
   );
 }
