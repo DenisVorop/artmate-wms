@@ -9,12 +9,11 @@ import {
   Pencil,
   Plus,
   QrCode,
-  Warehouse,
   RotateCw,
   Trash2,
   Copy,
 } from "lucide-react";
-import { Badge, Button, EmptyState } from "@/shared/ui";
+import { Badge, Button } from "@/shared/ui";
 import type { LocationDto, WorkspaceDto } from "@/shared/api/generated/model";
 import { PalletDtoKind } from "@/shared/api/generated/model";
 import {
@@ -63,11 +62,9 @@ export function LocationDetails({
 }: Props) {
   if (!object)
     return (
-      <aside className={`glass-panel ${styles.details}`}>
-        <EmptyState
-          title="Ничего не выбрано"
-          description="Нажмите на помещение, коридор или объект на карте, чтобы открыть его параметры."
-        />
+      <aside className={`glass-panel ${styles.details} ${styles.detailsEmpty}`}>
+        <h2>Объект на карте</h2>
+        <p>Выберите объект, чтобы посмотреть его данные.</p>
       </aside>
     );
   const address =
@@ -120,16 +117,13 @@ export function LocationDetails({
       aria-label="Секция и выбранный адрес"
     >
       <div className={styles.detailsHeading}>
-        <span className={styles.detailIcon}>
-          <Warehouse size={21} />
+        <span className={styles.eyebrow}>
+          {object.section ? "Секция стеллажа" : locationKindLabel(object.kind)}
         </span>
         <Badge tone={tone}>
           {object.section && address ? `Ярус ${address.level} · ` : ""}
           {availability}
         </Badge>
-      </div>
-      <div className={styles.eyebrow}>
-        {object.section ? "Секция стеллажа" : locationKindLabel(object.kind)}
       </div>
       <h2 className={styles.address}>{object.code}</h2>
       <p className={styles.locationName}>{object.name}</p>

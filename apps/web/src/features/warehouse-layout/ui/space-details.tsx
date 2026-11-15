@@ -41,13 +41,8 @@ export function SpaceDetails({
           <Grid2X2 size={22} />
         )}
       </span>
-      <p className="eyebrow">{spaceKindLabels[space.kind].toUpperCase()}</p>
+      <p className={styles.objectType}>{spaceKindLabels[space.kind]}</p>
       <h2>{space.name}</h2>
-      <p>
-        {space.kind === "corridor"
-          ? "Участок пола для связи помещений и временного хранения."
-          : "Реальное помещение на общем плане склада."}
-      </p>
       <div className={styles.facts}>
         <div>
           <span>Размеры</span>

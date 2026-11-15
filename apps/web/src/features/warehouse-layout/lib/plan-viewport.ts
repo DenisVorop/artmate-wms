@@ -21,6 +21,25 @@ export function planFitScale(
     viewport.height / (plan.depth + PLAN_PADDING * 2),
   );
 }
+export function openingRoomView(
+  room: { x: number; y: number; width: number; depth: number },
+  viewport: ViewportSize,
+) {
+  const margin = 16;
+  const density = Math.min(
+    WORKING_PIXELS_PER_METER,
+    Math.max(1, viewport.width - margin * 2) / room.width,
+    Math.max(1, viewport.height - margin * 2) / room.depth,
+  );
+  return {
+    density,
+    center: {
+      x: PLAN_PADDING + room.x + room.width / 2,
+      y: PLAN_PADDING + room.y + (viewport.height / 2 - margin) / density,
+    },
+  };
+}
+
 export function clampPlanZoom(zoom: number) {
   return Math.max(MIN_PLAN_ZOOM, Math.min(MAX_PLAN_ZOOM, zoom));
 }

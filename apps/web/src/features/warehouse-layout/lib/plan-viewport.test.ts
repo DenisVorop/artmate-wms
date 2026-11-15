@@ -4,6 +4,7 @@ import {
   canShowObjectLabel,
   clampPlanZoom,
   planFitScale,
+  openingRoomView,
   scaleBar,
   scrollForCanvasCenter,
   shortScreenLabel,
@@ -20,6 +21,17 @@ test("Рабочая плотность 72 не зависит от fit порт
   assert.equal(fit * clampPlanZoom(72 / fit), 72);
   assert.equal(clampPlanZoom(0.01), 0.25);
   assert.equal(clampPlanZoom(100), 32);
+});
+
+test("Начальный вид помещает первое помещение целиком при узкой карте", () => {
+  const room = { x: 5, y: 2, width: 7.6, depth: 6.52 };
+  const view = openingRoomView(room, { width: 480, height: 600 });
+  assert.equal(view.density * room.width, 448);
+  assert.equal(view.center.x, 10.2);
+  const roomTop = 300 - (view.center.y - room.y - 1.4) * view.density;
+  assert.ok(Math.abs(roomTop - 16) < 1e-9);
+  assert.ok(roomTop + room.depth * view.density <= 584);
+  assert.equal(openingRoomView(room, { width: 900, height: 800 }).density, 72);
 });
 
 test("Увеличение сохраняет координату центра видимой части, включая центрированный fit", () => {

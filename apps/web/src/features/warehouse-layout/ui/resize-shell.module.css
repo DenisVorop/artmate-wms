@@ -4,7 +4,7 @@
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 13px 16px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   background: oklch(0.65 0.1 155 / 0.025);
 }
@@ -30,20 +30,7 @@
   flex-wrap: wrap;
 }
 .fieldActions :global(.button) {
-  min-height: 34px;
-}
-.fieldHint {
-  flex-basis: 100%;
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--muted);
-}
-.fieldHint button {
-  padding: 0;
-  color: var(--accent);
-  background: transparent;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  min-height: 32px;
 }
 .form {
   display: grid;

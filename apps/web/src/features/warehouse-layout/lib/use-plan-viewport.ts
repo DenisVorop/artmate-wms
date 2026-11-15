@@ -26,6 +26,7 @@ import {
 import {
   clampPlanZoom,
   planFitScale,
+  openingRoomView,
   scrollForCanvasCenter,
   viewportCanvasCenter,
   viewportCanvasPoint,
@@ -58,7 +59,7 @@ export function usePlanViewport(
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [navigation, setNavigation] = useState(0);
   const [view, setView] = useState({
-    mode: "working",
+    mode: "opening",
     density: WORKING_PIXELS_PER_METER,
   });
   const [panMode, setPanMode] = useState(false);
@@ -73,8 +74,22 @@ export function usePlanViewport(
   } | null>(null);
   const pendingCenter = useRef<{ x: number; y: number } | null>(null);
   const fitPixelsPerMeter = planFitScale(bounds, size);
+  const firstRoom =
+    bounds.layoutMode === "spaces"
+      ? (bounds.spaces?.find(
+          (space) => !space.archived && space.kind === "room",
+        ) ?? bounds.spaces?.find((space) => !space.archived))
+      : undefined;
+  const initial =
+    firstRoom && fitPixelsPerMeter ? openingRoomView(firstRoom, size) : null;
+  const initialX = initial?.center.x;
+  const initialY = initial?.center.y;
   const requestedDensity =
-    view.mode === "fit" ? fitPixelsPerMeter : view.density;
+    view.mode === "fit"
+      ? fitPixelsPerMeter
+      : view.mode === "opening" && initial
+        ? initial.density
+        : view.density;
   const zoom =
     fitPixelsPerMeter > 0
       ? clampPlanZoom(requestedDensity / fitPixelsPerMeter)
@@ -136,17 +151,13 @@ export function usePlanViewport(
       insetX: size.width,
       insetY: size.height,
     };
-    const firstFloor =
-      bounds.layoutMode === "spaces"
-        ? bounds.spaces?.find((space) => !space.archived)
-        : undefined;
     const center =
       pendingCenter.current ??
       (previous.current
         ? viewportCanvasCenter(previous.current, savedScroll.current)
         : {
-            x: (firstFloor?.x ?? 0) + size.width / (2 * pixelsPerMeter),
-            y: (firstFloor?.y ?? 0) + size.height / (2 * pixelsPerMeter),
+            x: initialX ?? size.width / (2 * pixelsPerMeter),
+            y: initialY ?? size.height / (2 * pixelsPerMeter),
           });
     const next = pendingAnchor.current
       ? scrollForCanvasPoint(
@@ -161,6 +172,11 @@ export function usePlanViewport(
     previous.current = metrics;
     pendingCenter.current = null;
     pendingAnchor.current = null;
+    setView((current) =>
+      current.mode === "opening"
+        ? { mode: "working", density: requestedDensity }
+        : current,
+    );
   }, [
     enabled,
     navigation,
@@ -171,6 +187,9 @@ export function usePlanViewport(
     canvasHeight,
     bounds.width,
     bounds.depth,
+    initialX,
+    initialY,
+    requestedDensity,
   ]);
   useEffect(() => {
     const element = scrollRef.current;

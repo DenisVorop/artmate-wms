@@ -11,19 +11,17 @@ import {
   LoaderCircle,
   Maximize2,
   Minus,
-  MousePointer2,
   Move,
   Route,
   Ruler,
   Square,
   X,
-  ZoomIn,
+  Plus,
   QrCode,
   Printer,
 } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
-import { PalletDtoStatus } from "@/shared/api/generated/model";
 import {
   addressInventory,
   mapObjects,
@@ -165,9 +163,6 @@ export function WarehouseLayoutFeature() {
   const usedAddresses = activeAddresses.filter(
     (address) => addressInventory(data, [address.id]).occupied,
   );
-  const physicalPallets = data.pallets.filter(
-    (pallet) => pallet.status === PalletDtoStatus.stored,
-  );
   const editSpace = room.spaces.find((space) => space.id === ui.spaceFormId);
   const resizeSpace = room.spaces.find(
     (space) => space.id === ui.spaceResizeId,
@@ -201,15 +196,13 @@ export function WarehouseLayoutFeature() {
     ui.setSelectedWorkZoneId(null);
   };
   const saved = map.saveState === "saved" && !commands.error;
-  const saveText = !isManager
-    ? "Просмотр схемы · изменение доступно руководителю"
-    : busy
-      ? "Сохраняем изменения…"
-      : commands.error || map.saveState === "error"
-        ? "Изменения не сохранены"
-        : saved
-          ? "Изменения сохранены"
-          : "Изменения сохраняются автоматически";
+  const saveText = busy
+    ? "Сохраняем…"
+    : commands.error || map.saveState === "error"
+      ? "Не сохранено"
+      : saved
+        ? "Сохранено"
+        : "";
   const openSettings = () => {
     clear();
     ui.setDrawKind(null);
@@ -295,73 +288,22 @@ export function WarehouseLayoutFeature() {
   return (
     <section className={styles.feature} aria-label="Карта и конструктор склада">
       <header className={styles.header}>
-        <div>
-          <div className={styles.eyebrow}>ПРОСТРАНСТВО · СХЕМА · АДРЕСА</div>
-          <h1 className="page-heading">
-            Карта склада
-            <span className={styles.headingDot} />
-          </h1>
-          <p className="page-description">
-            {room.name} · поле {room.width} × {room.depth} м. Помещения,
-            коридоры и места хранения на одном плане.
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          {isManager && (
-            <Link href="/labels/a4" className="button button--secondary">
-              <Printer size={17} />
-              Печать QR
-            </Link>
-          )}
-          {isManager && !editing && (
-            <Button onClick={() => map.setEditing(true)} disabled={busy}>
-              <Move size={17} />
-              Открыть конструктор
-            </Button>
-          )}
-        </div>
+        <h1 className="page-heading">Карта склада</h1>
+        {isManager && (
+          <Link href="/labels/a4" className="button button--secondary">
+            <Printer size={16} aria-hidden="true" />
+            Печать QR
+          </Link>
+        )}
       </header>
-      <div className={styles.summary}>
-        <div>
-          <span className={styles.metricValue}>
-            {room.layoutMode === "spaces"
-              ? Number(
-                  spaces
-                    .reduce((sum, space) => sum + space.width * space.depth, 0)
-                    .toFixed(2),
-                )
-              : Number((room.width * room.depth).toFixed(2))}
-          </span>
-          <span>
-            м² площади ·{" "}
-            {room.layoutMode === "spaces"
-              ? `${spaces.length} участков`
-              : "прямоугольник"}
-          </span>
-        </div>
-        <div>
-          <span className={styles.metricValue}>
-            {objects.filter((item) => item.section).length}
-          </span>
-          <span>секций стеллажей</span>
-        </div>
-        <div>
-          <span className={styles.metricValue}>{activeAddresses.length}</span>
-          <span>конечных адресов</span>
-        </div>
-        <div>
-          <span className={styles.metricValue}>{usedAddresses.length}</span>
-          <span>занято физически</span>
-        </div>
-        <div className={styles.summaryNote}>
-          <span className={styles.liveDot} />
-          Паллет на местах: {physicalPallets.length}
-        </div>
-      </div>
       <div className={styles.workspace}>
         <div className={`glass-panel ${styles.planCard}`}>
           <div className={styles.toolbar}>
-            <div className={styles.modeSwitch} aria-label="Режим карты">
+            <div
+              className={styles.modeSwitch}
+              role="group"
+              aria-label="Режим карты"
+            >
               <button
                 type="button"
                 className={!editing ? styles.modeActive : ""}
@@ -373,8 +315,7 @@ export function WarehouseLayoutFeature() {
                   ui.setDrawKind(null);
                 }}
               >
-                <MousePointer2 size={15} />
-                Обзор
+                Просмотр
               </button>
               {isManager && (
                 <button
@@ -384,17 +325,22 @@ export function WarehouseLayoutFeature() {
                   disabled={busy}
                   onClick={() => map.setEditing(true)}
                 >
-                  <Move size={15} />
                   Конструктор
                 </button>
               )}
             </div>
-            <div className={styles.zoomControls}>
+            <div
+              className={styles.zoomControls}
+              role="group"
+              aria-label="Масштаб и навигация"
+            >
               <button
                 type="button"
                 aria-label="Снять выделение"
                 title="Снять выделение"
-                disabled={!selectedKey || busy || map.resizing}
+                disabled={
+                  (!selectedKey && !selectedWorkZone) || busy || map.resizing
+                }
                 onClick={clearSelection}
               >
                 <X size={16} />
@@ -402,6 +348,7 @@ export function WarehouseLayoutFeature() {
               <button
                 type="button"
                 aria-label="Перемещать карту"
+                title="Перемещать карту"
                 aria-pressed={map.panMode}
                 onClick={() => {
                   ui.setDrawKind(null);
@@ -413,6 +360,7 @@ export function WarehouseLayoutFeature() {
               <button
                 type="button"
                 aria-label="Уменьшить масштаб"
+                title="Уменьшить масштаб"
                 disabled={map.zoom <= 0.25}
                 onClick={map.zoomOut}
               >
@@ -424,28 +372,30 @@ export function WarehouseLayoutFeature() {
               <button
                 type="button"
                 aria-label="Увеличить масштаб"
+                title="Увеличить масштаб"
                 disabled={map.zoom >= 32}
                 onClick={map.zoomIn}
               >
-                <ZoomIn size={16} />
+                <Plus size={16} />
               </button>
               <button
                 type="button"
                 className={styles.fitButton}
                 aria-label="Рабочий масштаб"
+                title="Рабочий масштаб"
                 onClick={map.workingScale}
               >
                 <Ruler size={15} />
-                <span>Рабочий</span>
               </button>
               <button
                 type="button"
                 className={styles.fitButton}
                 aria-label="Вписать план целиком"
+                title="Вписать план целиком"
                 onClick={map.fitPlan}
               >
                 <Maximize2 size={15} />
-                <span>Вписать</span>
+                <span>Весь склад</span>
               </button>
             </div>
           </div>
@@ -468,7 +418,7 @@ export function WarehouseLayoutFeature() {
                 }}
               >
                 <Move size={17} />
-                <span>Двигать объекты</span>
+                <span>Переместить</span>
               </button>
               <button
                 type="button"
@@ -482,7 +432,7 @@ export function WarehouseLayoutFeature() {
                 }}
               >
                 <Square size={17} />
-                <span>Добавить помещение</span>
+                <span>Помещение</span>
               </button>
               <button
                 type="button"
@@ -649,17 +599,11 @@ export function WarehouseLayoutFeature() {
                   +10 м справа
                 </Button>
               </div>
-              <p className={resizeStyles.fieldHint}>
-                Расширение добавляет пустое место, сохраняя помещения и
-                оборудование. Новую область создайте кнопкой «Добавить
-                помещение» или «По размерам».
-              </p>
             </div>
           )}
           {workspace.isError && (
             <div className={styles.layoutWarning} role="alert">
-              Не удалось обновить план. Показана последняя версия, введённые
-              размеры сохранены.{" "}
+              Не удалось обновить карту. Показана последняя версия.{" "}
               <button
                 type="button"
                 disabled={busy}
@@ -669,36 +613,10 @@ export function WarehouseLayoutFeature() {
               </button>
             </div>
           )}
-          {editing && !ui.drawKind && !ui.sectionCopyId && !map.panMode && (
-            <div className={styles.dragHint}>
-              <Move size={16} aria-hidden="true" />
-              <p>
-                Перетаскивайте помещения и коридоры вместе с целиком
-                расположенными внутри стеллажами, местами и проходами. Объекты
-                также можно двигать отдельно, входы — вдоль стен. Размеры
-                выбранного помещения меняются ручками по краям. Масштаб —
-                колесом мыши или жестом на трекпаде. Шаг — 10 см; Escape
-                отменяет жест. Точные координаты доступны в настройках
-                выбранного объекта.
-              </p>
-            </div>
-          )}
-          {!ui.drawKind && !ui.sectionCopyId && (
-            <div className={styles.dragHint}>
-              <Hand size={16} aria-hidden="true" />
-              <p>
-                Тяните пустой фон, чтобы перемещаться по карте. Клик по пустому
-                месту снимает выделение. Инструмент «Рука» позволяет тянуть
-                карту поверх объектов. Стрелки клавиатуры перемещают вид, когда
-                карта в фокусе.
-              </p>
-            </div>
-          )}
           {editing && ui.drawKind && (
             <div className={styles.layoutWarning} role="status">
-              Нарисуйте {ui.drawKind === "room" ? "помещение" : "коридор"}:
-              зажмите кнопку мыши и потяните по сетке. Шаг 0,5 м. После рисунка
-              уточните размеры и сохраните. Escape отменяет жест.
+              Потяните по сетке, чтобы нарисовать{" "}
+              {ui.drawKind === "room" ? "помещение" : "коридор"}. Esc — отмена.
             </div>
           )}
           {commands.error && !formIsOpen && !copySection && (
@@ -772,6 +690,14 @@ export function WarehouseLayoutFeature() {
                 Вход
               </span>
               <span>
+                <i className={styles.zoneKey} />
+                Рабочая площадка
+              </span>
+              <span>
+                <i className={styles.occupiedKey} />
+                Занято
+              </span>
+              <span>
                 <i className={styles.reserveKey} />
                 Резерв
               </span>
@@ -790,31 +716,34 @@ export function WarehouseLayoutFeature() {
               })}{" "}
               м
             </span>
-            <span className={styles.planInstruction}>
-              {map.panMode
-                ? "Тяните карту для перемещения"
-                : copySection
-                  ? "Клик — разместить копию"
-                  : editing
-                    ? ui.drawKind
-                      ? "Рисование — шаг 0,5 м"
-                      : "Перетаскивание — шаг 0,1 м"
-                    : "Выберите объект, затем нужный адрес"}
-            </span>
           </footer>
-          <div
-            className={`${styles.saveStatus} ${commands.error || map.saveState === "error" ? styles.saveStatusError : ""}`}
-            role="status"
-            aria-live="polite"
-          >
-            {busy ? (
-              <LoaderCircle size={13} className={styles.savingSpinner} />
-            ) : saved ? (
-              <Check size={13} />
-            ) : (
-              <span className={styles.saveStatusDot} />
-            )}
-            {saveText}
+          <div className={styles.planMeta} aria-label="Состояние карты">
+            <span>
+              Занято {usedAddresses.length} из {activeAddresses.length} мест
+            </span>
+            <span
+              className={
+                commands.error || map.saveState === "error"
+                  ? styles.saveStatusError
+                  : styles.saveStatus
+              }
+              role="status"
+            >
+              {editing && saveText && (
+                <>
+                  {busy ? (
+                    <LoaderCircle
+                      size={13}
+                      className={styles.savingSpinner}
+                      aria-hidden="true"
+                    />
+                  ) : saved ? (
+                    <Check size={13} aria-hidden="true" />
+                  ) : null}
+                  {saveText}
+                </>
+              )}
+            </span>
           </div>
           {isManager &&
             !ui.drawKind &&
@@ -824,16 +753,7 @@ export function WarehouseLayoutFeature() {
             entrances.length === 0 && (
               <div className={styles.emptyOverlay}>
                 <EmptyState
-                  title={
-                    spaces.length
-                      ? "Добавьте места хранения"
-                      : "Нарисуйте свой склад"
-                  }
-                  description={
-                    spaces.length
-                      ? "Внутри помещений и коридоров можно разместить секции и временные места."
-                      : "Выберите «Добавить помещение» или «Коридор» и растяните прямоугольник на сетке. Точные размеры можно задать числом."
-                  }
+                  title="На карте нет объектов"
                   action={
                     <Button
                       onClick={() => {

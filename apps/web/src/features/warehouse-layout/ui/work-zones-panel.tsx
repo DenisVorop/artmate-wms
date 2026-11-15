@@ -115,13 +115,7 @@ export function WorkZonesPanel({
       aria-label="Рабочие зоны"
     >
       <div className={styles.heading}>
-        <div>
-          <h2>Рабочие зоны</h2>
-          <p>
-            Объедините адреса по назначению и распечатайте QR для начала работы.
-            Зоны не меняют вместимость и остатки.
-          </p>
-        </div>
+        <h2>Рабочие зоны</h2>
         <Button disabled={pending} onClick={onCreate}>
           <Plus size={16} />
           Создать рабочую зону
@@ -132,15 +126,7 @@ export function WorkZonesPanel({
           {zones.filter((z) => !z.archived).map(card)}
         </div>
       ) : (
-        <p className={styles.description}>
-          Рабочих зон пока нет. Создайте зону и выберите её существующие адреса.
-        </p>
-      )}
-      {selectedId && zones.some((z) => z.id === selectedId && !z.archived) && (
-        <p className={styles.hint}>
-          Адреса выбранной зоны выделены пунктиром на карте. Выделение места и
-          его остатки доступны как обычно.
-        </p>
+        <p className={styles.description}>Рабочих зон нет.</p>
       )}
       <details className={styles.trash}>
         <summary>

@@ -27,7 +27,7 @@
   line-height: 1.8;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  background: oklch(0.1 0.01 155 / 0.15);
+  background: var(--bg);
   border-radius: 10px;
 }
 .hint strong {
@@ -72,8 +72,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0 0;
   font-size: 12px;
   color: var(--muted);
 }
@@ -87,7 +88,8 @@
   font-weight: 550;
 }
 .panel {
-  padding: 24px;
+  padding: 18px;
+  border-radius: 12px;
 }
 .panel > h2 {
   font-size: 24px;
@@ -143,7 +145,7 @@
   padding: 15px;
   border: 1px solid var(--border);
   border-radius: 11px;
-  background: oklch(0.12 0.01 155 / 0.2);
+  background: var(--bg);
 }
 .trashHead {
   display: flex;
@@ -202,4 +204,11 @@
   .footer button {
     flex: 1;
   }
+}
+
+.objectType {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 500;
 }

@@ -195,7 +195,7 @@ export function PlanCanvas({
         ref={map.scrollRef}
         tabIndex={0}
         role="region"
-        aria-label="Прокручиваемая карта склада. Стрелки клавиатуры перемещают вид."
+        aria-label="Карта склада. Стрелки перемещают вид."
         onWheelCapture={copy.cancelPress}
         onScroll={copy.cancelPress}
         onPointerDownCapture={(event) =>
@@ -285,42 +285,6 @@ export function PlanCanvas({
                 className={styles.roomFill}
               />
             )}
-            <rect
-              width={warehouse.width}
-              height={warehouse.depth}
-              fill="url(#warehouse-grid)"
-              className={styles.grid}
-              pointerEvents="none"
-            />
-            <rect
-              width={warehouse.width}
-              height={warehouse.depth}
-              className={styles.canvasBorder}
-              pointerEvents="none"
-            />
-            <text
-              x="0"
-              y="-.85"
-              className={styles.planLabel}
-              style={{ fontSize: unit(11) }}
-              pointerEvents="none"
-            >
-              {shortScreenLabel(
-                warehouse.name,
-                warehouse.width * ppm * 0.55,
-                11,
-              ).toLocaleUpperCase("ru-RU")}
-            </text>
-            <text
-              x={warehouse.width}
-              y="-.85"
-              textAnchor="end"
-              className={styles.planLabel}
-              style={{ fontSize: unit(11) }}
-              pointerEvents="none"
-            >
-              ПОЛЕ {warehouse.width} × {warehouse.depth} М
-            </text>
             {warehouse.layoutMode === "spaces" &&
               spaces.map((space) => {
                 const fontSize = unit(12);
@@ -421,6 +385,23 @@ export function PlanCanvas({
                   </g>
                 );
               })}
+            {map.editing && (
+              <>
+                <rect
+                  width={warehouse.width}
+                  height={warehouse.depth}
+                  fill="url(#warehouse-grid)"
+                  className={styles.grid}
+                  pointerEvents="none"
+                />
+                <rect
+                  width={warehouse.width}
+                  height={warehouse.depth}
+                  className={styles.canvasBorder}
+                  pointerEvents="none"
+                />
+              </>
+            )}
             {effectiveAisles.map((aisle) => {
               const id = `aisle:${aisle.id}`;
               const position = map.preview?.id === id ? map.preview : aisle;
@@ -519,21 +500,11 @@ export function PlanCanvas({
                 footprint.depth,
                 ppm,
               );
-              const showSecondary = showCode && footprint.depth * ppm >= 44;
               const railX = Math.min(0.16, object.width * 0.12),
                 railY = Math.min(0.12, object.depth * 0.12);
               const blocked =
                 object.addresses.length > 0 &&
                 object.addresses.every((address) => address.blocked);
-              const subtitle = blocked
-                ? "ЗАКРЫТО"
-                : object.section
-                  ? `ЯРУСОВ: ${object.addresses.length} · ПАЛЛ.: ${inventory.pallets.length}`
-                  : inventory.occupied
-                    ? `${inventory.pallets.length} ПАЛЛ. · ${inventory.boxes.length} КОР.`
-                    : inventory.reserved
-                      ? "РЕЗЕРВ"
-                      : "СВОБОДНО";
               return (
                 <g
                   key={object.id}
@@ -607,27 +578,12 @@ export function PlanCanvas({
                   {showCode && (
                     <text
                       x={footprint.width / 2}
-                      y={footprint.depth / 2 + unit(showSecondary ? -3 : 4)}
+                      y={footprint.depth / 2 + unit(4)}
                       textAnchor="middle"
                       className={styles.locationCode}
                       style={{ fontSize: unit(12) }}
                     >
                       {object.code}
-                    </text>
-                  )}
-                  {showSecondary && (
-                    <text
-                      x={footprint.width / 2}
-                      y={footprint.depth / 2 + unit(14)}
-                      textAnchor="middle"
-                      className={styles.locationSubtitle}
-                      style={{ fontSize: unit(11) }}
-                    >
-                      {shortScreenLabel(
-                        subtitle,
-                        footprint.width * ppm - 12,
-                        11,
-                      )}
                     </text>
                   )}
                   {selected && !showCode && (
@@ -674,13 +630,15 @@ export function PlanCanvas({
               const id = `entrance:${entrance.id}`,
                 center = entranceCenter(entrance, effectiveWarehouse);
               if (!center) return null;
+              const rotation = entranceRotation(entrance.wall);
+              const showName = entrance.width * ppm >= 46 || selectedId === id;
               const original = entrances.find(
                 (item) => item.id === entrance.id,
               )!;
               return (
                 <g
                   key={id}
-                  transform={`translate(${center.x} ${center.y}) rotate(${entranceRotation(entrance.wall)})`}
+                  transform={`translate(${center.x} ${center.y}) rotate(${rotation})`}
                   {...svgProps(id)}
                   onPointerDown={(event) =>
                     map.onEntrancePointerDown(
@@ -727,18 +685,22 @@ export function PlanCanvas({
                     d="M0 .22 V.78 M-.13 .6 L0 .78 L.13 .6"
                     className={styles.entranceArrow}
                   />
-                  <text
-                    x="0"
-                    y="-.43"
-                    textAnchor="middle"
-                    className={styles.entranceLabel}
-                  >
-                    {shortScreenLabel(
-                      entrance.name,
-                      Math.max(40, entrance.width * ppm),
-                      11,
-                    )}
-                  </text>
+                  {showName && (
+                    <text
+                      x="0"
+                      y="-.43"
+                      textAnchor="middle"
+                      transform={`rotate(${-rotation} 0 -.43)`}
+                      className={styles.entranceLabel}
+                      style={{ fontSize: unit(11) }}
+                    >
+                      {shortScreenLabel(
+                        entrance.name,
+                        Math.max(46, entrance.width * ppm),
+                        11,
+                      )}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -948,7 +910,7 @@ export function PlanCanvas({
           <span>
             {map.saveState === "saving"
               ? "Сохраняем размеры…"
-              : "Шаг — 10 см · Escape — отмена. Содержимое остаётся на месте."}
+              : "Шаг 10 см · Esc — отмена"}
           </span>
         </div>
       )}

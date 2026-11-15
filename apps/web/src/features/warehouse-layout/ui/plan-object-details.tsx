@@ -49,13 +49,8 @@ export function PlanObjectDetails({
       <span className={styles.objectIcon}>
         {aisle ? <MoveHorizontal size={22} /> : <DoorOpen size={22} />}
       </span>
-      <p className="eyebrow">{aisle ? "ПРОХОД" : "ВХОД В ПОМЕЩЕНИЕ"}</p>
+      <p className={styles.objectType}>{aisle ? "Проход" : "Вход"}</p>
       <h2>{object.name}</h2>
-      <p>
-        {aisle
-          ? "Свободное пространство для движения. Не является адресом хранения."
-          : "Проём в стене помещения. Не является местом хранения."}
-      </p>
       <div className={styles.facts}>
         {aisle ? (
           <>

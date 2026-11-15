@@ -8,7 +8,7 @@
   pointer-events: all;
 }
 .knob {
-  fill: oklch(0.19 0.015 160);
+  fill: var(--surface);
   stroke: var(--accent);
   stroke-width: 1.5;
   pointer-events: none;
@@ -16,7 +16,7 @@
 .handle:hover .knob,
 .handle:focus-visible .knob {
   fill: var(--accent);
-  stroke: oklch(0.96 0.01 150);
+  stroke: var(--text);
 }
 .handle:focus-visible .hit {
   stroke: var(--accent);
