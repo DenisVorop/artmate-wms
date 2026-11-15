@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ScanLine, Keyboard, Camera } from "lucide-react";
+import { ScanLine, Keyboard, Camera, X } from "lucide-react";
 import { createScanQueue, type ScanQueueState } from "../lib/scan-queue";
 import { getAuthEpoch } from "../api/auth-memory";
 import { useEmployeeScanActivity } from "./employee-scan-activity";
@@ -177,6 +177,7 @@ export function EmployeeScan({
     activity.report(id, queueState.pending);
     return () => activity.report(id, 0);
   }, [id, queueState.pending, activity.report]);
+  const code = useWatch({ control: form.control, name: "code" });
   const field = form.register("code");
   const locked =
     disabled || gateway.pending || (!repeat && (pending || queueState.running));
@@ -290,26 +291,46 @@ export function EmployeeScan({
         <ScanLine size={20} />
         {label}
       </label>
-      <input
-        {...field}
-        data-employee-scan-input="true"
-        ref={(node) => {
-          field.ref(node);
-          input.current = node;
-        }}
-        id={id}
-        className={styles.input}
-        inputMode={manual ? "text" : "none"}
-        enterKeyHint="done"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        placeholder={manual ? "Введите код" : "Сканируйте код"}
-        disabled={locked}
-        aria-invalid={!!(error || localError || form.formState.errors.code)}
-        aria-describedby={`${id}-status`}
-      />
+      <div className={styles.inputField}>
+        <input
+          {...field}
+          data-employee-scan-input="true"
+          ref={(node) => {
+            field.ref(node);
+            input.current = node;
+          }}
+          id={id}
+          className={styles.input}
+          inputMode={manual ? "text" : "none"}
+          enterKeyHint="done"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder={manual ? "Введите код" : "Сканируйте код"}
+          disabled={locked}
+          aria-invalid={!!(error || localError || form.formState.errors.code)}
+          aria-describedby={`${id}-status`}
+        />
+        {code && (
+          <button
+            type="button"
+            aria-label="Очистить поле"
+            className={styles.clear}
+            disabled={locked}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => {
+              if (locked || intercepting.current) return;
+              form.resetField("code");
+              if (!queueState.failedCode) setLocalError(null);
+              selectAfterIntercept.current = false;
+              input.current?.focus({ preventScroll: true });
+            }}
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       <div
         id={`${id}-status`}
         className={styles.status}

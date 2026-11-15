@@ -16,11 +16,17 @@
 .label svg {
   color: var(--accent);
 }
+.inputField {
+  position: relative;
+  min-width: 0;
+}
 .input {
+  display: block;
   width: 100%;
   min-width: 0;
   min-height: 64px;
   padding: 16px;
+  padding-inline-end: 56px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface);
@@ -41,6 +47,33 @@
   font-family: var(--font-sans);
   font-size: 16px;
   color: var(--muted);
+}
+.clear {
+  position: absolute;
+  inset-inline-end: 6px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.clear:hover:not(:disabled) {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.clear:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.clear:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .status {
   min-height: 20px;
