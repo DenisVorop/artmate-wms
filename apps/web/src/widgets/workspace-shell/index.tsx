@@ -239,12 +239,14 @@ function ManagerWorkspaceShell({
         <main id="workspace-main" className="main-content">
           {children}
         </main>
-        <footer className="workspace-footer">
-          <span>
-            artmate wms <span className="footer-dot">·</span> Локальный склад
-          </span>
-          <span>Данные сохраняются на этом компьютере</span>
-        </footer>
+        {children != null && (
+          <footer className="workspace-footer">
+            <span>
+              artmate wms <span className="footer-dot">·</span> Локальный склад
+            </span>
+            <span>Данные сохраняются на этом компьютере</span>
+          </footer>
+        )}
       </div>
       <ChangePasswordModal
         open={passwordOpen}
