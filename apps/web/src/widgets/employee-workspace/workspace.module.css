@@ -1,17 +1,22 @@
 .surface {
+  color-scheme: light;
+  --bg: oklch(0.975 0.008 155);
+  --surface: white;
+  --surface-raised: oklch(0.95 0.014 152);
+  --text: oklch(0.23 0.014 155);
+  --muted: oklch(0.45 0.018 155);
+  --accent: oklch(0.47 0.117 153);
+  --accent-ink: white;
+  --border: oklch(0.87 0.018 154);
+  --danger: oklch(0.44 0.17 25);
+  --warning: oklch(0.43 0.09 63);
   min-height: 100dvh;
-  background:
-    radial-gradient(
-      ellipse at 50% 0,
-      oklch(0.85 0.15 156/0.05),
-      transparent 65%
-    ),
-    var(--bg);
-  padding: 0 16px;
+  padding: 0 max(16px, env(safe-area-inset-right));
+  background: var(--bg);
   color: var(--text);
 }
 .frame {
-  max-width: 480px;
+  max-width: 720px;
   margin: auto;
   min-height: 100dvh;
   display: flex;
@@ -292,177 +297,109 @@
   color: inherit;
   cursor: pointer;
 }
-.workViews {
+.zoneGuide {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 4px;
-  gap: 4px;
+  gap: 28px;
+  padding: 16px 0 28px;
+}
+.zoneTableHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.zoneTableHeading h2 {
+  margin: 0;
+  font-size: clamp(22px, 5vw, 30px);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.zoneTableHint {
+  color: var(--muted);
+  margin: 8px 0 14px;
+  font-size: 14px;
+}
+.zoneTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  background: var(--surface);
+}
+.zoneTable th,
+.zoneTable td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px;
+}
+.zoneTable td:first-child {
+  overflow-wrap: anywhere;
+}
+.zoneTable td + td {
+  width: 1%;
+  text-align: right;
+}
+.zoneTable strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.zoneTable small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.zoneTable button {
+  min-height: 44px;
+  min-width: 68px;
+}
+.zoneGroup th {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+@media (max-width: 380px) {
+  .zoneTable th,
+  .zoneTable td {
+    padding-inline: 8px;
+  }
+}
+
+.surface :global(.glass-panel) {
+  background: var(--surface);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.surface :global(.button) {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.surface :global(.button--primary) {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.surface :global(.button--primary:hover:not(:disabled)) {
+  background: color-mix(in oklch, var(--accent) 90%, black);
+}
+
+.surface :global(.button--primary:disabled) {
+  color: var(--muted);
+  background: var(--surface-raised);
+  border-color: var(--border);
+}
+
+.zoneScanner {
+  display: grid;
+  gap: 10px;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--surface);
+  padding: 16px;
 }
-.workViews button {
-  min-height: 46px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-.workViews button[aria-pressed="true"] {
-  background: var(--surface-raised);
-  color: var(--text);
-  font-weight: 550;
-}
-.jobList {
-  display: grid;
-  gap: 20px;
-  min-width: 0;
-}
-.jobHeading h1 {
-  margin: 8px 0;
-  font-size: 30px;
-  letter-spacing: -0.03em;
-}
-.jobHeading p,
-.queueHint,
-.queueEmpty {
+.zoneScanner h2 {
   margin: 0;
-  color: var(--muted);
-  line-height: 1.5;
-  font-size: 14px;
-}
-.jobFilter {
-  display: grid;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.jobFilter select {
-  width: 100%;
-  min-height: 48px;
-  padding: 10px 12px;
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  font: inherit;
-  font-size: 15px;
-}
-.jobGroup h3 {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 17px;
-  margin: 0 0 12px;
-}
-.jobGroup h3 span {
-  color: var(--muted);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.jobGroup ul {
-  list-style: none;
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-}
-.jobCard {
-  display: grid;
-  gap: 9px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.jobMeta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 5px 12px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted);
-}
-.jobMeta span:last-child {
-  color: var(--accent);
-}
-.jobCard h4 {
-  font-size: 21px;
-  font-weight: 550;
-  line-height: 1.2;
-  margin: 0;
-}
-.jobCard p {
-  margin: 0;
-}
-.jobQuantity {
-  font-size: 15px;
-}
-.jobRoute,
-.jobCode,
-.jobCard small {
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.jobCode,
-.jobCard small {
-  font-family: var(--font-mono), monospace;
-}
-.queuePagination p {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-.queuePagination > div {
-  display: flex;
-  gap: 12px;
-}
-
-.zoneGuide {
-  display: grid;
-  gap: 20px;
-  padding: 24px 0;
-}
-.zoneGuide h2 {
-  margin: 0;
-  max-width: 25ch;
-  font-size: clamp(29px, 5vw, 40px);
-  line-height: 1.13;
-  letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
-}
-.zoneGuide > button {
-  min-height: 54px;
-  font-size: 18px;
-  width: 100%;
-  max-width: 320px;
-}
-.zoneEmpty {
-  margin: 0;
-  color: var(--muted);
-  font-size: 16px;
-}
-.zoneDirectory {
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-.zoneDirectory li {
-  display: flex;
-  gap: 8px 16px;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
-  font-size: 16px;
-}
-.zoneDirectory li span:last-child {
-  color: var(--muted);
+  font-size: 20px;
 }

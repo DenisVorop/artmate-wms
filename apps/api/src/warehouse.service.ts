@@ -520,6 +520,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       return view;
     const zones = view.warehouse?.workZones?.filter((zone) => !zone.archived);
     if (!zones?.length) return view;
+    if (this._lockedZoneJob(state, employeeId))
+      return { ...view, zoneOffers: [] };
     const zoneOffers = zones.flatMap((zone) => {
       if (
         zone.locationIds.some((id) => {
@@ -528,8 +530,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         })
       )
         return [];
-      const offer = this._zoneOffer(state, zone, employeeId);
-      return offer ? [offer] : [];
+      return this._zoneOffers(state, zone, employeeId);
     });
     return { ...view, zoneOffers };
   }
@@ -2236,6 +2237,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return employee;
   }
   private _claimTask(s: D.WorkspaceDto, task: D.TaskDto, employeeId: string) {
+    this.assertNoLockedZoneWork(s, employeeId);
     if (
       s.movements.some(
         (m) =>
@@ -2315,6 +2317,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   updateTaskStatus(id: string, b: D.UpdateTaskStatusDto) {
     return this._command(`updateTaskStatus/${id}`, b, (s) => {
+      this.assertNoLockedZoneWork(s, b.employeeId);
       const task = find(s.tasks, id, "Задание");
       if (b.status === "active") this._claimTask(s, task, b.employeeId);
       else {
@@ -2747,6 +2750,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   claimPutawayTask(id: string, b: D.ClaimPutawayTaskDto) {
     return this._command(`claimPutawayTask/${id}`, b, (s) => {
+      this.assertNoLockedZoneWork(s, b.employeeId);
       this._claimPutaway(s, id, b.employeeId);
     });
   }
@@ -2806,6 +2810,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       );
       if (!task || !zone.locationIds.includes(task.fromLocationId))
         fail("Этот короб не ожидает размещения в текущей зоне");
+      const locked = this._lockedZoneJob(s, b.employeeId);
+      if (locked && locked.jobId !== task.id && locked.jobId !== zone.id)
+        fail("Сканируйте короб из текущего задания");
       if (task.employeeId && task.employeeId !== b.employeeId)
         fail("Этот короб уже взял другой сотрудник");
       const current = this._activePutaway(s, b.employeeId);
@@ -2935,6 +2942,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   releasePutawayTask(id: string, b: D.ClaimPutawayTaskDto) {
     return this._command(`releasePutawayTask/${id}`, b, (s) => {
+      this.assertNoLockedZoneWork(s, b.employeeId);
       const t = find(s.putawayTasks, id, "Задание размещения");
       this._putawayActor(s, t, b.employeeId, "claimed");
       this._releasePutaway(t);
@@ -3712,6 +3720,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   claimMovement(id: string, b: D.ClaimMovementDto) {
     return this._command(`claimMovement/${id}`, b, async (s, tx) => {
+      this.assertNoLockedZoneWork(s, b.employeeId);
       const movement = find(s.movements, id, "Перемещение");
       if (
         movement.status !== "planned" ||
@@ -3764,6 +3773,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return this._command(`takeMovement/${id}`, b, async (s, tx) => {
       const m = find(s.movements, id, "Перемещение");
       if (!m.employeeId) fail("Сначала возьмите перемещение в работу");
+      this.assertNoLockedZoneWork(s, m.employeeId);
       if (m.autoPurpose === "accessible_raw") {
         const problem = rawAccessMovementProblem(
           s,
@@ -3823,6 +3833,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     return this._command(`placeMovement/${id}`, b, (s) => {
       const m = find(s.movements, id, "Перемещение");
       if (!m.employeeId) fail("У перемещения нет исполнителя");
+      this.assertNoLockedZoneWork(s, m.employeeId);
       if (m.status !== "in_transit") fail("Сначала подтвердите забор паллеты");
       this._movementEmployee(s, m.employeeId);
       const pallet = find(s.pallets, m.palletId, "Паллета");
@@ -3912,6 +3923,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (employee.status === "off" && b.status === "break")
         fail("Сначала начните смену");
       if (b.status !== "working") {
+        this.assertNoLockedZoneWork(s, id);
         if (
           s.movements.some(
             (m) => m.employeeId === id && m.status === "in_transit",
@@ -4056,11 +4068,14 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           t.status !== "completed",
       );
     if (w.jobKind === "putaway")
-      return s.putawayTasks.some(
-        (t) =>
-          t.id === w.jobId &&
-          t.employeeId === w.employeeId &&
-          ["claimed", "in_transit"].includes(t.status),
+      return (
+        w.jobId === w.zoneId ||
+        s.putawayTasks.some(
+          (t) =>
+            t.id === w.jobId &&
+            t.employeeId === w.employeeId &&
+            ["claimed", "in_transit"].includes(t.status),
+        )
       );
     if (w.jobKind === "receiving")
       return s.receipts.some(
@@ -4076,6 +4091,19 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           x.status === "draft",
       );
     return false;
+  }
+  private _lockedZoneJob(s: D.WorkspaceDto, employeeId: string) {
+    return s.warehouse?.zoneWork?.find(
+      (work) =>
+        work.employeeId === employeeId &&
+        work.locked &&
+        this._zoneJobActive(s, work),
+    );
+  }
+
+  assertNoLockedZoneWork(s: D.WorkspaceDto, employeeId: string) {
+    if (this._lockedZoneJob(s, employeeId))
+      throw new ConflictException("Сначала закончите текущее задание.");
   }
   private _assertZoneIntegrity(s: D.WorkspaceDto) {
     const zones = s.warehouse.workZones,
@@ -4173,7 +4201,13 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   ) {
     const w = s.warehouse.zoneWork.find((w) => w.employeeId === employeeId);
     if (w)
-      Object.assign(w, { jobKind: null, jobId: null, palletId: null, message });
+      Object.assign(w, {
+        jobKind: null,
+        jobId: null,
+        palletId: null,
+        locked: false,
+        message,
+      });
   }
   private _setZoneJob(
     s: D.WorkspaceDto,
@@ -4184,8 +4218,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     palletId: string | null,
     message: string,
   ) {
-    let w = s.warehouse.zoneWork.find((w) => w.employeeId === employeeId);
-    const next = {
+    const w = s.warehouse.zoneWork.find((w) => w.employeeId === employeeId);
+    const next: D.ZoneWorkDto = {
       employeeId,
       zoneId: z.id,
       jobKind: kind,
@@ -4195,9 +4229,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     };
     if (w) Object.assign(w, next);
     else s.warehouse.zoneWork.push(next);
-    return next;
+    return w ?? next;
   }
   private _leaveWork(s: D.WorkspaceDto, employeeId: string) {
+    this.assertNoLockedZoneWork(s, employeeId);
     if (
       s.movements.some(
         (m) => m.employeeId === employeeId && m.status === "in_transit",
@@ -4246,12 +4281,16 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   startZoneWork(b: D.StartZoneWorkDto) {
     return this._command("startZoneWork", b, (s) => {
+      this.assertNoLockedZoneWork(s, b.employeeId);
       this._movementEmployee(s, b.employeeId);
       const zone = this._readWorkZone(s, b.zoneCode),
         current = s.warehouse.zoneWork.find(
           (w) => w.employeeId === b.employeeId,
         );
-      if (b.intent === "take-next" && current?.zoneId !== zone.id)
+      if (
+        (b.intent === "take-next" || b.intent === "take-job") &&
+        current?.zoneId !== zone.id
+      )
         fail("Зона изменилась. Отсканируйте её QR перед взятием задания");
       const carryMovement = s.movements.some(
         (m) => m.employeeId === b.employeeId && m.status === "in_transit",
@@ -4288,30 +4327,29 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         fail("Сначала подтвердите размещение короба в пути");
       if (current?.zoneId !== zone.id && !resumeUnbound)
         this._leaveWork(s, b.employeeId);
-      if (b.intent === "take-next" && b.expectedJobId) {
-        const offer = this._zoneOffer(s, zone, b.employeeId);
+      if (
+        b.intent === "take-job" ||
+        (b.intent === "take-next" && b.expectedJobId)
+      ) {
+        const offers = this._zoneOffers(s, zone, b.employeeId);
+        const offer =
+          b.intent === "take-job"
+            ? offers.find(
+                (row) =>
+                  row.jobId === b.expectedJobId &&
+                  row.palletId === (b.expectedPalletId ?? null),
+              )
+            : offers[0];
         if (
-          offer?.jobId !== b.expectedJobId ||
+          !offer ||
+          offer.jobId !== b.expectedJobId ||
           offer.palletId !== (b.expectedPalletId ?? null)
         )
-          throw new ConflictException(
-            "Это задание уже недоступно. Проверьте, какая работа осталась.",
-          );
-        if (zone.kind === "shipping") {
-          const shipment = find(s.shipments, offer.jobId, "Отгрузка");
-          shipment.pickingMode ??= "box";
-          shipment.workZoneId = zone.id;
-          shipment.employeeId = b.employeeId;
-          shipment.scannedBoxIds ??= [];
-          this._setZoneJob(
-            s,
-            zone,
-            b.employeeId,
-            "shipping",
-            shipment.id,
-            null,
-            "Сканируйте короба отгрузки",
-          );
+          throw new ConflictException("Это задание уже недоступно.");
+        if (b.intent === "take-job") {
+          this._takeZoneOffer(s, zone, b.employeeId, offer);
+        } else if (zone.kind === "shipping") {
+          this._bindZoneShipment(s, zone, b.employeeId, offer.jobId);
         } else {
           this._chooseZoneWork(s, zone, b.employeeId);
         }
@@ -4332,8 +4370,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       }
       activity(
         s,
-        b.intent === "take-next"
-          ? "Запрошено следующее задание зоны"
+        b.intent === "take-job" || b.intent === "take-next"
+          ? "Взято задание зоны"
           : "Рабочая зона отсканирована",
         `${zone.name} · ${find(s.employees, b.employeeId, "Сотрудник").name}`,
         "work-zone",
@@ -4400,7 +4438,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     }
     return true;
   }
-  private _nextAssembly(s: D.WorkspaceDto, employeeId: string) {
+  private _availableAssembly(s: D.WorkspaceDto, employeeId: string) {
     const candidates = s.tasks
       .filter(
         (t) =>
@@ -4410,9 +4448,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           !t.boxCodeConfirmed,
       )
       .sort(assemblyQueueOrder(s.tasks, employeeId));
-    return candidates.find((t) => this._assemblyZoneAvailable(s, t));
+    return candidates.filter((t) => this._assemblyZoneAvailable(s, t));
   }
-  private _receivingZoneOffer(
+  private *_receivingZoneOffers(
     s: D.WorkspaceDto,
     zone: D.WorkZoneDto,
     employeeId: string,
@@ -4454,15 +4492,14 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           )
         )
           continue;
-        return { jobId: r.id, palletId: p.id };
+        yield { jobId: r.id, palletId: p.id };
       }
-    return null;
   }
-  private _zoneOffer(
+  private _zoneOffers(
     s: D.WorkspaceDto,
     zone: D.WorkZoneDto,
     employeeId: string,
-  ): D.ZoneOfferDto | null {
+  ): D.ZoneOfferDto[] {
     const ownAssembly = this._ownAssembly(s, employeeId);
     const openBox = !!(
       ownAssembly?.boxCodeConfirmed || ownAssembly?.scannedUnits
@@ -4478,7 +4515,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       putaway?.status === "in_transit" ||
       (openBox && zone.kind !== "assembly")
     )
-      return null;
+      return [];
     const offer = (
       jobId: string,
       palletId: string | null = null,
@@ -4492,11 +4529,14 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       inProgress,
     });
     if (zone.kind === "assembly") {
-      if (movement?.autoPurpose === "accessible_raw") return null;
-      const task = ownAssembly ?? this._nextAssembly(s, employeeId);
-      return task && this._assemblyZoneAvailable(s, task)
-        ? offer(task.id, null, !!ownAssembly, openBox)
-        : null;
+      if (movement?.autoPurpose === "accessible_raw") return [];
+      const own =
+        ownAssembly && this._assemblyZoneAvailable(s, ownAssembly)
+          ? [offer(ownAssembly.id, null, true, openBox)]
+          : [];
+      if (openBox || ownAssembly?.status === "active") return own;
+      const queued = this._availableAssembly(s, employeeId);
+      return [...own, ...queued.map((task) => offer(task.id))];
     }
     if (zone.kind === "receiving") {
       const current = s.warehouse.zoneWork.find(
@@ -4506,13 +4546,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           w.jobKind === "receiving" &&
           this._zoneJobActive(s, w),
       );
-      if (current?.jobId) return offer(current.jobId, current.palletId, true);
-      const next = this._receivingZoneOffer(s, zone, employeeId);
-      return next ? offer(next.jobId, next.palletId) : null;
+      if (current?.jobId) return [offer(current.jobId, current.palletId, true)];
+      return Array.from(
+        this._receivingZoneOffers(s, zone, employeeId),
+        (next) => offer(next.jobId, next.palletId),
+      );
     }
     if (zone.kind === "putaway") {
-      if (movement) return null;
-      const task = s.putawayTasks.find((t) => {
+      if (movement) return [];
+      const tasks = s.putawayTasks.filter((t) => {
         if (
           !zone.locationIds.includes(t.fromLocationId) ||
           !(
@@ -4548,7 +4590,13 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             !putawayPlacementError(s, l, box, t.id),
         );
       });
-      return task ? offer(task.id) : null;
+      const own = tasks.find((task) => task.status === "claimed");
+      if (own) return [offer(own.id, null, true)];
+      const pendingScans = s.warehouse.zoneWork.filter(
+        (work) =>
+          work.zoneId === zone.id && work.jobId === zone.id && work.locked,
+      ).length;
+      return tasks.length > pendingScans ? [offer(zone.id)] : [];
     }
     if (zone.kind === "shipping") {
       const own = s.shipments.find(
@@ -4568,21 +4616,76 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           })
         );
       };
-      const next =
-        own ??
-        s.shipments.find(
-          (x) => x.status === "draft" && !x.employeeId && available(x),
-        );
-      return next && available(next)
-        ? offer(
-            next.id,
-            null,
-            !!own,
-            !!(own?.scannedBoxIds?.length || own?.wb?.pendingBoxId),
-          )
-        : null;
+      if (own)
+        return available(own)
+          ? [
+              offer(
+                own.id,
+                null,
+                true,
+                !!(own.scannedBoxIds?.length || own.wb?.pendingBoxId),
+              ),
+            ]
+          : [];
+      return s.shipments
+        .filter(
+          (shipment) =>
+            shipment.status === "draft" &&
+            !shipment.employeeId &&
+            available(shipment),
+        )
+        .map((shipment) => offer(shipment.id));
     }
-    return null;
+    return [];
+  }
+  private _bindZoneShipment(
+    s: D.WorkspaceDto,
+    zone: D.WorkZoneDto,
+    employeeId: string,
+    id: string,
+  ) {
+    const shipment = find(s.shipments, id, "Отгрузка");
+    shipment.pickingMode ??= "box";
+    shipment.workZoneId = zone.id;
+    shipment.employeeId = employeeId;
+    shipment.scannedBoxIds ??= [];
+    return this._setZoneJob(
+      s,
+      zone,
+      employeeId,
+      "shipping",
+      id,
+      null,
+      "Сканируйте короба отгрузки",
+    );
+  }
+  private _takeZoneOffer(
+    s: D.WorkspaceDto,
+    zone: D.WorkZoneDto,
+    employeeId: string,
+    offer: D.ZoneOfferDto,
+  ) {
+    if (zone.kind === "shipping") {
+      const binding = this._bindZoneShipment(s, zone, employeeId, offer.jobId);
+      binding.manualQueue = true;
+      binding.locked = true;
+      return;
+    }
+    if (zone.kind === "assembly") {
+      const task = find(s.tasks, offer.jobId, "Задание");
+      if (task.status !== "active") this._claimTask(s, task, employeeId);
+    }
+    const binding = this._setZoneJob(
+      s,
+      zone,
+      employeeId,
+      zone.kind,
+      offer.jobId,
+      offer.palletId,
+      "Задание взято",
+    );
+    binding.manualQueue = true;
+    binding.locked = true;
   }
   private _chooseZoneWork(
     s: D.WorkspaceDto,
@@ -4622,7 +4725,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         assign("assembly", own.id, null, "Продолжите своё задание сборки");
         return;
       }
-      const t = this._nextAssembly(s, employeeId);
+      const t = this._availableAssembly(s, employeeId)[0];
       if (t) {
         this._claimTask(s, t, employeeId);
         assign("assembly", t.id, null, "Задание сборки взято в работу");
@@ -4645,7 +4748,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         idle("Возьмите следующую паллету на размещение.");
         return;
       }
-      const next = this._receivingZoneOffer(s, zone, employeeId);
+      const next = this._receivingZoneOffers(s, zone, employeeId).next().value;
       if (next) {
         assign(
           "receiving",
@@ -4890,9 +4993,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       } else {
         this._shipmentWorkActor(s, id, b.employeeId);
       }
+      const finishPicking = () => {
+        const binding = this._lockedZoneJob(s, b.employeeId);
+        if (binding?.jobId === id && this._shipmentPickComplete(shipment))
+          this._clearZoneJob(s, b.employeeId, "Отбор завершён.");
+      };
       const code = b.boxCode.trim();
       if (shipment.wb) {
         this._scanWbShipment(s, shipment, b.employeeId, code);
+        finishPicking();
         return;
       }
       const box = shipment.boxIds
@@ -4910,6 +5019,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         this._stageShipmentBox(s, box);
       }
       shipment.scannedBoxIds.push(box.id);
+      finishPicking();
     });
   }
   private _stageShipmentBox(s: D.WorkspaceDto, box: D.BoxDto) {

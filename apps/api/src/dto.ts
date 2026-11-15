@@ -210,6 +210,7 @@ export class ZoneWorkDto {
   @ApiProperty({ type: String, nullable: true }) jobId!: string | null;
   @ApiProperty({ type: String, nullable: true }) palletId!: string | null;
   @ApiPropertyOptional({ type: Boolean }) manualQueue?: boolean;
+  @ApiPropertyOptional({ type: Boolean }) locked?: boolean;
   @ApiProperty({ type: String }) message!: string;
 }
 export const consumableItems = ["individual_box", "transport_carton"] as const;
@@ -2287,10 +2288,12 @@ export class StartZoneWorkDto extends ClaimTaskDto {
   @MinLength(1)
   @MaxLength(200)
   zoneCode!: string;
-  @ApiPropertyOptional({ enum: ["open-queue", "take-next", "show-offer"] })
+  @ApiPropertyOptional({
+    enum: ["open-queue", "take-next", "show-offer", "take-job"],
+  })
   @ValidateIf((_o, v) => v !== undefined)
-  @IsIn(["open-queue", "take-next", "show-offer"])
-  intent?: "open-queue" | "take-next" | "show-offer";
+  @IsIn(["open-queue", "take-next", "show-offer", "take-job"])
+  intent?: "open-queue" | "take-next" | "show-offer" | "take-job";
   @ApiPropertyOptional({ type: String })
   @ValidateIf((_o, v) => v !== undefined)
   @IsString()

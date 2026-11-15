@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { MapPin, PackageCheck, Pause, Play, Printer } from "lucide-react";
+import { PackageCheck, Pause, Play, Printer } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { LocationMapButton } from "@/entities/warehouse-map";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
@@ -19,10 +19,12 @@ export function EmployeeAssembly({
   data,
   onIdle,
   onProblem,
+  locked = false,
 }: {
   data: WorkspaceDto;
   onIdle: () => void;
   onProblem?: (message: string) => void;
+  locked?: boolean;
 }) {
   const { user } = useSession();
   const scanActivity = useEmployeeScanActivity();
@@ -75,6 +77,7 @@ export function EmployeeAssembly({
       ? Math.max(0, Math.min(100, (task.scannedUnits / task.unitsPerBox) * 100))
       : 0;
   const scanProps = {
+    compact: true,
     contextKey: context,
     pending: operations.pending,
     disabled: !working || !own || !!configurationProblem || capacityBlocked,
@@ -130,39 +133,37 @@ export function EmployeeAssembly({
         </div>
       ) : (
         <>
-          <header className={styles.taskHeader}>
-            <div>
-              <span>Сборка</span>
-            </div>
-            {step !== "claim" && step !== "resume" && own && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={operations.pending || scanActivity.pending > 0}
-                onClick={() => void operations.pause(task)}
-                aria-label="Поставить мою сборку на паузу"
-              >
-                <Pause size={16} />
-                Пауза
-              </Button>
-            )}
-          </header>
-          {scanActivity.pending > 0 && operations.error && (
+          {!locked && (
+            <header className={styles.taskHeader}>
+              <div>
+                <span>Сборка</span>
+              </div>
+              {!locked && step !== "claim" && step !== "resume" && own && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={operations.pending || scanActivity.pending > 0}
+                  onClick={() => void operations.pause(task)}
+                  aria-label="Поставить мою сборку на паузу"
+                >
+                  <Pause size={16} />
+                  Пауза
+                </Button>
+              )}
+            </header>
+          )}
+          {!locked && scanActivity.pending > 0 && operations.error && (
             <p className={styles.help}>
               Перед паузой дождитесь сохранения сканов или исправьте непринятый
               код.
             </p>
           )}
-          <div className={styles.taskTitle}>
-            <h2>{sku?.name ?? "Тематика недоступна"}</h2>
-            <p>
-              Короб{" "}
-              <strong>
-                {currentBox} из {task.boxesTarget}
-              </strong>{" "}
-              · по {task.unitsPerBox} раскрасок
-            </p>
-          </div>
+          <p className={styles.taskContext}>
+            {sku?.name ?? "Тематика недоступна"} · {task.unitsPerBox} шт. в
+            коробе
+            {task.boxesTarget > 1 &&
+              ` · короб ${currentBox} из ${task.boxesTarget}`}
+          </p>
           {step === "claim" || step === "resume" ? (
             <div className={`glass-panel ${styles.action}`}>
               <span className={styles.stepLabel}>
@@ -211,20 +212,16 @@ export function EmployeeAssembly({
             <div className={`glass-panel ${styles.action}`}>
               {step === "source" && (
                 <>
-                  <span className={styles.stepLabel}>1 · ИСТОЧНИК</span>
+                  <span className={styles.stepLabel}>Шаг 1 из 3</span>
                   <h3>
                     {task.scannedUnits > 0
                       ? "Сканируйте следующую паллету"
                       : "Сканируйте паллету"}
                   </h3>
-                  <div className={styles.destination}>
-                    <MapPin size={22} />
-                    <div>
-                      <span>Адрес</span>
-                      <strong>{location?.code ?? "Не указан"}</strong>
-                      {location?.name && <small>{location.name}</small>}
-                    </div>
-                  </div>
+                  <p className={styles.sourceAddress}>
+                    {location?.code ?? "Адрес не указан"}
+                  </p>
+                  <p>{pallet?.code ?? "Паллета недоступна"}</p>
                   <LocationMapButton
                     data={data}
                     locationId={location?.id}
@@ -232,10 +229,6 @@ export function EmployeeAssembly({
                     intent="take"
                     contextKey={`assembly:${user?.employeeId ?? ""}:${context}:${location?.id ?? "missing"}`}
                   />
-                  <div className={styles.codeCard}>
-                    <span>QR / код паллеты</span>
-                    <strong>{pallet?.code ?? "Источник недоступен"}</strong>
-                  </div>
                   {task.scannedUnits > 0 && (
                     <p>
                       Предыдущая партия закончилась. В коробе остаётся{" "}
@@ -258,14 +251,14 @@ export function EmployeeAssembly({
               )}
               {step === "box" && (
                 <>
-                  <span className={styles.stepLabel}>
-                    2 · ПОДГОТОВКА И КОРОБ
-                  </span>
-                  <h3>
+                  <span className={styles.stepLabel}>Шаг 2 из 3</span>
+                  <h3>Сканируйте QR короба</h3>
+                  <p>
                     {task.unitsPerBox === 20
-                      ? "Подготовьте 2 упаковки по 10"
-                      : `Подготовьте ${task.unitsPerBox} раскрасок`}
-                  </h3>
+                      ? "Подготовьте 2 упаковки по 10."
+                      : `Подготовьте ${task.unitsPerBox} раскрасок.`}{" "}
+                    Промаркируйте раскраски и наклейте QR на короб.
+                  </p>
                   {packagingForNextBox(task.consumableReservations ?? []).map(
                     (row) => (
                       <p key={`${row.locationId}/${row.item}`}>
@@ -280,10 +273,6 @@ export function EmployeeAssembly({
                       </p>
                     ),
                   )}
-                  <p>
-                    Промаркируйте раскраски. Возьмите готовую этикетку, наклейте
-                    на короб и отсканируйте QR.
-                  </p>
                   <details className={styles.help}>
                     <summary>Нет готовой этикетки</summary>
                     <Link
@@ -306,9 +295,7 @@ export function EmployeeAssembly({
               )}
               {step === "items" && (
                 <>
-                  <span className={styles.stepLabel}>
-                    3 · РАСКРАСКИ В КОРОБЕ
-                  </span>
+                  <span className={styles.stepLabel}>Шаг 3 из 3</span>
                   <h3>Сканируйте каждую раскраску</h3>
                   <div
                     className={styles.counter}
@@ -377,7 +364,7 @@ export function EmployeeAssembly({
               Нужна помощь
             </Button>
           )}
-          {step === "resume" && (
+          {!locked && step === "resume" && (
             <Button
               variant="ghost"
               disabled={operations.pending}

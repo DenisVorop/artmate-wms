@@ -11,11 +11,13 @@ export type EmployeeHandlingProps = {
   data: WorkspaceDto;
   onIdle: () => void;
   onProblem?: (message: string) => void;
+  locked?: boolean;
 };
 export function EmployeePutaway({
   data,
   onIdle,
   onProblem,
+  locked = false,
 }: EmployeeHandlingProps) {
   const { employeeId, commands, execute } = useHandling();
   const { pending: scanPending } = useEmployeeScanActivity();
@@ -59,6 +61,7 @@ export function EmployeePutaway({
       title="Размещение коробов"
       code={carrying?.code}
       onIdle={onIdle}
+      locked={locked}
       carrying={!!carrying}
       pending={commands.pending}
       onProblem={onProblem}
@@ -77,16 +80,8 @@ export function EmployeePutaway({
               <h2>Поставьте короб</h2>
               <strong className={styles.destinationCode}>{target.code}</strong>
               <p>{target.name}</p>
-              <div className={styles.carriedObject}>
-                <span>У вас в руках</span>
-                <strong>{sku?.name ?? "Тематика недоступна"}</strong>
-                <span className={styles.boxNumber}>
-                  Короб · {box.code.slice(-12)}
-                </span>
-                <span className={styles.objectCode}>{box.code}</span>
-              </div>
-              <p className={styles.scanInstruction}>
-                Сканируйте QR этого адреса
+              <p>
+                {sku?.name ?? "Тематика недоступна"} · {box.code}
               </p>
             </div>
             <LocationMapButton
@@ -97,6 +92,7 @@ export function EmployeePutaway({
               contextKey={`putaway:${employeeId}:${carrying.id}:place:${target.id}`}
             />
             <EmployeeScan
+              compact
               key={`${employeeId}:${carrying.id}:place`}
               contextKey={`${carrying.id}:place:${box.code}`}
               label="Сканируйте QR адреса хранения"
@@ -129,12 +125,7 @@ export function EmployeePutaway({
             <span className={styles.eyebrow}>
               1 из 2 · общая паллета сборки
             </span>
-            <h2>Возьмите любой короб</h2>
-            <p>
-              С общей паллеты готовых коробов. После скана покажем, куда его
-              поставить.
-            </p>
-            <p className={styles.scanInstruction}>Сканируйте QR короба</p>
+            <h2>Сканируйте любой готовый короб</h2>
           </div>
           {commonSource && (
             <LocationMapButton
@@ -151,6 +142,7 @@ export function EmployeePutaway({
             </p>
           )}
           <EmployeeScan
+            compact
             key={`${employeeId}:${zone.id}:take`}
             contextKey={`putaway-any:${employeeId}:${zone.id}`}
             label="Сканируйте QR любого готового короба"
@@ -179,7 +171,7 @@ export function EmployeePutaway({
           </p>
         </>
       )}
-      {claimed && !carrying && (
+      {!locked && claimed && !carrying && (
         <Button
           variant="ghost"
           disabled={commands.pending || scanPending > 0 || !!block}

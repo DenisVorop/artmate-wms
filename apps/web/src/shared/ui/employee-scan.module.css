@@ -110,3 +110,30 @@
   width: 100%;
   min-height: 54px;
 }
+
+.compact {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+.compact > :not(.camera, .manual) {
+  grid-column: 1 / -1;
+}
+.compact .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.compact .input {
+  min-height: 54px;
+  border-radius: 10px;
+  outline-offset: 2px;
+}
+.compact .camera,
+.compact .manual {
+  min-height: 44px;
+  justify-self: stretch;
+  padding: 8px;
+}

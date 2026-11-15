@@ -363,7 +363,7 @@ test("work-zone DTO, auto identity, separate stable QR, strict null/partial upda
     code(spare),
   );
 });
-test("receiving offers do not assign a pallet, stale offers cannot take another pallet, and placement offers the next without claiming it", async () => {
+test("receiving lists all pallets, locks the selected row, and returns to the list after placement", async () => {
   await w.createReceipt({
     ...req(),
     receivedAt: "2020-01-01T09:00:00Z",
@@ -396,7 +396,7 @@ test("receiving offers do not assign a pallet, stale offers cannot take another 
         ...req(),
         employeeId: actor.user.employeeId,
         zoneCode: code(receiving),
-        intent: "take-next",
+        intent: "take-job",
         expectedJobId: offer.jobId,
         expectedPalletId: offer.palletId,
       },
@@ -405,18 +405,64 @@ test("receiving offers do not assign a pallet, stale offers cannot take another 
   const [open, openOther] = await Promise.all([look(worker), look(other)]);
   assert.equal(binding(open).jobId, null);
   assert.equal(binding(openOther, other).jobId, null);
-  const offer = open.zoneOffers!.find((row) => row.zoneId === receiving.id)!;
-  const otherOffer = openOther.zoneOffers!.find(
-    (row) => row.zoneId === receiving.id,
-  )!;
-  assert.equal(otherOffer.palletId, offer.palletId);
+  const offers = open.zoneOffers!.filter((row) => row.zoneId === receiving.id);
+  assert.equal(offers.length, 3);
+  assert.deepEqual(
+    openOther.zoneOffers!.filter((row) => row.zoneId === receiving.id),
+    offers,
+  );
+  const offer = offers[1];
   const taken = await take(worker, offer);
   assert.equal(taken.status, 200, JSON.stringify(taken.body));
-  assert.equal((await take(other, otherOffer)).status, 409);
+  assert.equal((await take(other, offer)).status, 409);
   const a = binding(taken.body),
     b = binding(await start(receiving, other), other);
   assert.equal(a.jobKind, "receiving");
+  assert.equal(a.palletId, offer.palletId);
+  assert.equal(a.locked, true);
+  assert.deepEqual(taken.body.zoneOffers, []);
   assert.notEqual(a.palletId, b.palletId);
+  for (const status of ["break", "off"]) {
+    assert.equal(
+      (
+        await call(
+          "POST",
+          `employees/${worker.user.employeeId}/shift`,
+          { ...req(), status },
+          worker,
+        )
+      ).status,
+      409,
+    );
+  }
+  assert.equal((await take(worker, offers[0])).status, 409);
+  assert.equal(
+    (
+      await call(
+        "POST",
+        "work-zones/leave",
+        { ...req(), employeeId: worker.user.employeeId },
+        worker,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        "work-zones/start",
+        {
+          ...req(),
+          employeeId: worker.user.employeeId,
+          zoneCode: code(assembly),
+          intent: "show-offer",
+        },
+        worker,
+      )
+    ).status,
+    409,
+  );
   assert.equal(taken.body.warehouse.zoneWork.length, 1);
   assert.deepEqual(taken.body.balance, before.balance);
   assert.equal((await w.getStockLedger({})).summary.eventsCount, ledger);
@@ -448,6 +494,7 @@ test("receiving offers do not assign a pallet, stale offers cannot take another 
   assert.equal(placed.balance.rawUnits, before.balance.rawUnits + 10);
   assert.equal(binding(placed).jobId, null);
   assert.equal(binding(placed).palletId, null);
+  assert.equal(binding(placed).locked, false);
   const nextOffer = placed.zoneOffers?.find(
     (row) => row.zoneId === receiving.id,
   );

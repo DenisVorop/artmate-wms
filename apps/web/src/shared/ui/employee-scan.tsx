@@ -27,6 +27,7 @@ export type EmployeeScanProps = {
   disabled?: boolean;
   error?: string | null;
   repeat?: boolean;
+  compact?: boolean;
   onProblem?: (message: string) => void;
 };
 export function EmployeeScan({
@@ -37,6 +38,7 @@ export function EmployeeScan({
   disabled = false,
   error,
   repeat = false,
+  compact = false,
   onProblem,
 }: EmployeeScanProps) {
   const activity = useEmployeeScanActivity();
@@ -278,7 +280,7 @@ export function EmployeeScan({
   };
   return (
     <form
-      className={styles.form}
+      className={compact ? `${styles.form} ${styles.compact}` : styles.form}
       onSubmit={form.handleSubmit(submitCode, () =>
         sound.current.play("error"),
       )}
@@ -311,6 +313,14 @@ export function EmployeeScan({
       <div
         id={`${id}-status`}
         className={styles.status}
+        hidden={
+          compact &&
+          !gateway.pending &&
+          !queueState.pending &&
+          !error &&
+          !localError &&
+          !form.formState.errors.code
+        }
         role={error || localError ? "alert" : "status"}
         aria-live="polite"
       >
@@ -372,7 +382,7 @@ export function EmployeeScan({
         }}
       >
         <Camera size={20} />
-        Сканировать камерой
+        {compact ? "Камера" : "Сканировать камерой"}
       </button>
       {camera && (
         <EmployeeCamera
@@ -406,7 +416,7 @@ export function EmployeeScan({
         disabled={disabled || gateway.pending}
       >
         <Keyboard size={17} />
-        {manual ? "Вернуться к сканеру" : "Ввести код вручную"}
+        {manual ? "К сканеру" : compact ? "Ввести код" : "Ввести код вручную"}
       </button>
     </form>
   );

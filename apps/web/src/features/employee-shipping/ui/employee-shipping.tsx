@@ -30,12 +30,14 @@ export function EmployeeShipping({
   onQueue,
   onProblem,
   shipmentId,
+  locked = false,
 }: {
   data: WorkspaceDto;
   onIdle: () => void;
   onQueue?: () => void;
   onProblem?: (message: string) => void;
   shipmentId?: string;
+  locked?: boolean;
 }) {
   const { user } = useSession();
   const commands = useEmployeeShipping();
@@ -201,52 +203,13 @@ export function EmployeeShipping({
             </p>
           </div>
           <div className={`glass-panel ${styles.panel}`}>
-            {history.length > 0 && (
-              <>
-                <Button
-                  variant="secondary"
-                  className={styles.historyButton}
-                  aria-haspopup="dialog"
-                  onClick={() => setHistoryShipmentId(shipment.id)}
-                >
-                  <History size={18} aria-hidden="true" />
-                  Что уже отобрано
-                </Button>
-                <Modal
-                  open={openHistory}
-                  title="Отобранные короба"
-                  description="Номера на этикетках WB. Последний скан сверху."
-                  onClose={() => setHistoryShipmentId(undefined)}
-                  onClosed={() => {
-                    section.current
-                      ?.querySelector<HTMLInputElement>(
-                        "input[data-employee-scan-input]:not(:disabled)",
-                      )
-                      ?.focus({ preventScroll: true });
-                  }}
-                >
-                  <ol className={`${styles.review} ${styles.historyList}`}>
-                    {history.map(({ boxId, skuId, number }) => (
-                      <li key={boxId}>
-                        <span>
-                          {data.skus.find((sku) => sku.id === skuId)?.name ??
-                            "Короб"}
-                        </span>
-                        <strong>{number}</strong>
-                      </li>
-                    ))}
-                  </ol>
-                </Modal>
-              </>
-            )}
             {progress && !progress.complete ? (
               <>
                 {direct && (
                   <h3>{wb ? scanLabel : "Возьмите и отсканируйте короб"}</h3>
                 )}
                 <p className={styles.progress} role="status">
-                  {progress.scanned} из {progress.total}{" "}
-                  {direct ? "отобрано" : "подтверждено"}
+                  {progress.scanned} из {progress.total} коробов
                 </p>
                 {nextBox && (
                   <>
@@ -267,30 +230,34 @@ export function EmployeeShipping({
                         </small>
                       )}
                     </div>
-                    <div className={styles.address}>
-                      <MapPin size={21} />
-                      <div>
-                        <span>Адрес</span>
-                        <strong>
-                          {nextAddress?.code ?? "Адрес недоступен"}
-                        </strong>
+                    {step !== "label" && (
+                      <div className={styles.address}>
+                        <MapPin size={21} />
+                        <div>
+                          <span>Адрес</span>
+                          <strong>
+                            {nextAddress?.code ?? "Адрес недоступен"}
+                          </strong>
+                        </div>
                       </div>
-                    </div>
-                    <LocationMapButton
-                      data={data}
-                      locationId={nextAddress?.id}
-                      routeRequest={
-                        shipment.workZoneId
-                          ? {
-                              kind: "shipping",
-                              id: shipment.id,
-                              boxId: nextBox.id,
-                            }
-                          : undefined
-                      }
-                      intent="take"
-                      contextKey={`shipping:${user?.employeeId ?? ""}:${shipment.id}:${nextBox.id}:${nextAddress?.id ?? "missing"}`}
-                    />
+                    )}
+                    {step !== "label" && (
+                      <LocationMapButton
+                        data={data}
+                        locationId={nextAddress?.id}
+                        routeRequest={
+                          shipment.workZoneId
+                            ? {
+                                kind: "shipping",
+                                id: shipment.id,
+                                boxId: nextBox.id,
+                              }
+                            : undefined
+                        }
+                        intent="take"
+                        contextKey={`shipping:${user?.employeeId ?? ""}:${shipment.id}:${nextBox.id}:${nextAddress?.id ?? "missing"}`}
+                      />
+                    )}
                   </>
                 )}
                 {issue && (
@@ -306,6 +273,7 @@ export function EmployeeShipping({
                   </p>
                 )}
                 <EmployeeScan
+                  compact={direct}
                   contextKey={`shipping:${shipment.id}`}
                   label={scanLabel}
                   pending={commands.pending}
@@ -315,7 +283,45 @@ export function EmployeeShipping({
                   onScan={(value) => commands.scan(shipment, value)}
                   onProblem={onProblem}
                 />
-                {direct && !wb && (
+                {history.length > 0 && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      className={styles.historyButton}
+                      aria-haspopup="dialog"
+                      onClick={() => setHistoryShipmentId(shipment.id)}
+                    >
+                      <History size={18} aria-hidden="true" />
+                      Что уже отобрано
+                    </Button>
+                    <Modal
+                      open={openHistory}
+                      title="Отобранные короба"
+                      description="Номера на этикетках WB. Последний скан сверху."
+                      onClose={() => setHistoryShipmentId(undefined)}
+                      onClosed={() => {
+                        section.current
+                          ?.querySelector<HTMLInputElement>(
+                            "input[data-employee-scan-input]:not(:disabled)",
+                          )
+                          ?.focus({ preventScroll: true });
+                      }}
+                    >
+                      <ol className={`${styles.review} ${styles.historyList}`}>
+                        {history.map(({ boxId, skuId, number }) => (
+                          <li key={boxId}>
+                            <span>
+                              {data.skus.find((sku) => sku.id === skuId)
+                                ?.name ?? "Короб"}
+                            </span>
+                            <strong>{number}</strong>
+                          </li>
+                        ))}
+                      </ol>
+                    </Modal>
+                  </>
+                )}
+                {direct && !wb && !locked && (
                   <Button
                     variant="ghost"
                     disabled={busy || scans.unsaved}

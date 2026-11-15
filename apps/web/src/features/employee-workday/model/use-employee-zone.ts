@@ -19,7 +19,7 @@ export function useEmployeeZone({
     lock = useRef(false);
   const start = async (
     zoneCode: string,
-    intent: "show-offer" | "take-next",
+    intent: "show-offer" | "take-job",
     offer?: ZoneOfferDto,
   ): Promise<EmployeeScanDisposition> => {
     if (!isWorkZoneScan(zoneCode)) return "pass";
@@ -57,8 +57,8 @@ export function useEmployeeZone({
     pending: commands.pending,
     intercept: (value: string) => start(value, "show-offer"),
     showOffer: (zoneId: string) => start(workZonePrefix + zoneId, "show-offer"),
-    takeNext: (offer: ZoneOfferDto) =>
-      start(workZonePrefix + offer.zoneId, "take-next", offer),
+    takeJob: (offer: ZoneOfferDto) =>
+      start(workZonePrefix + offer.zoneId, "take-job", offer),
     leave: async () => {
       if (blocked || lock.current || !user) return false;
       lock.current = true;

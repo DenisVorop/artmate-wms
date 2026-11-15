@@ -12,6 +12,7 @@ export function EmployeeReceiving({
   data,
   onIdle,
   onProblem,
+  locked = false,
 }: EmployeeHandlingProps) {
   const { employeeId, commands, execute } = useHandling();
   const { pending: scanPending } = useEmployeeScanActivity();
@@ -56,6 +57,7 @@ export function EmployeeReceiving({
       title="Размещение приёмки"
       code={receipt?.code}
       onIdle={onIdle}
+      locked={locked}
       onProblem={onProblem}
       pending={commands.pending}
     >
@@ -82,11 +84,6 @@ export function EmployeeReceiving({
         </>
       ) : (
         <>
-          <h2>{sku?.name ?? "Тематика недоступна"}</h2>
-          <p>
-            {row.quantity.toLocaleString("ru-RU")} раскрасок ·{" "}
-            {pallet?.code ?? "Паллета недоступна"}
-          </p>
           {!assignment &&
             receipt.pallets.filter((p) => !p.placedAt).length > 1 && (
               <details>
@@ -156,10 +153,11 @@ export function EmployeeReceiving({
               type="pallet"
               id={pallet.id}
               code={pallet.code}
+              summary={`${sku?.name ?? "Тематика недоступна"} · ${row.quantity.toLocaleString("ru-RU")} шт.`}
               firstCodeLabel={
                 pallet.code.startsWith("PLT-PRE-")
-                  ? "Этикетка на этой паллете"
-                  : "Наклейте свободную этикетку"
+                  ? pallet.code
+                  : "Наклейте заранее напечатанный QR паллеты и сканируйте его."
               }
               prepareFirst={(value) => {
                 commands.clearError();

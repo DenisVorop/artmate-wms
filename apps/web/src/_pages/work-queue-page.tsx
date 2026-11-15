@@ -275,7 +275,7 @@ function ManagerWorkQueue() {
 export function WorkQueuePage() {
   const { user } = useSession();
   if (!user) return <LoadingState />;
-  if (user.role === "employee") return <EmployeeWorkspace initialShowJobs />;
+  if (user.role === "employee") return <EmployeeWorkspace />;
   return (
     <WorkspaceShell>
       <ManagerWorkQueue />

@@ -378,6 +378,7 @@ export class StocktakeService {
   }
   async claimStocktake(id: string, b: D.StocktakeCommandDto) {
     return this._command("claimStocktake", id, b, async (tx, a, s, data) => {
+      this.warehouse.assertNoLockedZoneWork(s, a.employee_id);
       const { doc, rows } = data!;
       if (doc.status !== "queued" || doc.employeeId)
         throw new ConflictException("Документ уже взят в работу");

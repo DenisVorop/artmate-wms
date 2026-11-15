@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Package, Ellipsis, X } from "lucide-react";
 import { useSession } from "@/entities/session";
+import type { ZoneOfferDto } from "@/shared/api/generated/model";
 import { useWorkspace } from "@/entities/workspace";
 import { EmployeeAssembly } from "@/features/employee-assembly";
 import {
@@ -31,13 +32,11 @@ import {
   useEmployeeScanActivity,
 } from "@/shared/ui";
 import styles from "./workspace.module.css";
-import { EmployeeJobList } from "./employee-job-list";
 import { EmployeeZoneGuide } from "./employee-zone-guide";
 export function EmployeeWorkspace(props: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
   initialShipmentId?: string;
-  initialShowJobs?: boolean;
 }) {
   return (
     <EmployeeScanBoundary>
@@ -49,12 +48,10 @@ function EmployeeWorkspaceBody({
   initialMode = "zone",
   initialDocumentId,
   initialShipmentId,
-  initialShowJobs = false,
 }: {
   initialMode?: EmployeeMode;
   initialDocumentId?: string;
   initialShipmentId?: string;
-  initialShowJobs?: boolean;
 }) {
   const { user } = useSession(),
     workspace = useWorkspace(),
@@ -62,17 +59,12 @@ function EmployeeWorkspaceBody({
     auth = useAuthActions(),
     scan = useEmployeeScanActivity();
   const [menu, setMenu] = useState(false),
-    [jobsRequested, setShowJobs] = useState(initialShowJobs),
     [more, setMore] = useState(false),
     [help, setHelp] = useState(false),
     [password, setPassword] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
-    [problem, setProblem] = useState<string | null>(null),
-    [putawayStarted, setPutawayStarted] = useState<string | null>(null);
-  const [selectedShipmentId, setSelectedShipmentId] =
-    useState(initialShipmentId);
-  const workPanel = useRef<HTMLDivElement>(null);
+    [problem, setProblem] = useState<string | null>(null);
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
@@ -98,10 +90,14 @@ function EmployeeWorkspaceBody({
     if (
       previous.jobKind === "shipping" &&
       data.shipments.some(
-        (s) => s.id === previous.jobId && s.status === "shipped",
+        (s) =>
+          s.id === previous.jobId &&
+          (s.status === "shipped" ||
+            (s.boxIds.length > 0 &&
+              s.boxIds.every((id) => s.scannedBoxIds?.includes(id)))),
       )
     )
-      complete("Отгрузка завершена.");
+      complete("Отбор завершён.");
     if (
       previous.jobKind === "assembly" &&
       data.tasks.some(
@@ -115,7 +111,6 @@ function EmployeeWorkspaceBody({
         (t) => t.id === previous.jobId && t.status === "completed",
       )
     ) {
-      setPutawayStarted(null);
       complete("Короб размещён на хранение.");
     }
     if (
@@ -143,8 +138,6 @@ function EmployeeWorkspaceBody({
       setProblem(null);
       setMenu(false);
       setShowZoneScan(false);
-      setShowJobs(false);
-      setPutawayStarted(null);
       setNotice(null);
     },
   });
@@ -161,6 +154,9 @@ function EmployeeWorkspaceBody({
   if (!blocked || displayed.current.userId !== user?.id)
     displayed.current = nextDisplay;
   const { mode, zone: currentZone, key } = displayed.current;
+  const jobLocked = !!(
+    currentZone?.assignment.locked && currentZone.assignment.jobId
+  );
 
   useEffect(() => {
     if (!blocked) return;
@@ -171,7 +167,12 @@ function EmployeeWorkspaceBody({
     return () => window.removeEventListener("beforeunload", preventLoss);
   }, [blocked]);
   const choose = async (next: EmployeeMode, confirmed = false) => {
-    if (zones.pending || scan.pending || (scan.unsaved && !confirmed))
+    if (
+      jobLocked ||
+      zones.pending ||
+      scan.pending ||
+      (scan.unsaved && !confirmed)
+    )
       return false;
     if (
       (currentZone || (mode === "shipping" && priority?.mode === "shipping")) &&
@@ -187,6 +188,7 @@ function EmployeeWorkspaceBody({
   };
   const shift = async (status: "working" | "break" | "off") => {
     if (
+      jobLocked ||
       zones.pending ||
       (scan.pending > 0 && status !== "working") ||
       (scan.unsaved && status !== "working") ||
@@ -201,44 +203,29 @@ function EmployeeWorkspaceBody({
     }
   };
   const noShift = employee?.status !== "working";
-  const canViewJobs = !!currentZone && !noShift && !showZoneScan;
-  const showJobs = jobsRequested && canViewJobs;
-  useEffect(() => {
-    if (showJobs) return;
-    workPanel.current
-      ?.querySelector<HTMLInputElement>('input[name="code"]:not(:disabled)')
-      ?.focus({ preventScroll: true });
-  }, [showJobs]);
   const needsZone =
     !currentZone &&
     !priority?.carrying &&
     ["zone", "assembly", "receiving", "putaway", "shipping"].includes(mode);
-  const offer = data?.zoneOffers?.find(
-    (candidate) => candidate.zoneId === currentZone?.zone.id,
-  );
-  const putawayReadyToScan =
-    currentZone?.zone.kind === "putaway" &&
-    putawayStarted === currentZone.zone.id &&
-    !!offer;
   const zoneEntry =
-    showZoneScan ||
-    needsZone ||
-    (!!currentZone &&
-      !currentZone.assignment.jobKind &&
-      !priority?.carrying &&
-      !putawayReadyToScan);
-  const takeOffer = async () => {
-    if (!offer || !currentZone || blocked) return;
-    const taken = await zones.takeNext(offer);
-    if (taken !== "handled") {
-      void workspace.refetch();
-      return;
-    }
-    if (currentZone.zone.kind === "putaway")
-      setPutawayStarted(currentZone.zone.id);
+    !jobLocked &&
+    (showZoneScan ||
+      needsZone ||
+      (!!currentZone &&
+        !currentZone.assignment.jobKind &&
+        !priority?.carrying));
+  const takeOffer = async (offer: ZoneOfferDto) => {
+    if (currentZone?.zone.id !== offer.zoneId || blocked || jobLocked) return;
+    if ((await zones.takeJob(offer)) !== "handled") void workspace.refetch();
   };
   const intercept = async (value: string) => {
-    if (isWorkZoneScan(value)) return zones.intercept(value);
+    if (isWorkZoneScan(value)) {
+      if (jobLocked) {
+        setProblem("Сначала закончите текущее задание.");
+        return "blocked" as const;
+      }
+      return zones.intercept(value);
+    }
     if (zoneEntry) {
       setProblem("Сканируйте QR рабочей зоны.");
       return "blocked" as const;
@@ -250,7 +237,7 @@ function EmployeeWorkspaceBody({
       intercept={intercept}
       canIntercept={(value) => isWorkZoneScan(value) || zoneEntry}
     >
-      <div className={styles.surface}>
+      <div className={styles.surface} data-employee-work>
         <a className={styles.skip} href="#employee-main">
           К заданию
         </a>
@@ -259,9 +246,9 @@ function EmployeeWorkspaceBody({
             <Link
               href="/work"
               onClick={(event) => {
-                if (blocked) event.preventDefault();
+                if (blocked || jobLocked) event.preventDefault();
               }}
-              aria-disabled={blocked}
+              aria-disabled={blocked || jobLocked}
               className={styles.brand}
               aria-label="Моё рабочее место"
             >
@@ -283,29 +270,6 @@ function EmployeeWorkspaceBody({
             </button>
           </header>
           {!menu && <EmployeeDeviceControls />}
-          {canViewJobs && (
-            <nav className={styles.workViews} aria-label="Работа сотрудника">
-              <button
-                type="button"
-                aria-pressed={!showJobs}
-                onClick={() => setShowJobs(false)}
-              >
-                {currentZone?.assignment.jobKind
-                  ? "Текущая работа"
-                  : "Задания зоны"}
-              </button>
-              <button
-                type="button"
-                aria-pressed={showJobs}
-                onClick={() => {
-                  setShowJobs(true);
-                  setMenu(false);
-                }}
-              >
-                Все задания
-              </button>
-            </nav>
-          )}
           {menu && (
             <section
               id="employee-menu"
@@ -325,7 +289,7 @@ function EmployeeWorkspaceBody({
                   Сначала сохраните подсчёт или вернитесь кнопкой «К работе».
                 </p>
               )}
-              {noShift && blocked && (
+              {noShift && blocked && !jobLocked && (
                 <button
                   disabled={day.pending || zones.pending}
                   onClick={() => void shift("working")}
@@ -333,7 +297,7 @@ function EmployeeWorkspaceBody({
                   Возобновить смену
                 </button>
               )}
-              {!noShift && (
+              {!noShift && !jobLocked && (
                 <>
                   <button
                     onClick={() => void shift("break")}
@@ -352,10 +316,12 @@ function EmployeeWorkspaceBody({
               {priority?.carrying && (
                 <p>Сначала поставьте переносимый товар на адрес.</p>
               )}
-              <button onClick={() => setMore(!more)} aria-expanded={more}>
-                Другие работы
-              </button>
-              {more && (
+              {!jobLocked && (
+                <button onClick={() => setMore(!more)} aria-expanded={more}>
+                  Другие работы
+                </button>
+              )}
+              {more && !jobLocked && (
                 <div className={styles.submenu}>
                   {(
                     [
@@ -392,33 +358,40 @@ function EmployeeWorkspaceBody({
                     Если товар не совпадает или возникла другая проблема —
                     позовите руководителя.
                   </p>
-                  <Link
-                    href="/warehouse"
-                    aria-disabled={blocked}
-                    onClick={(event) => {
-                      if (blocked) event.preventDefault();
-                    }}
-                  >
-                    Карта склада
-                  </Link>
-                  <Link
-                    href="/performance"
-                    aria-disabled={blocked}
-                    onClick={(event) => {
-                      if (blocked) event.preventDefault();
-                    }}
-                  >
-                    Мой результат
-                  </Link>
-                  <button disabled={blocked} onClick={() => setPassword(true)}>
-                    Сменить пароль
-                  </button>
-                  <button
-                    disabled={auth.pending || blocked}
-                    onClick={() => void auth.logout()}
-                  >
-                    Выйти из учётной записи
-                  </button>
+                  {!jobLocked && (
+                    <>
+                      <Link
+                        href="/warehouse"
+                        aria-disabled={blocked}
+                        onClick={(event) => {
+                          if (blocked) event.preventDefault();
+                        }}
+                      >
+                        Карта склада
+                      </Link>
+                      <Link
+                        href="/performance"
+                        aria-disabled={blocked}
+                        onClick={(event) => {
+                          if (blocked) event.preventDefault();
+                        }}
+                      >
+                        Мой результат
+                      </Link>
+                      <button
+                        disabled={blocked}
+                        onClick={() => setPassword(true)}
+                      >
+                        Сменить пароль
+                      </button>
+                      <button
+                        disabled={auth.pending || blocked || jobLocked}
+                        onClick={() => void auth.logout()}
+                      >
+                        Выйти из учётной записи
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
               {day.error && (
@@ -445,48 +418,7 @@ function EmployeeWorkspaceBody({
                 </button>
               </div>
             )}
-            {showJobs && data && employee && (
-              <EmployeeJobList
-                data={data}
-                employeeId={employee.id}
-                onResume={() => setShowJobs(false)}
-                canOpenShipping={
-                  !blocked &&
-                  !noShift &&
-                  (!priority || priority.mode === "shipping")
-                }
-                shippingZoneOpen={currentZone?.zone.kind === "shipping"}
-                onOpenShipping={(shipmentId) => {
-                  setSelectedShipmentId(shipmentId);
-                  if (currentZone?.zone.kind === "shipping") {
-                    setShowZoneScan(false);
-                    setShowJobs(false);
-                  } else
-                    void choose("shipping").then((opened) => {
-                      if (opened) setShowJobs(false);
-                    });
-                }}
-                canOpenMovements={
-                  !blocked &&
-                  !noShift &&
-                  !zones.pending &&
-                  (!priority || priority.mode === "movements")
-                }
-                onOpenMovements={() => {
-                  if (
-                    blocked ||
-                    noShift ||
-                    zones.pending ||
-                    (priority && priority.mode !== "movements")
-                  )
-                    return;
-                  void choose("movements").then((opened) => {
-                    if (opened) setShowJobs(false);
-                  });
-                }}
-              />
-            )}
-            <div ref={workPanel} hidden={showJobs && !!data && !!employee}>
+            <div>
               {mode !== "shift" && (
                 <h1 className={styles.srOnly}>Моё рабочее место</h1>
               )}
@@ -550,17 +482,17 @@ function EmployeeWorkspaceBody({
                 />
               ) : (
                 <>
-                  {currentZone && !showZoneScan && (
+                  {currentZone && !zoneEntry && (
                     <div className={styles.zoneHeading}>
-                      <div>
-                        <strong>{currentZone.zone.name}</strong>
-                      </div>
-                      <button
-                        disabled={blocked}
-                        onClick={() => setShowZoneScan((value) => !value)}
-                      >
-                        Сменить зону
-                      </button>
+                      <strong>{currentZone.zone.name}</strong>
+                      {!jobLocked && (
+                        <button
+                          disabled={blocked}
+                          onClick={() => setShowZoneScan(true)}
+                        >
+                          Сменить зону
+                        </button>
+                      )}
                     </div>
                   )}
                   {currentZone && showZoneScan && (
@@ -585,11 +517,11 @@ function EmployeeWorkspaceBody({
                     <EmployeeZoneGuide
                       data={data}
                       zone={showZoneScan ? undefined : currentZone?.zone}
-                      offer={showZoneScan ? undefined : offer}
                       blocked={blocked}
                       failed={workspace.isError}
                       onRetry={() => void workspace.refetch()}
-                      onTake={() => void takeOffer()}
+                      onTake={(offer) => void takeOffer(offer)}
+                      onClearZone={() => void choose("zone")}
                       onProblem={setProblem}
                     />
                   ) : (
@@ -598,6 +530,7 @@ function EmployeeWorkspaceBody({
                         <EmployeeAssembly
                           key={key}
                           data={data}
+                          locked={jobLocked}
                           onIdle={() => void choose("putaway")}
                           onProblem={setProblem}
                         />
@@ -606,6 +539,7 @@ function EmployeeWorkspaceBody({
                         <EmployeePutaway
                           key={key}
                           data={data}
+                          locked={jobLocked}
                           onIdle={() => void choose("assembly")}
                           onProblem={setProblem}
                         />
@@ -614,6 +548,7 @@ function EmployeeWorkspaceBody({
                         <EmployeeReceiving
                           key={key}
                           data={data}
+                          locked={jobLocked}
                           onIdle={() => void choose("assembly")}
                           onProblem={setProblem}
                         />
@@ -629,7 +564,12 @@ function EmployeeWorkspaceBody({
                         <EmployeeShipping
                           key={key}
                           data={data}
-                          shipmentId={selectedShipmentId}
+                          locked={jobLocked}
+                          shipmentId={
+                            currentZone?.assignment.jobKind === "shipping"
+                              ? (currentZone.assignment.jobId ?? undefined)
+                              : initialShipmentId
+                          }
                           onQueue={() => {
                             if (currentZone)
                               void zones.showOffer(currentZone.zone.id);

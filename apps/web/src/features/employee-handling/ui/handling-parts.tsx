@@ -17,6 +17,7 @@ export function HandlingFrame({
   onIdle,
   carrying = false,
   pending = false,
+  locked = false,
   onProblem,
 }: {
   title: string;
@@ -25,15 +26,16 @@ export function HandlingFrame({
   onIdle: () => void;
   carrying?: boolean;
   pending?: boolean;
+  locked?: boolean;
   onProblem?: (message: string) => void;
 }) {
   const { pending: scanPending } = useEmployeeScanActivity();
   return (
     <section className={`glass-panel ${styles.panel}`} aria-label={title}>
-      <span className={styles.eyebrow}>{title}</span>
+      {!locked && <span className={styles.eyebrow}>{title}</span>}
       {children}
       <div className={styles.actions}>
-        {!carrying && (
+        {!locked && !carrying && (
           <Button
             variant="ghost"
             disabled={pending || scanPending > 0}
@@ -57,7 +59,7 @@ export function HandlingFrame({
           </Button>
         )}
       </div>
-      {carrying && (
+      {!locked && carrying && (
         <p className={styles.secondary}>
           Груз уже у вас. Подтвердите размещение, прежде чем вернуться к другим
           заданиям.
@@ -83,6 +85,7 @@ export function PairScan({
   onProblem,
   prepareFirst,
   firstCodeLabel,
+  summary,
   addressDisabled = false,
 }: {
   contextKey: string;
@@ -103,6 +106,7 @@ export function PairScan({
   onConfirm: (code: string, address: string) => Promise<boolean>;
   prepareFirst?: (value: string) => Promise<FirstScanDecision>;
   firstCodeLabel?: string;
+  summary?: string;
   addressDisabled?: boolean;
   onProblem?: (message: string) => void;
 }) {
@@ -114,45 +118,36 @@ export function PairScan({
   return (
     <>
       <div className={styles.instruction}>
+        <span className={styles.eyebrow}>
+          {scan.first ? "Шаг 2 из 2" : "Шаг 1 из 2"}
+        </span>
         <h3>
           {scan.first
-            ? "Сканируйте адрес"
+            ? phase === "take"
+              ? "Сканируйте адрес"
+              : "Поставьте груз и сканируйте адрес"
             : type === "box"
               ? "Сканируйте короб"
               : "Сканируйте паллету"}
         </h3>
         {scan.first ? (
-          <>
-            <strong className={styles.destinationCode}>{addressCode}</strong>
-            <p>
-              {phase === "take"
-                ? "Подтвердите, откуда забираете груз."
-                : "Поставьте груз сюда и подтвердите QR адреса."}
-            </p>
-            <p className={styles.objectCode}>
-              {type === "box" ? "Короб" : "Паллета"} {code}
-            </p>
-          </>
+          <strong className={styles.destinationCode}>{addressCode}</strong>
         ) : (
-          <>
-            <strong className={styles.palletCode}>
-              {firstCodeLabel ?? code}
-            </strong>
-            <p>
-              {phase === "take" ? "Где взять" : "Куда поставить"}:{" "}
-              <b>{addressCode}</b>
-            </p>
-          </>
+          <p>{firstCodeLabel ?? code}</p>
         )}
+        {summary && <p>{summary}</p>}
       </div>
-      <LocationMapButton
-        data={data}
-        locationId={addressId}
-        routeRequest={routeRequest}
-        intent={phase}
-        contextKey={`${contextKey}:${scan.first ? "address" : "object"}:${addressId ?? "missing"}`}
-      />
+      {(scan.first || phase === "take") && (
+        <LocationMapButton
+          data={data}
+          locationId={addressId}
+          routeRequest={routeRequest}
+          intent={phase}
+          contextKey={`${contextKey}:${scan.first ? "address" : "object"}:${addressId ?? "missing"}`}
+        />
+      )}
       <EmployeeScan
+        compact
         contextKey={`${contextKey}:${scan.first ? "address" : "object"}`}
         label={
           scan.first

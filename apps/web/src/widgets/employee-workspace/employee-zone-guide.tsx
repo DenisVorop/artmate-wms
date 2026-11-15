@@ -6,118 +6,204 @@ import type {
 import { Button, EmployeeScan } from "@/shared/ui";
 import styles from "./workspace.module.css";
 
-function describeOffer(
+function offerDetails(
   data: WorkspaceDto,
   zone: WorkZoneDto,
   offer: ZoneOfferDto,
 ) {
   if (zone.kind === "assembly") {
-    const task = data.tasks.find((t) => t.id === offer.jobId);
+    const task = data.tasks.find((row) => row.id === offer.jobId);
     if (!task) return null;
-    const sku = data.skus.find((s) => s.id === task.skuId);
-    const product = sku ? ` «${sku.name}»` : "";
-    if (offer.resume) return `Продолжить сборку${product}`;
-    const boxes = task.autoPurpose ? 1 : task.boxesTarget - task.boxesCompleted;
-    return boxes === 1
-      ? `Собрать 1 короб${product}`
-      : `Сборка${product} · коробов: ${boxes}`;
+    const name = data.skus.find((sku) => sku.id === task.skuId)?.name;
+    const boxes =
+      task.autoPurpose && !offer.resume
+        ? 1
+        : task.boxesTarget - task.boxesCompleted;
+    return {
+      title: name ? `Собрать «${name}»` : task.code,
+      note:
+        boxes === 1
+          ? `1 короб · ${task.unitsPerBox} шт.`
+          : `${boxes} коробов · по ${task.unitsPerBox} шт.`,
+    };
   }
   if (zone.kind === "receiving") {
     const pallet = data.pallets.find((row) => row.id === offer.palletId);
-    return pallet ? `Разместить паллету ${pallet.code}` : null;
+    const row = data.receipts
+      .find((receipt) => receipt.id === offer.jobId)
+      ?.pallets.find((row) => row.palletId === offer.palletId);
+    const name = data.skus.find((sku) => sku.id === row?.skuId)?.name;
+    return pallet && row
+      ? {
+          title: name ? `Разместить паллету «${name}»` : "Разместить паллету",
+          note: [pallet.code, `${row.quantity.toLocaleString("ru-RU")} шт.`]
+            .filter(Boolean)
+            .join(" · "),
+        }
+      : null;
   }
-  if (zone.kind === "putaway") return "Разместить 1 короб";
+  if (zone.kind === "putaway") {
+    if (offer.jobId === zone.id)
+      return {
+        title: "Разместить короб",
+        note: "Подойдёт любой готовый короб",
+      };
+    const task = data.putawayTasks.find((row) => row.id === offer.jobId);
+    const box = data.boxes.find((row) => row.id === task?.boxId);
+    return box
+      ? {
+          title: `Разместить короб ${box.code}`,
+          note: data.skus.find((sku) => sku.id === task?.skuId)?.name,
+        }
+      : null;
+  }
   const shipment = data.shipments.find((row) => row.id === offer.jobId);
   if (!shipment) return null;
-  const name = shipment.wb ? `WB № ${shipment.wb.supplyId}` : shipment.code;
-  return offer.resume ? `Продолжить отбор ${name}` : `Собрать поставку ${name}`;
+  return {
+    title: shipment.wb
+      ? `Собрать поставку WB № ${shipment.wb.supplyId}`
+      : `Собрать отгрузку ${shipment.code}`,
+    note: `Коробов к отбору: ${shipment.boxesRequested}`,
+  };
 }
 
 export function EmployeeZoneGuide({
   data,
   zone,
-  offer,
   blocked,
   failed,
   onRetry,
   onTake,
+  onClearZone,
   onProblem,
 }: {
   data: WorkspaceDto;
   zone?: WorkZoneDto;
-  offer?: ZoneOfferDto;
   blocked: boolean;
   failed: boolean;
   onRetry: () => void;
-  onTake: () => void;
+  onTake: (offer: ZoneOfferDto) => void;
+  onClearZone: () => void;
   onProblem: (message: string) => void;
 }) {
   const zones = data.warehouse.workZones.filter((row) => !row.archived);
   const offers = data.zoneOffers ?? [];
-  const available = new Set(offers.map((row) => row.zoneId));
-  const eligible = zones.filter(
-    (row) => row.id !== zone?.id && available.has(row.id),
-  );
-  const started = new Set(
-    offers.filter((row) => row.inProgress).map((row) => row.zoneId),
-  );
-  const full = data.assemblyPressure?.level === "full";
-  const next =
-    eligible.find((row) => started.has(row.id)) ??
-    (full ? eligible.find((row) => row.kind === "putaway") : undefined) ??
-    eligible.find((row) => row.kind === "receiving") ??
-    eligible.find((row) => row.kind === "shipping") ??
-    eligible[0];
-  const job = zone && offer ? describeOffer(data, zone, offer) : null;
-
-  if (failed || (zones.length > 0 && !data.zoneOffers))
-    return (
-      <section className={styles.zoneGuide}>
-        <h2>{failed ? "Нет связи со складом" : "Проверяем задания…"}</h2>
-        {failed && <Button onClick={onRetry}>Повторить</Button>}
-      </section>
+  const groups = (zone ? [zone] : zones).map((item) => ({
+    zone: item,
+    jobs: offers
+      .filter((offer) => offer.zoneId === item.id)
+      .flatMap((offer) => {
+        const details = offerDetails(data, item, offer);
+        return details ? [{ ...details, offer }] : [];
+      }),
+  }));
+  const otherZone =
+    zone &&
+    zones.find(
+      (row) =>
+        row.id !== zone.id && offers.some((offer) => offer.zoneId === row.id),
     );
+  const loading = zones.length > 0 && !data.zoneOffers;
 
   return (
-    <section
-      className={styles.zoneGuide}
-      aria-label={job ? "Задание зоны" : "Где есть работа"}
-    >
-      {zone && !job && (
-        <p className={styles.zoneEmpty}>Здесь пока нет заданий</p>
-      )}
-      <h2 aria-live="polite">
-        {job ??
-          (next ? `Перейдите в зону «${next.name}»` : "Сейчас заданий нет")}
-      </h2>
-      {job ? (
-        <Button disabled={blocked} onClick={onTake}>
-          {offer?.resume ? "Продолжить" : "Взять"}
-        </Button>
-      ) : (
+    <section className={styles.zoneGuide} aria-label="Рабочие задания">
+      <div className={styles.zoneScanner}>
+        <h2>Сканируйте QR зоны</h2>
+        <EmployeeScan
+          compact
+          contextKey={`zone-guide:${zone?.id ?? "entrance"}`}
+          label="Сканируйте QR зоны"
+          disabled={blocked}
+          onScan={async () => false}
+          onProblem={onProblem}
+        />
+      </div>
+      {failed || loading ? (
         <>
-          <EmployeeScan
-            contextKey={`zone-guide:${zone?.id ?? "entrance"}`}
-            label="Сканируйте QR зоны"
-            disabled={blocked}
-            onScan={async () => false}
-            onProblem={onProblem}
-          />
-          {zones.some((row) => row.id !== next?.id && row.id !== zone?.id) && (
-            <ul className={styles.zoneDirectory} aria-label="Другие зоны">
-              {zones
-                .filter((row) => row.id !== next?.id && row.id !== zone?.id)
-                .map((row) => (
-                  <li key={row.id}>
-                    <span>{row.name}</span>
-                    <span>
-                      {available.has(row.id) ? "Есть работа" : "Заданий нет"}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          )}
+          <p role="status">
+            {failed ? "Нет связи со складом" : "Загружаем задания…"}
+          </p>
+          {failed && <Button onClick={onRetry}>Повторить</Button>}
         </>
+      ) : (
+        <section aria-labelledby="zone-jobs-title">
+          <div className={styles.zoneTableHeading}>
+            <h2 id="zone-jobs-title">
+              {zone ? zone.name : "Задания по зонам"}
+            </h2>
+            {zone && (
+              <Button
+                variant="secondary"
+                disabled={blocked}
+                onClick={onClearZone}
+              >
+                Все зоны
+              </Button>
+            )}
+          </div>
+          {!zone && groups.some(({ jobs }) => jobs.length > 0) && (
+            <p className={styles.zoneTableHint} id="zone-jobs-hint">
+              Чтобы взять задание, сканируйте QR его зоны.
+            </p>
+          )}
+          {groups.length === 0 ? (
+            <p>Рабочих зон пока нет.</p>
+          ) : (
+            <table
+              className={styles.zoneTable}
+              aria-labelledby="zone-jobs-title"
+            >
+              <thead className={styles.srOnly}>
+                <tr>
+                  <th scope="col">Задание</th>
+                  <th scope="col">Действие</th>
+                </tr>
+              </thead>
+              {groups.map(({ zone: group, jobs }) => (
+                <tbody key={group.id} aria-label={group.name}>
+                  {!zone && (
+                    <tr className={styles.zoneGroup}>
+                      <th scope="rowgroup" colSpan={2}>
+                        {group.name}
+                      </th>
+                    </tr>
+                  )}
+                  {jobs.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className={styles.zoneTableHint}>
+                        Заданий нет
+                      </td>
+                    </tr>
+                  ) : (
+                    jobs.map(({ title, note, offer }) => (
+                      <tr key={`${offer.jobId}:${offer.palletId ?? ""}`}>
+                        <td>
+                          <strong>{title}</strong>
+                          {note && <small>{note}</small>}
+                        </td>
+                        <td>
+                          <Button
+                            size="sm"
+                            disabled={!zone || blocked}
+                            aria-label={`${offer.resume ? "Продолжить" : "Взять"}: ${title}`}
+                            onClick={() => onTake(offer)}
+                          >
+                            {offer.resume ? "Продолжить" : "Взять"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              ))}
+            </table>
+          )}
+          {zone && groups[0]?.jobs.length === 0 && otherZone && (
+            <p className={styles.zoneTableHint}>
+              Есть работа в зоне «{otherZone.name}».
+            </p>
+          )}
+        </section>
       )}
     </section>
   );

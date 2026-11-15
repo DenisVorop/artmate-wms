@@ -258,3 +258,21 @@
     transition: none;
   }
 }
+
+.taskContext {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.action h3 {
+  font-size: clamp(25px, 7vw, 34px);
+  font-weight: 650;
+  line-height: 1.12;
+}
+.action > .sourceAddress {
+  font-family: var(--font-mono), monospace;
+  font-size: 30px;
+  color: var(--accent);
+  line-height: 1.12;
+}
