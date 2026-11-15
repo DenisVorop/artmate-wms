@@ -64,7 +64,13 @@ function ModelComparison({ source }: { source: ForecastSourceDto }) {
     </details>
   );
 }
-function ForecastSources({ row }: { row: ForecastRowDto }) {
+function ForecastSources({
+  row,
+  preview = false,
+}: {
+  row: ForecastRowDto;
+  preview?: boolean;
+}) {
   const window = useChartWindow(row.sources);
   return (
     <>
@@ -118,7 +124,7 @@ function ForecastSources({ row }: { row: ForecastRowDto }) {
         <p className={styles.help}>
           Период меняет только графики. «Месяц», «3 месяца» и «Год» включают
           ближайшие 30 дней прогноза. За прошедшие дни сохранённый прогноз
-          показан рядом с реальными продажами.
+          показан рядом с фактом.
         </p>
       </fieldset>
       {!window.valid ? (
@@ -143,7 +149,7 @@ function ForecastSources({ row }: { row: ForecastRowDto }) {
                 </div>
               </header>
               <ForecastChart source={source} range={window.range} />
-              <ModelComparison source={source} />
+              {!preview && <ModelComparison source={source} />}
             </article>
           ))}
         </div>
@@ -312,19 +318,11 @@ function ForecastContent() {
               )}
               {row ? (
                 <>
-                  <label className={`field ${styles.skuSelect}`}>
-                    Тематика
-                    <Select
-                      value={row.skuId}
-                      onChange={(event) => setSelected(event.target.value)}
-                    >
-                      {forecast.data.rows.map((row) => (
-                        <option key={row.skuId} value={row.skuId}>
-                          {row.skuName}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
+                  <ForecastProductSelect
+                    rows={forecast.data.rows}
+                    selected={row.skuId}
+                    onSelect={setSelected}
+                  />
                   <div className={styles.forecastSummary}>
                     <div>
                       <h3>{row.methodLabel}</h3>
@@ -367,8 +365,68 @@ function ForecastContent() {
     </div>
   );
 }
-export function ForecastingFeature() {
+function ForecastProductSelect({
+  rows,
+  selected,
+  onSelect,
+}: {
+  rows: ForecastRowDto[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <label className={`field ${styles.skuSelect}`}>
+      Тематика
+      <Select
+        value={selected}
+        onChange={(event) => onSelect(event.target.value)}
+      >
+        {rows.map((row) => (
+          <option key={row.skuId} value={row.skuId}>
+            {row.skuName}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+}
+
+function ForecastPreview({ rows }: { rows: ForecastRowDto[] }) {
+  const [selected, setSelected] = useState("");
+  const row = rows.find((item) => item.skuId === selected) ?? rows[0];
+  if (!row) return null;
+  return (
+    <div className={styles.content}>
+      <section aria-label="Демонстрационный прогноз продаж">
+        <ForecastProductSelect
+          rows={rows}
+          selected={row.skuId}
+          onSelect={setSelected}
+        />
+        <ForecastSources row={row} preview />
+      </section>
+    </div>
+  );
+}
+
+export function ForecastingFeature({
+  preview,
+}: {
+  preview?: ForecastRowDto[];
+}) {
   const [open, setOpen] = useState(false);
+  if (preview) {
+    return (
+      <section
+        id="planning-forecast"
+        className={`glass-panel ${styles.feature} ${styles.preview}`}
+        aria-labelledby="planning-forecast-title"
+      >
+        <h2 id="planning-forecast-title">Графики прогноза</h2>
+        <ForecastPreview rows={preview} />
+      </section>
+    );
+  }
   return (
     <details
       className={`glass-panel ${styles.feature}`}

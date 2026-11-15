@@ -2,6 +2,7 @@ import type {
   MarketplacePlanDto,
   MarketplacePlanRowDto,
 } from "@/entities/assembly-plan";
+import type { ForecastRowDto, ForecastSourceDto } from "@/entities/forecast";
 
 const dispatchDates = ["2026-11-21", "2026-11-28", "2026-12-05", "2026-12-12"];
 const salesWeeks = [
@@ -217,11 +218,14 @@ function demoRow(product: DemoProduct): MarketplacePlanRowDto {
       })),
     };
   });
+  const demandWeights = product.scenario
+    ? [0, 5, 11, 18, 27, 30]
+    : [0, 7, 14, 21, 28, 30];
   const weeklySales = salesWeeks.map(([from, to], index) => {
     const estimates = providers.map((provider, providerIndex) => {
       const total = product.sales[providerIndex] ?? 0;
-      const prev = Math.min(index * 7, 30);
-      const next = Math.min((index + 1) * 7, 30);
+      const prev = demandWeights[index]!;
+      const next = demandWeights[index + 1]!;
       return {
         provider,
         units:
@@ -349,3 +353,94 @@ export const demoPlan: MarketplacePlanDto = {
   rows: products.map(demoRow),
   warnings: [],
 };
+
+const forecastFrom = salesWeeks[0][0];
+const historyDays = 90;
+const dayMs = 86_400_000;
+const weekdayWeights = [0.83, 0.94, 1.04, 0.97, 1.08, 1.26, 0.88];
+
+function shiftDay(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * dayMs)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function demoForecastSource(
+  row: MarketplacePlanRowDto,
+  source: MarketplacePlanRowDto["providers"][number],
+  productIndex: number,
+  providerIndex: number,
+): ForecastSourceDto {
+  const dailyLevel = source.averageDailyUnits;
+  const history = Array.from({ length: historyDays }, (_, index) => {
+    const date = shiftDay(forecastFrom, index - historyDays);
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const variation =
+      weekdayWeights[weekday]! +
+      0.19 * Math.sin(index * 1.45 + productIndex + providerIndex);
+    const season = source.scenario ? 0.48 + (index / historyDays) * 0.52 : 0.86;
+    const expected = Math.round(dailyLevel * weekdayWeights[weekday]! * season);
+    return {
+      date,
+      actual: Math.max(0, Math.round(dailyLevel * variation * season)),
+      predicted: index >= historyDays - 14 ? expected : null,
+      ...(index >= historyDays - 14
+        ? { predictedAt: `${shiftDay(date, -7)}T06:00:00Z` }
+        : {}),
+    };
+  });
+  const future = row.weeklySales.flatMap((week) => {
+    const providerWeek = week.providers.find(
+      (item) => item.provider === source.provider,
+    );
+    const units = providerWeek?.units ?? 0;
+    const days =
+      Math.round((Date.parse(week.to) - Date.parse(week.from)) / dayMs) + 1;
+    const weights = weekdayWeights.slice(0, days);
+    const totalWeight = sum(weights);
+    let cumulative = 0;
+    return weights.map((weight, index) => {
+      const previous = Math.round((units * cumulative) / totalWeight);
+      cumulative += weight;
+      return {
+        date: shiftDay(week.from, index),
+        actual: null,
+        predicted: Math.round((units * cumulative) / totalWeight) - previous,
+        predictedAt: demoPlan.generatedAt,
+      };
+    });
+  });
+  return {
+    provider: source.provider,
+    forecastFrom,
+    metricLabel: "Заказы за вычетом отмен",
+    modelLabel: source.scenario ? "Сезонный сценарий" : "Недавний спрос",
+    predictedUnits: source.expectedSalesUnits30,
+    historyDays,
+    candidates: [],
+    points: [...history, ...future],
+  };
+}
+
+export const demoForecastRows: ForecastRowDto[] = [...demoPlan.rows]
+  .sort((left, right) => right.expectedSalesUnits30 - left.expectedSalesUnits30)
+  .map((row, index) => {
+    const seasonal = row.providers.some((source) => source.scenario);
+    return {
+      skuId: row.skuId,
+      skuName: row.skuName,
+      minimumBoxes: 0,
+      seasonalityEnabled: seasonal,
+      seasonalityApplied: seasonal,
+      targetUnits: row.targetUnits,
+      methodLabel: seasonal ? "Сезонный сценарий" : "Недавний спрос",
+      confidenceLabel: "Демоданные",
+      message: "",
+      historyFrom: shiftDay(forecastFrom, -historyDays),
+      historyTo: shiftDay(forecastFrom, -1),
+      knownDays: historyDays,
+      sources: row.providers.map((source, providerIndex) =>
+        demoForecastSource(row, source, index, providerIndex),
+      ),
+    };
+  });

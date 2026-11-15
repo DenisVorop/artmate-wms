@@ -3,6 +3,17 @@
   margin-top: 16px;
   min-width: 0;
 }
+.preview {
+  scroll-margin-top: 80px;
+}
+.preview > h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.preview > .content {
+  margin-top: 12px;
+  padding-top: 14px;
+}
 .summary {
   display: flex;
   align-items: center;
@@ -201,6 +212,8 @@
   font-variant-numeric: tabular-nums;
 }
 .chart {
+  --chart-actual: #164575;
+  --chart-forecast: #ad4800;
   margin: 0;
   min-width: 0;
 }
@@ -216,14 +229,13 @@
 .legendForecast:before {
   content: "";
   display: inline-block;
-  width: 14px;
-  height: 2px;
+  width: 24px;
   margin-right: 6px;
   vertical-align: middle;
-  background: var(--muted);
+  border-top: 3px solid var(--chart-actual);
 }
 .legendForecast:before {
-  background: var(--accent);
+  border-top: 3px dashed var(--chart-forecast);
 }
 .chart svg {
   display: block;
@@ -235,17 +247,17 @@
 .actualLine,
 .predictedLine {
   fill: none;
-  stroke-width: 2;
+  stroke-width: 2.6;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 .actualLine {
-  stroke: var(--muted);
+  stroke: var(--chart-actual);
 }
 .predictedLine {
-  stroke: var(--accent);
-  stroke-dasharray: 5 4;
+  stroke: var(--chart-forecast);
+  stroke-dasharray: 7 5;
 }
 .gridLine {
   stroke: var(--border);
@@ -388,8 +400,11 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.actualTotal {
+  color: var(--chart-actual);
+}
 .forecastTotal {
-  color: var(--accent);
+  color: var(--chart-forecast);
 }
 .chartGrid {
   display: grid;
@@ -425,11 +440,11 @@
   outline-offset: 4px;
 }
 .forecastArea {
-  fill: var(--accent);
+  fill: var(--chart-forecast);
   fill-opacity: 0.055;
 }
 .forecastBoundary {
-  stroke: var(--accent);
+  stroke: var(--chart-forecast);
   stroke-opacity: 0.35;
   stroke-dasharray: 3 5;
   vector-effect: non-scaling-stroke;
@@ -451,10 +466,10 @@
   pointer-events: none;
 }
 .actualPoint {
-  background: var(--text);
+  background: var(--chart-actual);
 }
 .forecastPoint {
-  background: var(--accent);
+  background: var(--chart-forecast);
 }
 .chartTooltip {
   position: absolute;

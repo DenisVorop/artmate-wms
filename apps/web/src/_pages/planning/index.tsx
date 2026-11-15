@@ -3,13 +3,15 @@ import Link from "next/link";
 import { useSession } from "@/entities/session";
 import { getAuthEpoch, getAuthIdentityScope } from "@/shared/api/auth-memory";
 import { ForecastingFeature } from "@/features/forecasting";
+import type { ForecastRowDto } from "@/entities/forecast";
 import type { MarketplacePlanDto } from "@/entities/assembly-plan";
 import { AssemblyPlanningFeature } from "@/features/assembly-planning";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
 import { LoadingState } from "@/shared/ui";
 export function PlanningPage({
   preview,
-}: { preview?: MarketplacePlanDto } = {}) {
+  forecastPreview,
+}: { preview?: MarketplacePlanDto; forecastPreview?: ForecastRowDto[] } = {}) {
   const session = useSession();
   if (session.isPending || !session.user) return <LoadingState />;
   return (
@@ -17,7 +19,7 @@ export function PlanningPage({
       {session.isManager ? (
         <div key={`${getAuthIdentityScope()}:${getAuthEpoch()}`}>
           <AssemblyPlanningFeature preview={preview} />
-          {!preview && <ForecastingFeature />}
+          <ForecastingFeature preview={forecastPreview} />
         </div>
       ) : (
         <section className="glass-panel ops-panel">

@@ -92,8 +92,11 @@ export function AssemblyPlanningFeature({
         )}
       </header>
       {preview ? (
-        <p className={styles.help} role="status">
-          Демоданные WB и Ozon
+        <p className={styles.help}>
+          Демоданные WB и Ozon{" · "}
+          <a className={styles.textLink} href="#planning-forecast">
+            К графикам прогноза
+          </a>
         </p>
       ) : (
         plan &&

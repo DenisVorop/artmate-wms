@@ -3,6 +3,7 @@ import { PlanningPage } from "@/pages/planning";
 
 export default async function Page() {
   if (process.env.NODE_ENV !== "development") notFound();
-  const { demoPlan } = await import("@/pages/planning/demo-plan");
-  return <PlanningPage preview={demoPlan} />;
+  const { demoPlan, demoForecastRows } =
+    await import("@/pages/planning/demo-plan");
+  return <PlanningPage preview={demoPlan} forecastPreview={demoForecastRows} />;
 }

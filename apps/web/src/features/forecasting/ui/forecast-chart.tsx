@@ -29,7 +29,7 @@ export function ForecastChart({
   return (
     <figure className={styles.chart}>
       <div className={styles.chartTotals}>
-        <span>
+        <span className={styles.actualTotal}>
           <small>Факт · {totals.actualDays} дн.</small>
           <strong>
             {totals.actual === null
@@ -172,7 +172,9 @@ export function ForecastChart({
                 <strong>{shortDate(point.date)}</strong>
                 <span>
                   <span>Факт</span>
-                  <b>{chartActualValue(point, source.forecastFrom)}</b>
+                  <b className={styles.actualTotal}>
+                    {chartActualValue(point, source.forecastFrom)}
+                  </b>
                 </span>
                 {point.predictedAt && (
                   <small>
