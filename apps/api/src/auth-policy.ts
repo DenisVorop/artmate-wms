@@ -267,15 +267,114 @@ export async function authorizeWarehouse(
       throw new ForbiddenException("Для вывоза паллеты начните свою смену");
   }
   if (state) {
-    if (op === "takeAnyPutawayBox") {
+    const requireZone = (kind: string, message: string) => {
       const binding = state.warehouse.zoneWork.find(
         (w) => w.employeeId === account.employee_id,
       );
       const zone = state.warehouse.workZones.find(
         (z) => z.id === binding?.zoneId,
       );
-      if (!zone || zone.archived || zone.kind !== "putaway")
-        throw new ForbiddenException("Сначала отсканируйте QR зоны размещения");
+      if (!zone || zone.archived || zone.kind !== kind)
+        throw new ForbiddenException(message);
+      return { zone, binding };
+    };
+    if (
+      ["claimShipmentWork", "scanShipmentWork", "finishShipmentWork"].includes(
+        op,
+      )
+    ) {
+      const { zone, binding } = requireZone(
+        "shipping",
+        "Сначала отсканируйте QR зоны отгрузки",
+      );
+      const shipment = state.shipments.find((x) => x.id === id);
+      if (shipment?.workZoneId && shipment.workZoneId !== zone.id)
+        throw new ForbiddenException(
+          "Отгрузка относится к другой рабочей зоне",
+        );
+      if (
+        op !== "claimShipmentWork" &&
+        (binding?.jobKind !== "shipping" || binding.jobId !== id)
+      )
+        throw new ForbiddenException(
+          "Сначала откройте отбор этой поставки в зоне отгрузки",
+        );
+    }
+    if (
+      ["placeReceiptPallet", "bindReceiptPalletLabel"].includes(op) &&
+      state.warehouse.zoneWork.some(
+        (w) =>
+          w.jobKind === "receiving" &&
+          w.jobId === id &&
+          w.palletId === operation.split("/")[2] &&
+          w.employeeId !== account.employee_id,
+      )
+    )
+      throw new ForbiddenException("Паллета приёмки взята другим сотрудником");
+    const hasZone = (kind: string) =>
+      state.warehouse.workZones.some((zone) => zone.kind === kind);
+    if (account.role !== "manager") {
+      // Legacy command clients without configured work zones can still use
+      // their original flows. The employee screen always starts at a zone QR.
+      if (
+        hasZone("assembly") &&
+        (op === "claimTask" ||
+          (op === "updateTaskStatus" &&
+            (body as D.UpdateTaskStatusDto).status === "active"))
+      ) {
+        const { binding } = requireZone(
+          "assembly",
+          "Сначала отсканируйте QR зоны сборки",
+        );
+        if (binding?.jobKind !== "assembly" || binding.jobId !== id)
+          throw new ForbiddenException(
+            "Возьмите задание из очереди зоны сборки",
+          );
+      }
+      if (
+        hasZone("receiving") &&
+        ["placeReceiptPallet", "bindReceiptPalletLabel"].includes(op)
+      ) {
+        const palletId = operation.split("/")[2];
+        const receiptRow = state.receipts
+          .find((r) => r.id === id)
+          ?.pallets.find((p) => p.palletId === palletId);
+        // Allow an already completed placement to replay after advancing the zone.
+        if (
+          !(
+            op === "placeReceiptPallet" &&
+            receiptRow?.placedByEmployeeId === account.employee_id
+          )
+        ) {
+          const { binding } = requireZone(
+            "receiving",
+            "Сначала отсканируйте QR зоны приёмки",
+          );
+          if (
+            binding?.jobKind !== "receiving" ||
+            binding.jobId !== id ||
+            binding.palletId !== palletId
+          )
+            throw new ForbiddenException(
+              "Возьмите паллету из очереди зоны приёмки",
+            );
+        }
+      }
+      if (
+        hasZone("putaway") &&
+        ["claimPutawayTask", "takePutawayTask", "takePutawayBox"].includes(op)
+      ) {
+        const { zone } = requireZone(
+          "putaway",
+          "Сначала отсканируйте QR зоны размещения",
+        );
+        const task = state.putawayTasks.find((t) => t.id === id);
+        if (task && !zone.locationIds.includes(task.fromLocationId))
+          throw new ForbiddenException("Короб находится в другой рабочей зоне");
+      }
+    }
+    if (op === "takeAnyPutawayBox") {
+      requireZone("putaway", "Сначала отсканируйте QR зоны размещения");
       const value = (body as D.TakePutawayBoxDto).boxCode;
       const box = state.boxes.find(
         (b) => value === b.code || value === `artmate-wms:box:${b.code}`,
@@ -317,17 +416,6 @@ export async function authorizeWarehouse(
         account.employee_id
     )
       throw new ForbiddenException("Отгрузка принадлежит другому сотруднику");
-    if (
-      ["placeReceiptPallet", "bindReceiptPalletLabel"].includes(op) &&
-      state.warehouse.zoneWork.some(
-        (w) =>
-          w.jobKind === "receiving" &&
-          w.jobId === id &&
-          w.palletId === operation.split("/")[2] &&
-          w.employeeId !== account.employee_id,
-      )
-    )
-      throw new ForbiddenException("Паллета приёмки взята другим сотрудником");
 
     if (
       account.role !== "manager" &&

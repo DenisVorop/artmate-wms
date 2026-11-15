@@ -64,10 +64,15 @@ async function ok(
 const code = (z: D.WorkZoneDto) => `artmate-wms:work-zone:${z.id}`;
 const binding = (s: D.WorkspaceDto, a = worker) =>
   s.warehouse.zoneWork.find((x) => x.employeeId === a.user.employeeId)!;
-const start = (z: D.WorkZoneDto, a = worker) =>
+const start = (z: D.WorkZoneDto, a = worker, openQueue = false) =>
   ok(
     "work-zones/start",
-    { ...req(), employeeId: a.user.employeeId, zoneCode: code(z) },
+    {
+      ...req(),
+      employeeId: a.user.employeeId,
+      zoneCode: code(z),
+      intent: openQueue ? "open-queue" : undefined,
+    },
     a,
   );
 const leave = (a = worker) =>
@@ -372,6 +377,8 @@ test("receiving claims are atomic per pallet, actor protected, QR never admits s
   });
   const before = await w.snapshot(),
     ledger = (await w.getStockLedger({})).summary.eventsCount;
+  const open = await start(receiving, worker, true);
+  assert.equal(binding(open).jobId, null);
   const [one, two] = await Promise.all([
     start(receiving),
     start(receiving, other),
@@ -459,7 +466,34 @@ test("assembly resumes, WIP prevents switch/leave, global accumulator remains fi
   const task = await createTask(1);
   taskId = task.id;
   secondTaskId = (await createTask(1)).id;
-  let s = await start(assembly);
+  const directClaim = () =>
+    call(
+      "POST",
+      `tasks/${taskId}/claim`,
+      { ...req(), employeeId: worker.user.employeeId },
+      worker,
+    );
+  assert.equal((await directClaim()).status, 403);
+  const takeNext = () =>
+    call(
+      "POST",
+      "work-zones/start",
+      {
+        ...req(),
+        employeeId: worker.user.employeeId,
+        zoneCode: code(assembly),
+        intent: "take-next",
+      },
+      worker,
+    );
+  assert.equal((await takeNext()).status, 400);
+  const open = await start(assembly, worker, true);
+  assert.equal(binding(open).jobId, null);
+  assert.equal(open.tasks.find((row) => row.id === taskId)?.status, "queued");
+  assert.equal((await directClaim()).status, 403);
+  const taken = await takeNext();
+  assert.equal(taken.status, 200, JSON.stringify(taken.body));
+  let s: D.WorkspaceDto = taken.body;
   assert.equal(binding(s).jobId, taskId);
   const t = s.tasks.find((t) => t.id === taskId)!,
     source = s.pallets.find((p) => p.id === t.reservations[0].palletId)!;
@@ -677,6 +711,17 @@ test("box picking scans FIFO reservations at storage, updates the pallet, and sh
   const free = await call("GET", "workspace", undefined, worker);
   assert(free.body.shipments.some((x: D.ShipmentDto) => x.id === draft.id));
   const base = `shipments/${draft.id}`;
+  const claim = { ...req(), employeeId: worker.user.employeeId };
+  assert.equal(
+    (await call("POST", `${base}/work/claim`, claim, worker)).status,
+    403,
+  );
+  const open = await start(shipping, worker, true);
+  assert.equal(binding(open).jobId, null);
+  assert.equal(
+    open.shipments.find((row) => row.id === draft.id)!.employeeId ?? null,
+    null,
+  );
   s = await ok(
     `${base}/work/claim`,
     { ...req(), employeeId: worker.user.employeeId },
@@ -686,7 +731,7 @@ test("box picking scans FIFO reservations at storage, updates the pallet, and sh
     s.shipments.find((x) => x.id === draft.id)!.employeeId,
     worker.user.employeeId,
   );
-  assert(!s.warehouse.zoneWork.length);
+  assert.equal(binding(s).jobId, draft.id);
   assert.equal((await call("POST", `${base}/ship`, req())).status, 400);
   assert.equal(
     (
@@ -864,38 +909,32 @@ test("shipping QR takes distinct reservations concurrently, pause preserves pick
   const state = await w.snapshot(),
     queued = state.putawayTasks.find((t) => t.status === "queued")!;
   assert(queued);
-  let carrying = await ok(
-    `putaway-tasks/${queued.id}/claim`,
-    { ...req(), employeeId: worker.user.employeeId },
-    worker,
-  );
+  let carrying = await w.claimPutawayTask(queued.id, {
+    ...req(),
+    employeeId: worker.user.employeeId,
+  });
   await ok(
     `putaway-tasks/${queued.id}/release`,
     { ...req(), employeeId: worker.user.employeeId },
     worker,
   );
   assert.equal(binding(await w.snapshot()).jobId, a.jobId);
-  carrying = await ok(
-    `putaway-tasks/${queued.id}/claim`,
-    { ...req(), employeeId: worker.user.employeeId },
-    worker,
-  );
+  carrying = await w.claimPutawayTask(queued.id, {
+    ...req(),
+    employeeId: worker.user.employeeId,
+  });
   const claimed = carrying.putawayTasks.find((t) => t.id === queued.id)!,
     carriedBox = carrying.boxes.find((b) => b.id === queued.boxId)!,
     fromLocation = carrying.locations.find(
       (l) => l.id === claimed.fromLocationId,
     )!,
     toLocation = carrying.locations.find((l) => l.id === claimed.toLocationId)!;
-  await ok(
-    `putaway-tasks/${queued.id}/take`,
-    {
-      ...req(),
-      employeeId: worker.user.employeeId,
-      boxCode: carriedBox.code,
-      locationCode: fromLocation.code,
-    },
-    worker,
-  );
+  await w.takePutawayTask(queued.id, {
+    ...req(),
+    employeeId: worker.user.employeeId,
+    boxCode: carriedBox.code,
+    locationCode: fromLocation.code,
+  });
   assert.equal(
     (
       await call(
@@ -1013,6 +1052,14 @@ test("unbound legacy WIP can resume at assembly QR without losing scans, but ano
     s.tasks.find((t) => t.id === task.id)!.openBoxCode,
     task.openBoxCode,
   );
+  s = await ok(`tasks/${task.id}/scan`, {
+    ...req(),
+    employeeId: manager.user.employeeId,
+    kind: "barcode",
+    value: s.skus.find((x) => x.id === raw.skuId)!.barcode,
+  });
+  assert.equal(s.tasks.find((t) => t.id === task.id)?.status, "completed");
+  await leave(manager);
 });
 
 test("completion preserves its result when another paused task has an unavailable source", async () => {
@@ -1140,6 +1187,15 @@ test("one WB document retains the FIFO reservation, requires its owner and three
       { ...req(), employeeId: actor.user.employeeId },
       actor,
     );
+  assert.equal((await claim(account)).status, 403);
+  await start(receiving, account, true);
+  assert.equal((await claim(account)).status, 403);
+  const open = await start(shipping, account, true);
+  assert.equal(binding(open, account).jobId, null);
+  assert.equal(
+    open.shipments.find((row) => row.id === job.id)?.employeeId,
+    null,
+  );
   const claimed = await claim(account);
   assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
   assert.equal((await claim(manager)).status, 403);
@@ -1194,6 +1250,22 @@ test("one WB document retains the FIFO reservation, requires its owner and three
   const labelScan = await pick(labels[0].code);
   assert.equal(labelScan.status, 200, JSON.stringify(labelScan.body));
   assert.equal(labelScan.body.balance.totalUnits, s.balance.totalUnits);
+  const shift = (status: "off" | "working") =>
+    ok(
+      `employees/${account.user.employeeId}/shift`,
+      { ...req(), status },
+      account,
+    );
+  await shift("off");
+  const nextShift = await shift("working");
+  assert.equal(binding(nextShift, account), undefined);
+  assert.equal((await pick(location.code)).status, 403);
+  const reopened = await start(shipping, account, true);
+  assert.equal(binding(reopened, account).jobId, job.id);
+  assert.deepEqual(
+    reopened.shipments.find((row) => row.id === job.id)?.scannedBoxIds,
+    [top.id],
+  );
   await leave(account);
   assert.equal((await claim(manager)).status, 403);
   const reassign = await ok(`${base}/work/assign`, {
@@ -1208,6 +1280,9 @@ test("one WB document retains the FIFO reservation, requires its owner and three
   const nextAddress = reassign.locations.find(
     (item) => item.id === second.locationId,
   )!;
+  assert.equal((await pick(nextAddress.code, manager)).status, 403);
+  const resumed = await start(shipping, manager, true);
+  assert.equal(binding(resumed, manager).jobId, job.id);
   assert.equal((await pick(nextAddress.code, manager)).status, 200);
   assert.equal((await pick(second.code, manager)).status, 200);
   assert.equal((await pick(labels[0].code, manager)).status, 400);

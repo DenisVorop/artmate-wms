@@ -753,6 +753,34 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
   const raw = result.body.pallets.find(
     (p: D.PalletDto) => p.id === doc.pallets[0].palletId,
   ) as D.PalletDto;
+  const openZone = async (
+    kind: string,
+    locationId: string,
+    openQueue = false,
+  ) => {
+    const zone = (
+      await w.createWorkZone({
+        ...req(),
+        code: "",
+        name: "",
+        kind,
+        locationIds: [locationId],
+      })
+    ).warehouse.workZones.at(-1)!;
+    const response = await call(
+      "POST",
+      "work-zones/start",
+      {
+        ...req(),
+        employeeId: worker.user.employeeId,
+        zoneCode: `artmate-wms:work-zone:${zone.id}`,
+        intent: openQueue ? "open-queue" : undefined,
+      },
+      worker,
+    );
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+  };
+  await openZone("receiving", "loc-receiving");
   const placeRequest = {
     ...req(),
     employeeId: worker.user.employeeId,
@@ -800,17 +828,7 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
     ).status,
     403,
   );
-  assert.equal(
-    (
-      await call(
-        "POST",
-        `tasks/${task.id}/claim`,
-        { ...req(), employeeId: worker.user.employeeId },
-        worker,
-      )
-    ).status,
-    200,
-  );
+  await openZone("assembly", "loc-assembly");
   assert.equal(
     (
       await call(
@@ -855,6 +873,7 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
   assert.equal(depleted.returnLocationId, null);
   const box = full.boxes.find((b) => b.code === task.openBoxCode)!,
     put = full.putawayTasks.find((t) => t.boxId === box.id)!;
+  await openZone("putaway", put.fromLocationId);
   result = await call(
     "POST",
     `putaway-tasks/${put.id}/claim`,
@@ -1056,6 +1075,7 @@ test("real worker receiving assembly putaway movement shipping cycle binds every
     403,
   );
   const employeeId = worker.user.employeeId;
+  await openZone("shipping", dest.id, true);
   const claim = await call(
     "POST",
     `shipments/${shipment.id}/work/claim`,

@@ -3909,6 +3909,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             "Работа приостановлена. После возобновления смены отсканируйте зону",
           );
       }
+      if (b.status === "off" || employee.status === "off")
+        s.warehouse.zoneWork = s.warehouse.zoneWork.filter(
+          (work) => work.employeeId !== id,
+        );
       employee.status = b.status;
       if (b.status !== "working")
         for (const task of s.tasks)
@@ -4214,6 +4218,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         current = s.warehouse.zoneWork.find(
           (w) => w.employeeId === b.employeeId,
         );
+      if (b.intent === "take-next" && current?.zoneId !== zone.id)
+        fail("Зона изменилась. Отсканируйте её QR перед взятием задания");
       const carryMovement = s.movements.some(
         (m) => m.employeeId === b.employeeId && m.status === "in_transit",
       );
@@ -4249,10 +4255,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         fail("Сначала подтвердите размещение короба в пути");
       if (current?.zoneId !== zone.id && !resumeUnbound)
         this._leaveWork(s, b.employeeId);
-      this._chooseZoneWork(s, zone, b.employeeId);
+      this._chooseZoneWork(s, zone, b.employeeId, b.intent === "open-queue");
       activity(
         s,
-        "Рабочая зона отсканирована",
+        b.intent === "take-next"
+          ? "Запрошено следующее задание зоны"
+          : "Рабочая зона отсканирована",
         `${zone.name} · ${find(s.employees, b.employeeId, "Сотрудник").name}`,
         "work-zone",
       );
@@ -4273,6 +4281,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     s: D.WorkspaceDto,
     zone: D.WorkZoneDto,
     employeeId: string,
+    openQueue = false,
   ) {
     const assign = (
       kind: string,
@@ -4316,6 +4325,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         assign("assembly", own.id, null, "Продолжите своё задание сборки");
         return;
       }
+      if (openQueue) {
+        idle("Возьмите следующее задание по приоритету.");
+        return;
+      }
       const candidates = s.tasks
         .filter(
           (t) =>
@@ -4348,6 +4361,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           this._zoneJobActive(s, w),
       );
       if (current) return;
+      if (openQueue) {
+        idle("Возьмите следующую паллету на размещение.");
+        return;
+      }
       const claims = new Set(
         s.warehouse.zoneWork
           .filter(
@@ -4374,6 +4391,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             row.placedAt ||
             !p ||
             p.status !== "awaiting_placement" ||
+            (p.locationId && !zone.locationIds.includes(p.locationId)) ||
             claims.has(`${r.id}/${p.id}`)
           )
             continue;
@@ -4423,10 +4441,15 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         );
         return;
       }
+      if (openQueue) {
+        idle("Выберите поставку для отбора.");
+        return;
+      }
       const draft = s.shipments.find(
         (x) =>
           x.status === "draft" &&
           !x.employeeId &&
+          (!x.workZoneId || x.workZoneId === zone.id) &&
           x.boxIds.some((id) => {
             const box = s.boxes.find((item) => item.id === id);
             return box && this._shipmentBoxSource(s, box);
@@ -4569,10 +4592,33 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         )
       )
         fail("Сначала завершите назначенный отбор WB");
+      const zoneId = s.warehouse.zoneWork.find(
+        (work) => work.employeeId === b.employeeId,
+      )?.zoneId;
+      const zone = s.warehouse.workZones.find(
+        (workZone) =>
+          workZone.id === zoneId &&
+          !workZone.archived &&
+          workZone.kind === "shipping",
+      );
+      if (shipment.workZoneId && shipment.workZoneId !== zone?.id)
+        fail("Отгрузка относится к другой рабочей зоне");
       this._leaveWork(s, b.employeeId);
       shipment.pickingMode = "box";
       shipment.employeeId = b.employeeId;
       shipment.scannedBoxIds ??= [];
+      if (zone) {
+        shipment.workZoneId = zone.id;
+        this._setZoneJob(
+          s,
+          zone,
+          b.employeeId,
+          "shipping",
+          id,
+          null,
+          "Берите короба по адресам и сканируйте их QR",
+        );
+      }
     });
   }
   scanShipmentWork(id: string, b: D.ScanShipmentWorkDto) {

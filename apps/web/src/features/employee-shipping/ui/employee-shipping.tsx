@@ -27,13 +27,11 @@ const boxCount = (count: number) =>
 export function EmployeeShipping({
   data,
   onIdle,
-  onQueue,
   onProblem,
   shipmentId,
 }: {
   data: WorkspaceDto;
   onIdle: () => void;
-  onQueue: () => void;
   onProblem?: (message: string) => void;
   shipmentId?: string;
 }) {
@@ -58,6 +56,7 @@ export function EmployeeShipping({
     (row) =>
       row.status === "draft" &&
       !row.employeeId &&
+      (!row.workZoneId || row.workZoneId === zone?.id) &&
       !employeeShippingProgress(row).complete,
   );
   const selected = shipmentId
@@ -98,11 +97,9 @@ export function EmployeeShipping({
   const busy = commands.pending || gateway.pending || scans.pending > 0;
   const issue = !working
     ? "Начните или возобновите рабочую смену."
-    : shipment &&
-        !direct &&
-        (!zone || zone.archived || zone.kind !== "shipping")
+    : !zone || zone.archived || zone.kind !== "shipping"
       ? "Зона отгрузки недоступна. Отсканируйте действующую зону."
-      : assignment?.jobId && !shipment
+      : assignment?.jobId && !shipment && assignment.jobId !== dismissedId
         ? "Назначенная отгрузка недоступна. Обновите данные или сообщите руководителю."
         : shipment && shipment.status !== "draft"
           ? "Эта отгрузка уже завершена. Ожидайте следующего задания из зоны."
@@ -336,10 +333,7 @@ export function EmployeeShipping({
                 </p>
                 <Button
                   disabled={busy}
-                  onClick={() => {
-                    if (wb) setDismissedId(shipment.id);
-                    onQueue();
-                  }}
+                  onClick={() => setDismissedId(shipment.id)}
                 >
                   К отгрузкам
                 </Button>

@@ -440,3 +440,23 @@
   display: flex;
   gap: 12px;
 }
+
+.zoneQueue {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 15rem;
+  overflow: auto;
+}
+.zoneQueue li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+}
+.zoneQueue small {
+  color: var(--muted);
+}

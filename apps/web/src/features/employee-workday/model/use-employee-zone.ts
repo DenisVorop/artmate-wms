@@ -16,7 +16,10 @@ export function useEmployeeZone({
   const { user } = useSession(),
     commands = useWarehouseCommands(),
     lock = useRef(false);
-  const start = async (zoneCode: string): Promise<EmployeeScanDisposition> => {
+  const start = async (
+    zoneCode: string,
+    intent: "open-queue" | "take-next",
+  ): Promise<EmployeeScanDisposition> => {
     if (!isWorkZoneScan(zoneCode)) return "pass";
     if (blocked || lock.current) {
       onProblem(
@@ -31,6 +34,7 @@ export function useEmployeeZone({
         requestId: crypto.randomUUID(),
         employeeId: user.employeeId,
         zoneCode: zoneCode.trim(),
+        intent,
       });
       onStarted();
       return "handled";
@@ -47,7 +51,9 @@ export function useEmployeeZone({
   };
   return {
     pending: commands.pending,
-    intercept: start,
+    intercept: (value: string) => start(value, "open-queue"),
+    takeNext: (zoneId: string) =>
+      start(`artmate-wms:work-zone:${zoneId}`, "take-next"),
     leave: async () => {
       if (blocked || lock.current || !user) return false;
       lock.current = true;

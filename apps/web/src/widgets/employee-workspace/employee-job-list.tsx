@@ -21,6 +21,7 @@ export function EmployeeJobList({
   onOpenMovements,
   canOpenMovements,
   canOpenShipping,
+  shippingZoneOpen,
   onOpenShipping,
 }: {
   data: WorkspaceDto;
@@ -29,6 +30,7 @@ export function EmployeeJobList({
   onOpenMovements: () => void;
   canOpenMovements: boolean;
   canOpenShipping: boolean;
+  shippingZoneOpen: boolean;
   onOpenShipping: (shipmentId: string) => void;
 }) {
   const [kind, setKind] = useState<WorkQueueKind | "all">("all");
@@ -73,7 +75,7 @@ export function EmployeeJobList({
         </select>
       </label>
       <p className={styles.queueHint}>
-        Сканируйте QR рабочей зоны или откройте нужное задание из списка.
+        Для сборки, приёмки, размещения и отбора сканируйте QR рабочей зоны.
       </p>
       {(kind === "all" || kind === "stocktake") && stocktakes.isPending && (
         <p className={styles.queueHint} role="status">
@@ -130,7 +132,9 @@ export function EmployeeJobList({
                         disabled={!canOpenShipping}
                         onClick={() => onOpenShipping(job.referenceId)}
                       >
-                        Открыть отбор
+                        {shippingZoneOpen
+                          ? "К отбору"
+                          : "Сканировать зону отгрузки"}
                       </Button>
                     )}
                     {job.kind === "movement" &&

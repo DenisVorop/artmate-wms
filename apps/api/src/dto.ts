@@ -2278,6 +2278,10 @@ export class StartZoneWorkDto extends ClaimTaskDto {
   @MinLength(1)
   @MaxLength(200)
   zoneCode!: string;
+  @ApiPropertyOptional({ enum: ["open-queue", "take-next"] })
+  @ValidateIf((_o, v) => v !== undefined)
+  @IsIn(["open-queue", "take-next"])
+  intent?: "open-queue" | "take-next";
 }
 export class ScanShipmentWorkDto extends ClaimTaskDto {
   @ApiProperty({ type: String })
