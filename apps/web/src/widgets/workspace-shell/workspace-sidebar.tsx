@@ -8,7 +8,6 @@ export function WorkspaceSidebar({
   sidebarRef,
   mobileOpen,
   currentHref,
-  warehouse,
   activeEmployees,
   name,
   initials,
@@ -18,7 +17,6 @@ export function WorkspaceSidebar({
   sidebarRef: Ref<HTMLElement>;
   mobileOpen: boolean;
   currentHref?: string;
-  warehouse?: string;
   activeEmployees?: number;
   name?: string;
   initials: string;
@@ -59,11 +57,6 @@ export function WorkspaceSidebar({
         >
           <X aria-hidden="true" size={20} />
         </button>
-        {warehouse && (
-          <p className={styles.warehouse} title={warehouse}>
-            {warehouse}
-          </p>
-        )}
       </div>
       <nav aria-label="Основная навигация" className={styles.navigation}>
         {navigationGroups.map(({ label, links }) => (

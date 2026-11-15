@@ -160,7 +160,6 @@ function ManagerWorkspaceShell({
         sidebarRef={sidebarRef}
         mobileOpen={mobileOpen}
         currentHref={current?.href}
-        warehouse={data?.warehouse.name}
         activeEmployees={activeEmployees}
         name={name}
         initials={initials}

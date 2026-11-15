@@ -18,7 +18,7 @@
 .header {
   position: relative;
   flex: none;
-  padding: 19px 18px 13px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -50,15 +50,6 @@
   border-radius: 8px;
   color: var(--accent);
   background: color-mix(in oklch, var(--accent) 11%, transparent);
-}
-
-.warehouse {
-  margin-top: 9px;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .close {
