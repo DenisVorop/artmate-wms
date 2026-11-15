@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import type { QueueTab } from "./assembly-queue";
+import type { QueueFilter } from "./assembly-queue";
 export function useAssemblyState() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [tab, setTab] = useState<QueueTab>("free");
+  const [filter, setFilter] = useState<QueueFilter>("open");
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   return {
@@ -12,8 +12,8 @@ export function useAssemblyState() {
     setSelectedId,
     creating,
     setCreating,
-    tab,
-    setTab,
+    filter,
+    setFilter,
     search,
     setSearch,
     notice,

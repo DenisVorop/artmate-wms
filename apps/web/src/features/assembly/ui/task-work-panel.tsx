@@ -90,16 +90,15 @@ export function TaskWorkPanel({
             <span className={styles.code}>{task.code}</span> ·{" "}
             {task.boxesCompleted} из {task.boxesTarget} коробов
             <br />
-            {owner?.name ?? "Свободная очередь"} · по {task.unitsPerBox}{" "}
-            раскрасок
+            {owner?.name ?? "Свободная очередь"} · по {task.unitsPerBox} шт.
           </p>
         </div>
-        {task.status === "active" && (
+        {task.status === "active" && owns && (
           <Button
             size="sm"
             variant="ghost"
             onClick={() => void onPause()}
-            disabled={pending || !owns}
+            disabled={pending}
           >
             <Pause size={14} />
             Пауза
@@ -120,40 +119,39 @@ export function TaskWorkPanel({
           }}
         />
       </div>
-      {task.status === "completed" ? (
-        <div className={styles.notice} role="status" style={{ marginTop: 20 }}>
-          <Check size={17} />
-          <span>
-            Задание завершено. Коробов собрано в запас: {task.boxesCompleted}.
-          </span>
-        </div>
-      ) : task.status !== "active" ? (
+      {task.status === "completed" ? null : task.status !== "active" ? (
         <div className={styles.stepPanel} style={{ marginTop: 20 }}>
-          <h3>
-            {task.status === "paused"
-              ? "Сборка на паузе"
-              : "Готово к началу работы"}
-          </h3>
-          <p className={styles.help}>
-            {task.status === "paused"
-              ? `Текущий короб сохранён: ${task.scannedUnits} из ${task.unitsPerBox} раскрасок. Продолжить может назначенный сотрудник на смене.`
-              : "Выбор карточки показывает задание. Чтобы начать сборку, нажмите «Взять задание». Ваша смена должна быть открыта."}
-          </p>
-          <Button
-            disabled={pending || !!canClaimReason}
-            onClick={() => void onClaim()}
-            aria-busy={pending}
-          >
-            <Play size={15} />
-            {task.status === "paused" ? "Продолжить задание" : "Взять задание"}
-          </Button>
-          {canClaimReason && <p className={styles.help}>{canClaimReason}</p>}
+          {task.status === "paused" && task.scannedUnits > 0 && (
+            <p className={styles.help}>
+              В текущем коробе {task.scannedUnits} из {task.unitsPerBox} шт.
+            </p>
+          )}
+          {canClaimReason ? (
+            <p className={styles.help}>
+              {canClaimReason}
+              {actor?.status !== "working" && (
+                <>
+                  {" "}
+                  <Link href="/team">К сменам</Link>
+                </>
+              )}
+            </p>
+          ) : (
+            <Button
+              disabled={pending}
+              onClick={() => void onClaim()}
+              aria-busy={pending}
+            >
+              <Play size={15} aria-hidden="true" />
+              {task.status === "paused"
+                ? "Продолжить задание"
+                : "Взять задание"}
+            </Button>
+          )}
         </div>
       ) : !owns ? (
         <div className={styles.info} style={{ marginTop: 20 }}>
-          Сейчас задание выполняет {owner?.name ?? "другой сотрудник"}.
-          Сканирование и пауза доступны только исполнителю задания в его учётной
-          записи.
+          Сканирование и пауза доступны только исполнителю.
         </div>
       ) : (
         <>
@@ -219,13 +217,8 @@ export function TaskWorkPanel({
               <>
                 <h3>{preparationHint(task.unitsPerBox)}</h3>
                 <p className={styles.help}>
-                  Подготовка не списывает запас. Каждая раскраска будет учтена
-                  по своему штрихкоду после подтверждения короба.
-                </p>
-                <p className={styles.help}>
-                  Промаркируйте раскраски, наклейте любую свободную этикетку из
-                  заранее напечатанного комплекта и отсканируйте QR короба. Этот
-                  код закрепится за текущим коробом задания.
+                  Промаркируйте товар. Наклейте свободную этикетку на короб и
+                  отсканируйте её.
                 </p>
                 <details className={styles.help}>
                   <summary>Нет готовой этикетки</summary>
@@ -262,8 +255,7 @@ export function TaskWorkPanel({
                 </div>
                 <p className={styles.help}>
                   Короб <span className={styles.code}>{task.openBoxCode}</span>{" "}
-                  подтверждён. Последняя раскраска автоматически закроет короб и
-                  добавит его на общую накопительную паллету.
+                  закроется после последнего скана.
                 </p>
                 <ScanControl
                   key={`${task.id}:${task.openBoxCode}:barcode`}
@@ -340,11 +332,6 @@ export function TaskWorkPanel({
               </p>
             )}
           </div>
-          <p className={styles.help} style={{ marginTop: 14 }}>
-            Готовые короба разных тематик остаются на общей накопительной
-            паллете сборки. Если она заполнится, последний скан не пройдёт:
-            разгрузите накопитель через размещение коробов и повторите скан.
-          </p>
         </>
       )}
       {error && (
@@ -352,14 +339,7 @@ export function TaskWorkPanel({
           {error}
         </div>
       )}
-      <div className={styles.info} style={{ marginTop: 20 }}>
-        Общий накопитель допускает разные тематики. Для хранения и дальнейшей
-        отгрузки разместите короба на паллеты своих тематик.{" "}
-        <Link href="/putaway">Размещение коробов →</Link> — добровольные
-        второстепенные задания после паузы сборки или окончания основной
-        очереди.
-      </div>
-      {isManager && (
+      {isManager && task.status !== "completed" && (
         <TaskAssignment
           key={task.id}
           task={task}

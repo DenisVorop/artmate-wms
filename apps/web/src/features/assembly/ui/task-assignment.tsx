@@ -35,13 +35,6 @@ export function TaskAssignment({
   const reason = assignmentBlocked(task);
   return (
     <section className={styles.assignment}>
-      <h3>Назначение · {task.code}</h3>
-      <p className={styles.help}>
-        Сейчас:{" "}
-        {employees.find((employee) => employee.id === task.employeeId)?.name ??
-          "свободная очередь"}
-        . Сотруднику вне смены можно запланировать задание.
-      </p>
       <form
         noValidate
         onSubmit={form.handleSubmit(async (values) => {
@@ -57,12 +50,12 @@ export function TaskAssignment({
         aria-busy={pending}
       >
         <label className="field">
-          Назначить сотрудника
+          Исполнитель
           <Select
             {...form.register("employeeId")}
             disabled={pending || !!reason}
           >
-            <option value="">В свободную очередь</option>
+            <option value="">Без назначения</option>
             {employees.map((employee) => (
               <option key={employee.id} value={employee.id}>
                 {employee.name}
@@ -78,7 +71,7 @@ export function TaskAssignment({
           disabled={pending || !!reason || !isDirty}
           aria-busy={pending}
         >
-          Сохранить назначение
+          Сохранить
         </Button>
       </form>
       {reason && <p className={styles.help}>{reason}</p>}

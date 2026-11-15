@@ -23,12 +23,10 @@ export function TaskCreateForm({
     resolver: zodResolver(assemblySchema),
     defaultValues: { skuId: "", boxesTarget: 1, employeeId: "" },
   });
-  const sku = data.skus.find((item) => item.id === form.watch("skuId"));
   return (
     <Modal
       open
       title="Новое задание на сборку"
-      description="Короба собираются в запас. Исполнителя можно назначить сейчас или позднее; свободное задание сотрудник возьмёт сам."
       onClose={() => {
         if (!pending) onClose();
       }}
@@ -71,7 +69,7 @@ export function TaskCreateForm({
             </p>
           )}
           <label className="field">
-            Сколько заданий создать · один короб на задание
+            Количество заданий (по одному коробу)
             <Input
               type="number"
               min={1}
@@ -101,13 +99,6 @@ export function TaskCreateForm({
             </Select>
           </label>
         </fieldset>
-        {sku && (
-          <p className={styles.info}>
-            В коробе {sku.unitsPerBox} раскрасок. При создании сервер
-            резервирует товар по FIFO; короб собирается только после
-            подтверждения источника и своей этикетки.
-          </p>
-        )}
         {error && (
           <div className="ops-error" role="alert">
             {error}
@@ -122,7 +113,7 @@ export function TaskCreateForm({
             disabled={pending || !data.skus.length}
             aria-busy={pending}
           >
-            Создать задание
+            Создать
           </Button>
         </div>
       </form>

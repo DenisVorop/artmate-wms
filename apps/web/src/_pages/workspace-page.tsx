@@ -68,7 +68,8 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
     view === "warehouse" ||
     view === "inventory" ||
     view === "stock-ledger" ||
-    view === "receiving";
+    view === "receiving" ||
+    view === "assembly";
   return (
     <WorkspaceShell showFooter={!light} theme={light ? "light" : "dark"}>
       <Feature />

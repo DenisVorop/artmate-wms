@@ -4,6 +4,7 @@ import type {
   WorkspaceDto,
 } from "@/shared/api/generated/model";
 export type QueueTab = "free" | "assigned" | "active" | "completed";
+export type QueueFilter = "open" | QueueTab;
 export const taskStatusLabels: Record<TaskDto["status"], string> = {
   queued: "В очереди",
   active: "В работе",
@@ -30,14 +31,16 @@ export function queueTasks(
     skus: Pick<WorkspaceDto["skus"][number], "id" | "name">[];
     employees: Pick<EmployeeDto, "id" | "name">[];
   },
-  tab: QueueTab,
+  filter: QueueFilter,
   search = "",
 ) {
   const query = search.trim().toLocaleLowerCase("ru-RU");
   return data.tasks
     .filter(
       (task) =>
-        taskTab(task) === tab &&
+        (filter === "open"
+          ? task.status !== "completed"
+          : taskTab(task) === filter) &&
         (!query ||
           [
             task.code,
