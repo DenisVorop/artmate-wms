@@ -8,7 +8,7 @@ import type {
 } from "@/shared/api/generated/model";
 import {
   matchesScan,
-  selectMovement,
+  employeeMovementJobs,
   selectPutaway,
   selectReceipt,
   workBlock,
@@ -127,8 +127,11 @@ test("movement execution only own active jobs, carrying before planned and no ar
     move("carrying", "in_transit"),
     move("done", "completed"),
   ];
-  assert.equal(selectMovement(tasks, "me")?.id, "carrying");
-  assert.equal(selectMovement(tasks, "missing"), undefined);
+  assert.deepEqual(
+    employeeMovementJobs(tasks, "me").map((task) => task.id),
+    ["carrying", "planned"],
+  );
+  assert.deepEqual(employeeMovementJobs(tasks, "missing"), []);
   assert.equal(tasks[0].id, "foreign");
 });
 test("receiving chooses oldest actual receipt with pending pallets; completed omitted", () => {
@@ -229,28 +232,32 @@ test("refresh resumes own server-confirmed carried box before zone selection; qu
   assert.equal(putawayWork(data, "me").kind, "zone");
 });
 
-test("free automatic lowering follows own carrying and assigned work, excludes foreign and unmarked anonymous moves", () => {
+test("the movement list shows own work first, otherwise every available automatic lowering", () => {
   const free = {
     ...move("lower", "planned", null),
     autoPurpose: "accessible_raw" as const,
   };
+  const otherFree = { ...free, id: "lower-2" };
   const own = move("mine", "planned");
   const carrying = move("carry", "in_transit");
   const foreign = { ...free, id: "foreign", employeeId: "other" };
-  assert.equal(
-    selectMovement([free, own, carrying, foreign], "me")?.id,
-    "carry",
+  assert.deepEqual(employeeMovementJobs([free, own, carrying, foreign], "me"), [
+    carrying,
+    own,
+  ]);
+  assert.deepEqual(employeeMovementJobs([free, own, foreign], "me"), [own]);
+  assert.deepEqual(employeeMovementJobs([foreign, otherFree, free], "me"), [
+    free,
+    otherFree,
+  ]);
+  assert.deepEqual(
+    employeeMovementJobs([move("legacy", "planned", null), foreign], "me"),
+    [],
   );
-  assert.equal(selectMovement([free, own, foreign], "me")?.id, "mine");
-  assert.equal(selectMovement([foreign, free], "me")?.id, "lower");
-  assert.equal(
-    selectMovement([move("legacy", "planned", null), foreign], "me"),
-    undefined,
-  );
-  assert.equal(selectMovement([free], ""), undefined);
-  assert.equal(
-    selectMovement([{ ...free, status: "cancelled" }], "me"),
-    undefined,
+  assert.deepEqual(employeeMovementJobs([free], ""), []);
+  assert.deepEqual(
+    employeeMovementJobs([{ ...free, status: "cancelled" }], "me"),
+    [],
   );
 });
 

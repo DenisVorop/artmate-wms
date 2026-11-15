@@ -45,30 +45,29 @@ export function putawayWork(
   );
   return zone ? { kind: "take" as const, zone } : { kind: "zone" as const };
 }
-export function selectMovement(tasks: MovementDto[], employeeId: string) {
-  if (!employeeId) return undefined;
+export function employeeMovementJobs(tasks: MovementDto[], employeeId: string) {
+  if (!employeeId) return [];
   const own = tasks
     .filter(
-      (t) =>
-        t.employeeId === employeeId &&
-        ["planned", "in_transit"].includes(t.status),
+      (task) =>
+        task.employeeId === employeeId &&
+        ["planned", "in_transit"].includes(task.status),
     )
     .sort(
       (a, b) =>
         Number(b.status === "in_transit") - Number(a.status === "in_transit") ||
         oldest(a, b),
-    )[0];
-  return (
-    own ??
-    tasks
-      .filter(
-        (task) =>
-          task.employeeId === null &&
-          task.status === "planned" &&
-          task.autoPurpose === "accessible_raw",
-      )
-      .sort(oldest)[0]
-  );
+    );
+  return own.length
+    ? own
+    : tasks
+        .filter(
+          (task) =>
+            task.employeeId === null &&
+            task.status === "planned" &&
+            task.autoPurpose === "accessible_raw",
+        )
+        .sort(oldest);
 }
 export function selectReceipt(receipts: ReceiptDto[]) {
   return receipts

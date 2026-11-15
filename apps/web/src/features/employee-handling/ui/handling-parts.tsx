@@ -15,6 +15,7 @@ export function HandlingFrame({
   code,
   children,
   onIdle,
+  backLabel = "К основному заданию",
   carrying = false,
   pending = false,
   locked = false,
@@ -24,6 +25,7 @@ export function HandlingFrame({
   code?: string;
   children: ReactNode;
   onIdle: () => void;
+  backLabel?: string;
   carrying?: boolean;
   pending?: boolean;
   locked?: boolean;
@@ -43,7 +45,7 @@ export function HandlingFrame({
               if (!pending && scanPending === 0) onIdle();
             }}
           >
-            К основному заданию
+            {backLabel}
           </Button>
         )}
         {onProblem && (

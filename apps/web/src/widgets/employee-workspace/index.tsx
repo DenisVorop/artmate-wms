@@ -3,13 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Package, Ellipsis, X } from "lucide-react";
 import { useSession } from "@/entities/session";
-import type { ZoneOfferDto } from "@/shared/api/generated/model";
+import type { MovementDto, ZoneOfferDto } from "@/shared/api/generated/model";
+import { useWarehouseCommands } from "@/shared/api/use-warehouse-commands";
 import { useWorkspace } from "@/entities/workspace";
 import { EmployeeAssembly } from "@/features/employee-assembly";
 import {
   EmployeePutaway,
   EmployeeReceiving,
   EmployeeMovements,
+  employeeMovementJobs,
+  movementClaimBlock,
 } from "@/features/employee-handling";
 import { EmployeeShipping } from "@/features/employee-shipping";
 import { EmployeeStocktakes } from "@/features/stocktakes";
@@ -55,7 +58,10 @@ function EmployeeWorkspaceBody({
 }) {
   const { user } = useSession(),
     workspace = useWorkspace(),
-    day = useEmployeeWorkday(initialMode),
+    day = useEmployeeWorkday(
+      initialMode === "movements" ? "zone" : initialMode,
+    ),
+    movementCommands = useWarehouseCommands(),
     auth = useAuthActions(),
     scan = useEmployeeScanActivity();
   const [menu, setMenu] = useState(false),
@@ -64,11 +70,22 @@ function EmployeeWorkspaceBody({
     [password, setPassword] = useState(false),
     [notice, setNotice] = useState<string | null>(null),
     [showZoneScan, setShowZoneScan] = useState(false),
+    [movementId, setMovementId] = useState<string | null>(null),
     [problem, setProblem] = useState<string | null>(null);
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
     data && user ? employeePriority(data, user.employeeId) : null;
+  const movementOpening = useRef(false);
+  const movements = employeeMovementJobs(
+    data?.movements ?? [],
+    user?.employeeId ?? "",
+  );
+  const movement =
+    movements.find((row) => row.status === "in_transit") ??
+    data?.movements.find(
+      (row) => row.id === movementId && row.employeeId === user?.employeeId,
+    );
   const liveZone = ownZoneWork(data, user?.employeeId);
   const previousJob = useRef(liveZone?.assignment);
   useEffect(() => {
@@ -141,7 +158,7 @@ function EmployeeWorkspaceBody({
       setNotice(null);
     },
   });
-  const blocked = baseBlocked || zones.pending;
+  const blocked = baseBlocked || zones.pending || movementCommands.pending;
   const nextDisplay = {
     userId: user?.id,
     mode: requestedMode,
@@ -154,9 +171,10 @@ function EmployeeWorkspaceBody({
   if (!blocked || displayed.current.userId !== user?.id)
     displayed.current = nextDisplay;
   const { mode, zone: currentZone, key } = displayed.current;
-  const jobLocked = !!(
-    currentZone?.assignment.locked && currentZone.assignment.jobId
-  );
+  const jobLocked =
+    !!(currentZone?.assignment.locked && currentZone.assignment.jobId) ||
+    (mode === "movements" &&
+      (movement?.status === "planned" || movement?.status === "in_transit"));
 
   useEffect(() => {
     if (!blocked) return;
@@ -169,6 +187,7 @@ function EmployeeWorkspaceBody({
   const choose = async (next: EmployeeMode, confirmed = false) => {
     if (
       jobLocked ||
+      movementOpening.current ||
       zones.pending ||
       scan.pending ||
       (scan.unsaved && !confirmed)
@@ -181,6 +200,8 @@ function EmployeeWorkspaceBody({
       return false;
     if (confirmed) displayed.current.mode = next;
     day.choose(next);
+    setMovementId(null);
+    setShowZoneScan(false);
     setProblem(null);
     day.clearError();
     setMenu(false);
@@ -189,6 +210,7 @@ function EmployeeWorkspaceBody({
   const shift = async (status: "working" | "break" | "off") => {
     if (
       jobLocked ||
+      movementOpening.current ||
       zones.pending ||
       (scan.pending > 0 && status !== "working") ||
       (scan.unsaved && status !== "working") ||
@@ -215,12 +237,54 @@ function EmployeeWorkspaceBody({
         !currentZone.assignment.jobKind &&
         !priority?.carrying));
   const takeOffer = async (offer: ZoneOfferDto) => {
-    if (currentZone?.zone.id !== offer.zoneId || blocked || jobLocked) return;
+    if (
+      currentZone?.zone.id !== offer.zoneId ||
+      blocked ||
+      jobLocked ||
+      movementOpening.current
+    )
+      return;
     if ((await zones.takeJob(offer)) !== "handled") void workspace.refetch();
+  };
+  const openMovement = async (selected: MovementDto) => {
+    if (!user || !data || blocked || jobLocked || movementOpening.current)
+      return;
+    if (!selected.employeeId) {
+      const reason = movementClaimBlock(data, user.employeeId, selected.id);
+      if (reason) {
+        setProblem(reason);
+        return;
+      }
+    }
+    movementOpening.current = true;
+    setProblem(null);
+    try {
+      if (currentZone && !(await zones.leave())) return;
+      if (!selected.employeeId) {
+        await movementCommands.claimMovement(selected.id, {
+          employeeId: user.employeeId,
+          requestId: crypto.randomUUID(),
+        });
+      }
+      setMovementId(selected.id);
+      setShowZoneScan(false);
+      setNotice(null);
+      setMenu(false);
+      day.choose("movements");
+    } catch (error) {
+      setProblem(
+        error instanceof Error
+          ? error.message
+          : "Не удалось взять перемещение.",
+      );
+      void workspace.refetch();
+    } finally {
+      movementOpening.current = false;
+    }
   };
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) {
-      if (jobLocked) {
+      if (jobLocked || movementOpening.current) {
         setProblem("Сначала закончите текущее задание.");
         return "blocked" as const;
       }
@@ -326,7 +390,6 @@ function EmployeeWorkspaceBody({
                   {(
                     [
                       ["zone", "Сканировать зону"],
-                      ["movements", "Перемещения"],
                       ["stocktakes", "Инвентаризация"],
                     ] as [EmployeeMode, string][]
                   ).map(([key, label]) => (
@@ -504,7 +567,7 @@ function EmployeeWorkspaceBody({
                       Назад
                     </button>
                   )}
-                  {!currentZone && !zoneEntry && (
+                  {!currentZone && !zoneEntry && !jobLocked && (
                     <button
                       className={styles.zoneSwitch}
                       disabled={blocked}
@@ -517,10 +580,12 @@ function EmployeeWorkspaceBody({
                     <EmployeeZoneGuide
                       data={data}
                       zone={showZoneScan ? undefined : currentZone?.zone}
+                      movements={movements}
                       blocked={blocked}
                       failed={workspace.isError}
                       onRetry={() => void workspace.refetch()}
                       onTake={(offer) => void takeOffer(offer)}
+                      onMovement={(selected) => void openMovement(selected)}
                       onClearZone={() => void choose("zone")}
                       onProblem={setProblem}
                     />
@@ -556,7 +621,9 @@ function EmployeeWorkspaceBody({
                       {mode === "movements" && (
                         <EmployeeMovements
                           data={data}
-                          onIdle={() => void choose("assembly")}
+                          movement={movement}
+                          locked={jobLocked}
+                          onIdle={() => void choose("zone")}
                           onProblem={setProblem}
                         />
                       )}

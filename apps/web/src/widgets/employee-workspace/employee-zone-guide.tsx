@@ -1,4 +1,5 @@
 import type {
+  MovementDto,
   WorkspaceDto,
   WorkZoneDto,
   ZoneOfferDto,
@@ -67,36 +68,89 @@ function offerDetails(
   };
 }
 
+type JobRow = {
+  key: string;
+  title: string;
+  note?: string;
+  action: string;
+  disabled: boolean;
+  onClick: () => void;
+};
+
 export function EmployeeZoneGuide({
   data,
   zone,
+  movements,
   blocked,
   failed,
   onRetry,
   onTake,
+  onMovement,
   onClearZone,
   onProblem,
 }: {
   data: WorkspaceDto;
   zone?: WorkZoneDto;
+  movements: readonly MovementDto[];
   blocked: boolean;
   failed: boolean;
   onRetry: () => void;
   onTake: (offer: ZoneOfferDto) => void;
+  onMovement: (movement: MovementDto) => void;
   onClearZone: () => void;
   onProblem: (message: string) => void;
 }) {
   const zones = data.warehouse.workZones.filter((row) => !row.archived);
   const offers = data.zoneOffers ?? [];
+  const movementJobs = movements.map<JobRow>((movement) => {
+    const pallet = data.pallets.find((item) => item.id === movement.palletId);
+    const sku = data.skus.find((item) => item.id === pallet?.skuId);
+    const from = data.locations.find(
+      (item) => item.id === movement.fromLocationId,
+    );
+    const to = data.locations.find((item) => item.id === movement.toLocationId);
+    const action = movement.employeeId ? "Продолжить" : "Взять";
+    return {
+      key: movement.id,
+      title: sku ? `Переместить «${sku.name}»` : "Переместить паллету",
+      note: [
+        pallet?.code ?? movement.code,
+        from && to ? `${from.code} → ${to.code}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      action,
+      disabled: blocked,
+      onClick: () => onMovement(movement),
+    };
+  });
   const groups = (zone ? [zone] : zones).map((item) => ({
-    zone: item,
+    id: item.id,
+    name: item.name,
     jobs: offers
       .filter((offer) => offer.zoneId === item.id)
-      .flatMap((offer) => {
+      .flatMap<JobRow>((offer) => {
         const details = offerDetails(data, item, offer);
-        return details ? [{ ...details, offer }] : [];
+        return details
+          ? [
+              {
+                ...details,
+                key: `${offer.jobId}:${offer.palletId ?? ""}`,
+                action: offer.resume ? "Продолжить" : "Взять",
+                disabled: !zone || blocked,
+                onClick: () => onTake(offer),
+              },
+            ]
+          : [];
       }),
   }));
+  const hasZoneJobs = groups.some(({ jobs }) => jobs.length > 0);
+  if (!zone && movementJobs.length > 0)
+    groups.unshift({
+      id: "movements",
+      name: "Перемещения паллет",
+      jobs: movementJobs,
+    });
   const otherZone =
     zone &&
     zones.find(
@@ -128,22 +182,20 @@ export function EmployeeZoneGuide({
       ) : (
         <section aria-labelledby="zone-jobs-title">
           <div className={styles.zoneTableHeading}>
-            <h2 id="zone-jobs-title">
-              {zone ? zone.name : "Задания по зонам"}
-            </h2>
+            <h2 id="zone-jobs-title">{zone ? zone.name : "Задания"}</h2>
             {zone && (
               <Button
                 variant="secondary"
                 disabled={blocked}
                 onClick={onClearZone}
               >
-                Все зоны
+                Все задания
               </Button>
             )}
           </div>
-          {!zone && groups.some(({ jobs }) => jobs.length > 0) && (
+          {!zone && hasZoneJobs && (
             <p className={styles.zoneTableHint} id="zone-jobs-hint">
-              Чтобы взять задание, сканируйте QR его зоны.
+              Для заданий в зоне сначала сканируйте её QR.
             </p>
           )}
           {groups.length === 0 ? (
@@ -159,12 +211,12 @@ export function EmployeeZoneGuide({
                   <th scope="col">Действие</th>
                 </tr>
               </thead>
-              {groups.map(({ zone: group, jobs }) => (
-                <tbody key={group.id} aria-label={group.name}>
+              {groups.map(({ id, name, jobs }) => (
+                <tbody key={id} aria-label={name}>
                   {!zone && (
                     <tr className={styles.zoneGroup}>
                       <th scope="rowgroup" colSpan={2}>
-                        {group.name}
+                        {name}
                       </th>
                     </tr>
                   )}
@@ -175,24 +227,26 @@ export function EmployeeZoneGuide({
                       </td>
                     </tr>
                   ) : (
-                    jobs.map(({ title, note, offer }) => (
-                      <tr key={`${offer.jobId}:${offer.palletId ?? ""}`}>
-                        <td>
-                          <strong>{title}</strong>
-                          {note && <small>{note}</small>}
-                        </td>
-                        <td>
-                          <Button
-                            size="sm"
-                            disabled={!zone || blocked}
-                            aria-label={`${offer.resume ? "Продолжить" : "Взять"}: ${title}`}
-                            onClick={() => onTake(offer)}
-                          >
-                            {offer.resume ? "Продолжить" : "Взять"}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
+                    jobs.map(
+                      ({ key, title, note, action, disabled, onClick }) => (
+                        <tr key={key}>
+                          <td>
+                            <strong>{title}</strong>
+                            {note && <small>{note}</small>}
+                          </td>
+                          <td>
+                            <Button
+                              size="sm"
+                              disabled={disabled}
+                              aria-label={`${action}: ${title}`}
+                              onClick={onClick}
+                            >
+                              {action}
+                            </Button>
+                          </td>
+                        </tr>
+                      ),
+                    )
                   )}
                 </tbody>
               ))}
