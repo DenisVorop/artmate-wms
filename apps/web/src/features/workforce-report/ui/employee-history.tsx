@@ -1,16 +1,11 @@
 "use client";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type {
+  GetPerformanceParams,
   ShiftHistoryDto,
   WorkEventDto,
 } from "@/shared/api/generated/model";
-import {
-  Badge,
-  Button,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from "@/shared/ui";
+import { Button, ErrorState, LoadingState, Modal } from "@/shared/ui";
 import { number } from "@/shared/lib/format";
 import {
   formatWorkforceDuration,
@@ -18,136 +13,251 @@ import {
   workforceDateTime,
   workforceStatus,
 } from "../lib/report-view";
-import { useEmployeeHistory } from "../model/use-report-results";
-import type { ReportFilterValues } from "../lib/report-filter";
+import { useEmployeeHistory } from "../model/use-employee-history";
 import { HistoryPagination } from "./history-pagination";
 import styles from "./workforce-report.module.css";
 
-function ShiftItem({ shift }: { shift: ShiftHistoryDto }) {
-  const observed = shift.origin === "observed_from_migration";
+function ShiftDetails({
+  shift,
+  onClose,
+}: {
+  shift?: ShiftHistoryDto;
+  onClose: () => void;
+}) {
   return (
-    <li className={styles.historyItem}>
-      <div className={styles.historyTitle}>
-        <strong>
-          {workforceDateTime(shift.startedAt)} →{" "}
-          {shift.endedAt ? workforceDateTime(shift.endedAt) : "Смена открыта"}
-        </strong>
-        <Badge tone={shift.endedAt ? "neutral" : "success"}>
-          {shift.endedAt ? "Завершена" : "Открыта"}
-        </Badge>
-      </div>
-      <div className={styles.historyMeta}>
-        <span>
-          В смене без перерывов:{" "}
-          <b>{formatWorkforceDuration(shift.workingSeconds)}</b>
-        </span>
-        <span>
-          Перерывы: <b>{formatWorkforceDuration(shift.breakSeconds)}</b>
-        </span>
-      </div>
-      <p className={styles.historyNote}>
-        {observed
-          ? "Зафиксирована при включении учёта. Начало до границы истории неизвестно."
-          : `Начало смены: ${shift.startedByName ?? "Автор не указан"}.`}
-        {shift.endedAt
-          ? ` Завершение: ${shift.endedByName ?? "Автор не указан"}.`
-          : ""}
-      </p>
-      <details className={styles.intervals}>
-        <summary>Отрезки смены · {shift.intervals.length}</summary>
-        <ul>
-          {shift.intervals.map((interval) => (
-            <li key={interval.id}>
-              {workforceStatus(interval.status)} ·{" "}
-              {workforceDateTime(interval.startedAt)} →{" "}
-              {interval.endedAt
-                ? workforceDateTime(interval.endedAt)
-                : "Продолжается"}{" "}
-              · {formatWorkforceDuration(interval.durationSeconds)} в периоде.{" "}
-              {interval.actorName
-                ? `Изменение: ${interval.actorName}.`
-                : "Автор не указан."}
-            </li>
-          ))}
-        </ul>
-      </details>
-    </li>
-  );
-}
-
-function EventItem({ event }: { event: WorkEventDto }) {
-  return (
-    <li className={styles.historyItem}>
-      <div className={styles.historyTitle}>
-        <strong>{workEventTitle(event.kind)}</strong>
-        <span>{workforceDateTime(event.occurredAt)}</span>
-      </div>
-      <div className={styles.historyMeta}>
-        <span>
-          Объект: <b>{event.referenceCode}</b>
-        </span>
-        <span>
-          Операций: <b>{number(event.quantity)}</b>
-        </span>
-        {event.kind === "box_packed" && (
-          <span className={styles.eventUnits}>
-            В коробе: {number(event.units)} раскрасок
-          </span>
-        )}
-      </div>
-      {!event.shiftId && (
-        <p className={styles.historyNote}>
-          Событие сохранено без привязки к смене.
-        </p>
+    <Modal
+      open={!!shift}
+      onClose={onClose}
+      title={shift ? `Смена · ${shift.employeeName}` : "Смена"}
+    >
+      {shift && (
+        <div className={styles.details}>
+          <dl className={styles.shiftFacts}>
+            <div>
+              <dt>
+                {shift.origin === "observed_from_migration"
+                  ? "Учёт с"
+                  : "Начало"}
+              </dt>
+              <dd>{workforceDateTime(shift.startedAt)}</dd>
+            </div>
+            <div>
+              <dt>Открыл смену</dt>
+              <dd>{shift.startedByName ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>Окончание</dt>
+              <dd>{workforceDateTime(shift.endedAt)}</dd>
+            </div>
+            <div>
+              <dt>Закрыл смену</dt>
+              <dd>{shift.endedByName ?? "—"}</dd>
+            </div>
+          </dl>
+          <div
+            className={styles.tableScroll}
+            role="region"
+            aria-label="Периоды смены"
+            tabIndex={0}
+          >
+            <table className={`${styles.table} ${styles.intervals}`}>
+              <thead>
+                <tr>
+                  <th scope="col">Период</th>
+                  <th scope="col">Начало</th>
+                  <th scope="col">Окончание</th>
+                  <th scope="col" className={styles.numeric}>
+                    Время
+                  </th>
+                  <th scope="col">Кто изменил</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shift.intervals.map((interval) => (
+                  <tr key={interval.id}>
+                    <th scope="row">{workforceStatus(interval.status)}</th>
+                    <td>{workforceDateTime(interval.startedAt)}</td>
+                    <td>
+                      {interval.endedAt
+                        ? workforceDateTime(interval.endedAt)
+                        : "Продолжается"}
+                    </td>
+                    <td className={styles.numeric}>
+                      {formatWorkforceDuration(interval.durationSeconds)}
+                    </td>
+                    <td>{interval.actorName ?? "—"}</td>
+                  </tr>
+                ))}
+                {!shift.intervals.length && (
+                  <tr>
+                    <td className={styles.empty} colSpan={5}>
+                      Нет записей за выбранные даты
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
-    </li>
+    </Modal>
   );
 }
 
-function HistoryFrame({
+function ShiftTable({ shifts }: { shifts: ShiftHistoryDto[] }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = shifts.find((shift) => shift.id === selectedId);
+
+  return (
+    <>
+      <div
+        className={styles.tableScroll}
+        role="region"
+        aria-label="Таблица смен"
+        tabIndex={0}
+      >
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th scope="col">Сотрудник</th>
+              <th scope="col">Начало</th>
+              <th scope="col">Окончание</th>
+              <th scope="col" className={styles.numeric}>
+                Без перерывов
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Перерывы
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shifts.map((shift) => (
+              <tr key={shift.id}>
+                <th scope="row">{shift.employeeName}</th>
+                <td>
+                  <button
+                    type="button"
+                    className={styles.detailLink}
+                    aria-haspopup="dialog"
+                    aria-label={`Смена ${shift.employeeName} от ${workforceDateTime(shift.startedAt)}`}
+                    onClick={() => setSelectedId(shift.id)}
+                  >
+                    {workforceDateTime(shift.startedAt)}
+                  </button>
+                  {shift.origin === "observed_from_migration" && (
+                    <small>С начала учёта</small>
+                  )}
+                </td>
+                <td>
+                  {shift.endedAt ? workforceDateTime(shift.endedAt) : "Открыта"}
+                </td>
+                <td className={styles.numeric}>
+                  {formatWorkforceDuration(shift.workingSeconds)}
+                </td>
+                <td className={styles.numeric}>
+                  {formatWorkforceDuration(shift.breakSeconds)}
+                </td>
+              </tr>
+            ))}
+            {!shifts.length && (
+              <tr>
+                <td className={styles.empty} colSpan={5}>
+                  Смен за выбранные даты нет
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <ShiftDetails shift={selected} onClose={() => setSelectedId(null)} />
+    </>
+  );
+}
+
+function EventTable({ events }: { events: WorkEventDto[] }) {
+  return (
+    <div
+      className={styles.tableScroll}
+      role="region"
+      aria-label="Таблица операций"
+      tabIndex={0}
+    >
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th scope="col">Дата и время</th>
+            <th scope="col">Сотрудник</th>
+            <th scope="col">Операция</th>
+            <th scope="col">Код</th>
+            <th scope="col" className={styles.numeric}>
+              Кол-во
+            </th>
+            <th scope="col" className={styles.numeric}>
+              В коробе, шт.
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((event) => (
+            <tr key={event.id}>
+              <td>{workforceDateTime(event.occurredAt)}</td>
+              <th scope="row">{event.employeeName}</th>
+              <td>
+                {workEventTitle(event.kind)}
+                {!event.shiftId && <small>Без привязки к смене</small>}
+              </td>
+              <td className={styles.code}>{event.referenceCode}</td>
+              <td className={styles.numeric}>{number(event.quantity)}</td>
+              <td className={styles.numeric}>
+                {event.kind === "box_packed" ? number(event.units) : "—"}
+              </td>
+            </tr>
+          ))}
+          {!events.length && (
+            <tr>
+              <td className={styles.empty} colSpan={6}>
+                Операций за выбранные даты нет
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type HistoryQuery<T> = {
+  data?: { total: number; page: number; pageSize: number; items: T[] };
+  isPlaceholderData: boolean;
+  isPending: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  refetch: () => unknown;
+};
+
+function HistoryPanel<T>({
   title,
-  description,
+  note,
   query,
   children,
-  empty,
-  page,
   onPage,
 }: {
   title: string;
-  description: string;
-  query: {
-    data?: { total: number; page: number; pageSize: number; items: unknown[] };
-    isPlaceholderData: boolean;
-    isPending: boolean;
-    isError: boolean;
-    isFetching: boolean;
-    refetch: () => unknown;
-  };
-  children: ReactNode;
-  empty: string;
-  page: number;
+  note: string;
+  query: HistoryQuery<T>;
+  children: (items: T[]) => ReactNode;
   onPage: (page: number) => void;
 }) {
   const result = query.isPlaceholderData ? undefined : query.data;
   return (
-    <section
-      className={`glass-panel ${styles.history}`}
-      aria-label={title}
-      aria-busy={query.isFetching}
-    >
+    <section className={styles.panel} aria-label={title}>
       <div className={styles.sectionHeading}>
-        <div>
-          <h2>{title}</h2>
-          <p>{description}</p>
-        </div>
-        {query.isFetching && result && <span role="status">Обновляем…</span>}
+        <h2>{title}</h2>
+        <span>{note}</span>
       </div>
       {query.isError && result && (
         <div role="alert" className={styles.readError}>
-          <p>
-            Не удалось обновить историю. Показана последняя загруженная версия
-            за этот период.
-          </p>
+          <span>Не удалось обновить записи. Показаны последние данные.</span>
           <Button
             size="sm"
             variant="secondary"
@@ -159,98 +269,61 @@ function HistoryFrame({
         </div>
       )}
       {query.isPending || query.isPlaceholderData ? (
-        <LoadingState label="Загружаем историю…" />
+        <LoadingState label="Загружаем записи…" />
       ) : !result ? (
         <ErrorState
-          message="Не удалось загрузить историю. Период сохранён."
+          message="Не удалось загрузить записи."
           onRetry={() => void query.refetch()}
         />
-      ) : result.items.length ? (
-        children
       ) : (
-        <EmptyState
-          title={result.total ? "На этой странице нет записей" : empty}
-          description={
-            result.total
-              ? "Список изменился. Откройте первую страницу."
-              : "За выбранные даты фактов не зафиксировано."
-          }
-          action={
-            page > 1 ? (
-              <Button variant="secondary" onClick={() => onPage(1)}>
-                На первую страницу
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-      {result && (
-        <HistoryPagination
-          page={result.page}
-          pageSize={result.pageSize}
-          total={result.total}
-          pending={query.isFetching}
-          onPage={onPage}
-          label={`Страницы: ${title.toLowerCase()}`}
-        />
+        <>
+          {children(result.items)}
+          <HistoryPagination
+            page={result.page}
+            pageSize={result.pageSize}
+            total={result.total}
+            pending={query.isFetching}
+            onPage={onPage}
+            label={`Страницы раздела «${title}»`}
+          />
+        </>
       )}
     </section>
   );
 }
 
 export function EmployeeHistory({
-  values,
-  employeeId,
+  params,
   shiftPage,
   eventPage,
   onShiftPage,
   onEventPage,
 }: {
-  values: ReportFilterValues;
-  employeeId: string;
+  params: GetPerformanceParams;
   shiftPage: number;
   eventPage: number;
   onShiftPage: (page: number) => void;
   onEventPage: (page: number) => void;
 }) {
-  const { shifts, events } = useEmployeeHistory(
-    values,
-    employeeId,
-    shiftPage,
-    eventPage,
-  );
-  const shiftResult = shifts.isPlaceholderData ? undefined : shifts.data;
-  const eventResult = events.isPlaceholderData ? undefined : events.data;
+  const { shifts, events } = useEmployeeHistory(params, shiftPage, eventPage);
   return (
-    <div className={styles.historyGrid}>
-      <HistoryFrame
-        title="История смен"
-        description="Время учитывается только в пределах выбранного периода. Начало и конец смены показаны полностью, по Москве."
+    <>
+      <HistoryPanel
+        title="Смены"
+        note="МСК · длительность за выбранные даты"
         query={shifts}
-        empty="Смен за этот период нет"
-        page={shiftPage}
         onPage={onShiftPage}
       >
-        <ul className={styles.historyList}>
-          {shiftResult?.items.map((shift) => (
-            <ShiftItem key={shift.id} shift={shift} />
-          ))}
-        </ul>
-      </HistoryFrame>
-      <HistoryFrame
-        title="Рабочие события"
-        description="Упаковка и подтверждённые размещения. Сканы подготовки в выработку не входят."
+        {(items) => <ShiftTable shifts={items} />}
+      </HistoryPanel>
+      <HistoryPanel
+        title="Операции"
+        note="МСК"
         query={events}
-        empty="Рабочих событий за этот период нет"
-        page={eventPage}
         onPage={onEventPage}
       >
-        <ul className={styles.historyList}>
-          {eventResult?.items.map((event) => (
-            <EventItem key={event.id} event={event} />
-          ))}
-        </ul>
-      </HistoryFrame>
-    </div>
+        {(items) => <EventTable events={items} />}
+      </HistoryPanel>
+    </>
   );
 }

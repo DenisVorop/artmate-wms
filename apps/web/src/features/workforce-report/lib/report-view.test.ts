@@ -7,7 +7,6 @@ import {
   workEventTitle,
   workforceCoverage,
   workforceTotals,
-  hasWorkforceFacts,
 } from "./report-view";
 import type { EmployeePerformanceDto } from "@/shared/api/generated/model";
 
@@ -78,8 +77,7 @@ test("totals preserve actual packed units, fractional seconds, and zero employee
   });
   assert.deepEqual(rows, original);
   assert.equal(formatWorkforceDuration(totals.workingSeconds), "1 мин");
-  assert.equal(hasWorkforceFacts(totals), true);
-  assert.equal(hasWorkforceFacts(workforceTotals([])), false);
+  assert.ok(Object.values(workforceTotals([])).every((value) => value === 0));
 });
 
 test("history coverage distinguishes an untracked period from partially tracked and fully tracked dates", () => {

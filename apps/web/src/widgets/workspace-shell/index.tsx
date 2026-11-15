@@ -36,7 +36,14 @@ export function WorkspaceShell({
       </ManagerWorkspaceShell>
     );
   return (
-    <div style={{ minHeight: "100dvh", padding: "0 16px" }}>
+    <div
+      className={
+        theme === "light"
+          ? `${themeStyles.light} ${themeStyles.layout}`
+          : undefined
+      }
+      style={{ minHeight: "100dvh", padding: "0 16px" }}
+    >
       <header
         style={{
           maxWidth: 1100,

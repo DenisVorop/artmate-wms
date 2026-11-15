@@ -1,75 +1,102 @@
-import { ChevronRight } from "lucide-react";
-import type { EmployeePerformanceDto } from "@/shared/api/generated/model";
+import type {
+  EmployeePerformanceDto,
+  PerformanceMetricsDto,
+} from "@/shared/api/generated/model";
 import { number } from "@/shared/lib/format";
-import { formatWorkforceDuration, workforceStatus } from "../lib/report-view";
+import { formatWorkforceDuration, workforceTotals } from "../lib/report-view";
 import styles from "./workforce-report.module.css";
+
+function MetricCells({ metrics }: { metrics: PerformanceMetricsDto }) {
+  return (
+    <>
+      <td className={styles.numeric}>{number(metrics.boxesPacked)}</td>
+      <td className={styles.numeric}>{number(metrics.unitsPacked)}</td>
+      <td className={styles.numeric}>{number(metrics.receiptPalletsPlaced)}</td>
+      <td className={styles.numeric}>{number(metrics.putawayBoxesPlaced)}</td>
+      <td className={styles.numeric}>
+        {number(metrics.movementPalletsPlaced)}
+      </td>
+      <td className={styles.numeric}>
+        {formatWorkforceDuration(metrics.workingSeconds)}
+      </td>
+      <td className={styles.numeric}>
+        {formatWorkforceDuration(metrics.breakSeconds)}
+      </td>
+    </>
+  );
+}
 
 export function EmployeeTable({
   employees,
-  selectedId,
-  onSelect,
+  period,
 }: {
   employees: EmployeePerformanceDto[];
-  selectedId: string;
-  onSelect: (id: string) => void;
+  period: string;
 }) {
   return (
-    <div className={styles.tableScroll}>
-      <table className={styles.table}>
-        <caption className={styles.screenReader}>
-          Результаты сотрудников за выбранный период. Нажмите на имя, чтобы
-          открыть смены и события.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Сотрудник</th>
-            <th scope="col">Короба</th>
-            <th scope="col">Раскраски</th>
-            <th scope="col">Приёмка, паллет</th>
-            <th scope="col">Размещение, коробов</th>
-            <th scope="col">Перемещение, паллет</th>
-            <th scope="col">В смене без перерывов</th>
-            <th scope="col">Перерывы</th>
-          </tr>
-        </thead>
-        <tbody>
-          {employees.map((employee) => (
-            <tr
-              key={employee.employeeId}
-              className={
-                selectedId === employee.employeeId
-                  ? styles.selectedRow
-                  : undefined
-              }
-            >
-              <th scope="row">
-                <button
-                  type="button"
-                  className={styles.employeeButton}
-                  aria-expanded={selectedId === employee.employeeId}
-                  aria-controls="workforce-employee-detail"
-                  onClick={() => onSelect(employee.employeeId)}
-                >
-                  <span className={styles.employeeName}>
-                    {employee.employeeName}
-                    <small>Сейчас: {workforceStatus(employee.status)}</small>
-                  </span>
-                  <ChevronRight size={14} />
-                </button>
+    <section className={styles.panel} aria-label="Выработка">
+      <div className={styles.sectionHeading}>
+        <h2>Выработка</h2>
+        <span>{period}</span>
+      </div>
+      <div
+        className={styles.tableScroll}
+        role="region"
+        aria-label="Таблица выработки"
+        tabIndex={0}
+      >
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th scope="col">Сотрудник</th>
+              <th scope="col" className={styles.numeric}>
+                Собрано, кор.
               </th>
-              <td>{number(employee.metrics.boxesPacked)}</td>
-              <td>{number(employee.metrics.unitsPacked)}</td>
-              <td>{number(employee.metrics.receiptPalletsPlaced)}</td>
-              <td>{number(employee.metrics.putawayBoxesPlaced)}</td>
-              <td>{number(employee.metrics.movementPalletsPlaced)}</td>
-              <td>
-                {formatWorkforceDuration(employee.metrics.workingSeconds)}
-              </td>
-              <td>{formatWorkforceDuration(employee.metrics.breakSeconds)}</td>
+              <th scope="col" className={styles.numeric}>
+                Упаковано, шт.
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Приёмка, пал.
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Размещение, кор.
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Перемещение, пал.
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Без перерывов
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Перерывы
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {employees.map(({ employeeId, employeeName, metrics }) => (
+              <tr key={employeeId}>
+                <th scope="row">{employeeName}</th>
+                <MetricCells metrics={metrics} />
+              </tr>
+            ))}
+            {!employees.length && (
+              <tr>
+                <td className={styles.empty} colSpan={8}>
+                  Сотрудники не найдены
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {employees.length > 1 && (
+            <tfoot>
+              <tr>
+                <th scope="row">Итого</th>
+                <MetricCells metrics={workforceTotals(employees)} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </section>
   );
 }

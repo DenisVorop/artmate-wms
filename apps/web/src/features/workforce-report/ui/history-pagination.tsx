@@ -20,18 +20,33 @@ export function HistoryPagination({
   label: string;
 }) {
   const pages = workforcePages(total, pageSize);
+  if (page === 1 && pages === 1) return null;
+  if (page > pages) {
+    return (
+      <nav className={styles.pagination} aria-label={label}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => onPage(pages)}
+        >
+          Вернуться к записям
+        </Button>
+      </nav>
+    );
+  }
   return (
     <nav className={styles.pagination} aria-label={label}>
-      <span>Всего: {number(total)}</span>
+      <span>{number(total)} всего</span>
       <div>
         <Button
           size="sm"
           variant="secondary"
+          aria-label="Предыдущая страница"
           disabled={pending || page <= 1}
-          onClick={() => onPage(Math.max(1, page - 1))}
+          onClick={() => onPage(page - 1)}
         >
-          <ArrowLeft size={14} />
-          Назад
+          <ArrowLeft size={14} aria-hidden="true" />
         </Button>
         <span>
           {page} из {pages}
@@ -39,11 +54,11 @@ export function HistoryPagination({
         <Button
           size="sm"
           variant="secondary"
+          aria-label="Следующая страница"
           disabled={pending || page >= pages}
           onClick={() => onPage(page + 1)}
         >
-          Далее
-          <ArrowRight size={14} />
+          <ArrowRight size={14} aria-hidden="true" />
         </Button>
       </div>
     </nav>

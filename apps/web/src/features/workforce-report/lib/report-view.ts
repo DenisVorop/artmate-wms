@@ -75,19 +75,6 @@ export function workEventTitle(kind: string): string {
   );
 }
 
-export function workJobTitle(kind: string): string {
-  return (
-    (
-      {
-        assembly: "Сборка",
-        putaway: "Размещение короба",
-        movement: "Перемещение паллеты",
-        stocktake: "Инвентаризация",
-      } as Record<string, string>
-    )[kind] ?? "Задание"
-  );
-}
-
 export function workforcePages(total: number, pageSize: number): number {
   return Math.max(1, Math.ceil(total / pageSize));
 }
@@ -119,9 +106,6 @@ export function workforceTotals(
   );
 }
 
-export function hasWorkforceFacts(metrics: PerformanceMetricsDto): boolean {
-  return Object.values(metrics).some((value) => value > 0);
-}
 export function workforceCoverage(
   from: string,
   to: string,
