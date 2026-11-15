@@ -79,6 +79,10 @@ export function StocktakeDocument({
   const rows = useMemo(() => stocktakeWalk(doc.rows, data), [doc.rows, data]);
   const busy = !!pending;
   const own = doc.employeeId === ownEmployeeId;
+  const requiresShift =
+    doc.status === "queued" ||
+    (doc.status === "counting" && own) ||
+    (doc.status === "review" && isManager);
   const openReason = (action: "approve" | "cancel") => {
     setReviewRevision(doc.revision);
 
@@ -120,7 +124,10 @@ export function StocktakeDocument({
               <span>
                 Создан {stocktakeDate(doc.createdAt)} · {doc.createdByName}
               </span>
-              <span>Исполнитель: {doc.employeeName ?? "Пока не назначен"}</span>
+              {doc.employeeName && <span>Исполнитель: {doc.employeeName}</span>}
+              {archived && (
+                <span>{stocktakeDate(doc.approvedAt ?? doc.cancelledAt)}</span>
+              )}
             </div>
           </div>
           <div className={styles.subtle}>
@@ -131,21 +138,10 @@ export function StocktakeDocument({
           </div>
         </header>
         <div className={styles.panel} style={{ paddingTop: 0 }}>
-          <div className={styles.notice}>
-            <strong>
-              {doc.status === "approved"
-                ? `Документ утверждён ${stocktakeDate(doc.approvedAt)}. Изменения применены к остаткам.`
-                : doc.status === "cancelled"
-                  ? `Документ отменён ${stocktakeDate(doc.cancelledAt)}. Остатки не изменялись.`
-                  : "Подсчёт сохраняется в этом документе. Остатки склада изменятся только после утверждения менеджером."}
-            </strong>
-            {doc.reason && <p>Причина: {doc.reason}</p>}
-          </div>
-          {!archived && !working && (
-            <p className={styles.notice} style={{ marginTop: 12 }}>
-              Рабочая смена не начата или находится на перерыве. Для подсчёта,
-              взятия документа и утверждения{" "}
-              <Link href="/team">начните или возобновите смену</Link>.
+          {doc.reason && <p className={styles.notice}>Причина: {doc.reason}</p>}
+          {requiresShift && !working && (
+            <p className={styles.notice}>
+              <Link href="/team">Начните или возобновите смену</Link>.
             </p>
           )}
           {doc.status === "queued" && (
@@ -155,13 +151,10 @@ export function StocktakeDocument({
                 aria-busy={pending === "claim"}
                 onClick={() => void onClaim()}
               >
-                Взять {doc.code} в работу
+                Взять в работу
               </Button>
               {!doc.canClaim && working && (
-                <p className={styles.footerNote}>
-                  Сейчас документ нельзя взять. Проверьте свою смену и
-                  доступность документа; обновление выполняется автоматически.
-                </p>
+                <p className={styles.footerNote}>Документ пока нельзя взять.</p>
               )}
             </div>
           )}
@@ -172,30 +165,16 @@ export function StocktakeDocument({
                 aria-busy={pending === "submit"}
                 onClick={() => void onSubmit()}
               >
-                Передать {doc.code} на проверку
+                Передать на проверку
               </Button>
-              <p className={styles.footerNote}>
-                {dirtyRows.size
-                  ? "Сначала сохраните или очистите незавершённые правки в ячейках."
-                  : !doc.canSubmit
-                    ? "Нужно пересчитать все ячейки, обновить устаревшие снимки и дождаться освобождения занятых адресов."
-                    : "После передачи подсчёт станет доступен менеджеру для проверки."}
-              </p>
+              {(dirtyRows.size > 0 || (!doc.canSubmit && working)) && (
+                <p className={styles.footerNote}>
+                  {dirtyRows.size
+                    ? "Сохраните подсчёт перед отправкой."
+                    : "Завершите подсчёт и проверьте отмеченные адреса."}
+                </p>
+              )}
             </div>
-          )}
-          {doc.status === "counting" && !own && (
-            <p className={styles.description}>
-              Документ считает {doc.employeeName ?? "назначенный сотрудник"}.
-              Менеджер может проверять результаты и обновлять снимки; сохранять
-              фактический подсчёт может только назначенный сотрудник на смене.
-            </p>
-          )}
-          {doc.status === "review" && (
-            <p className={styles.description}>
-              {isManager
-                ? "Проверьте каждое расхождение и его причину. При необходимости обновите нужную ячейку: документ вернётся на повторный подсчёт."
-                : "Результаты переданы менеджеру. До утверждения остатки не меняются. При повторном подсчёте документ вернётся в работу."}
-            </p>
           )}
           {error && (
             <div
@@ -206,7 +185,7 @@ export function StocktakeDocument({
               {error}
             </div>
           )}
-          {!archived && (
+          {(doc.canCancel || (isManager && doc.status === "review")) && (
             <div className={styles.inlineActions} style={{ marginTop: 16 }}>
               {isManager && doc.status === "review" && (
                 <Button
@@ -219,7 +198,7 @@ export function StocktakeDocument({
                   }
                   onClick={() => openReason("approve")}
                 >
-                  Проверить и утвердить изменения
+                  Утвердить
                 </Button>
               )}
               {doc.canCancel && (
@@ -263,7 +242,7 @@ export function StocktakeDocument({
           }
           description={
             reasonAction === "approve"
-              ? `Все изменения, перечисленные выше, будут применены к остаткам одной операцией. Проверьте полный список и укажите причину. Документ сохранится в архиве.`
+              ? "Подтверждённые изменения будут применены к остаткам."
               : stocktakeCancelDescription(dirtyRows.size)
           }
           label={
@@ -298,10 +277,7 @@ export function StocktakeDocument({
       )}
       <section>
         <div className={styles.sectionHeading} style={{ padding: "0 0 14px" }}>
-          <h2>Ячейки документа</h2>
-          <span className={styles.subtle}>
-            Откройте адрес, чтобы увидеть снимок и результат
-          </span>
+          <h2>Ячейки</h2>
         </div>
         <div className={styles.rows}>
           {rows.map((row) => (
@@ -322,14 +298,13 @@ export function StocktakeDocument({
           ))}
         </div>
         {!doc.rows.length && (
-          <div className={styles.notice}>
-            В документе нет ячеек. Создайте новый документ с действующими
-            адресами хранения.
-          </div>
+          <div className={styles.notice}>В документе нет ячеек.</div>
         )}
       </section>
-      <section className={`glass-panel ${styles.panel}`}>
-        <h2>История документа</h2>
+      <details
+        className={`glass-panel ${styles.panel} ${styles.documentHistory}`}
+      >
+        <summary>История документа</summary>
         <ol className={styles.history}>
           {doc.history.map((item) => (
             <li key={item.id}>
@@ -338,7 +313,7 @@ export function StocktakeDocument({
             </li>
           ))}
         </ol>
-      </section>
+      </details>
     </div>
   );
 }

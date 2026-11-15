@@ -1,5 +1,7 @@
 "use client";
-import { ClipboardCheck, Plus, RefreshCw } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Plus } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import { useStocktake, useStocktakes } from "@/entities/stocktake";
@@ -19,7 +21,16 @@ export function StocktakesFeature({
 }) {
   const { user, isManager } = useSession();
   const workspace = useWorkspace();
+  const router = useRouter();
   const ui = useStocktakesState(initialDocumentId);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousDocument = useRef(ui.selectedId);
+  useEffect(() => {
+    if (previousDocument.current !== ui.selectedId) {
+      previousDocument.current = ui.selectedId;
+      heading.current?.focus();
+    }
+  }, [ui.selectedId]);
   const commands = useStocktakeCommands();
   const listQuery = useStocktakes({
     bucket: ui.archive ? "archive" : "active",
@@ -45,52 +56,43 @@ export function StocktakesFeature({
   const success = (message: string) => ui.setNotice(message);
   return (
     <div className={styles.feature}>
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">ТОВАРНЫЙ УЧЁТ · КОНТРОЛЬ</p>
-          <h1 className="page-heading">Инвентаризация</h1>
-          <p className="page-description">
-            Пересчитайте адреса, проверьте расхождения и примените согласованный
-            результат.
-          </p>
-        </div>
-        <div className={styles.actions}>
+      <header className={styles.pageHeader}>
+        <h1 className="page-heading" ref={heading} tabIndex={-1}>
+          Инвентаризация
+        </h1>
+        {ui.selectedId ? (
           <Button
             variant="secondary"
-            size="sm"
-            disabled={listQuery.isFetching || docQuery.isFetching}
+            disabled={busy}
             onClick={() => {
-              void listQuery.refetch();
-              if (ui.selectedId) void docQuery.refetch();
+              commands.clearError();
+              ui.select("");
+              if (initialDocumentId && ui.dirtyRows.size === 0) {
+                router.replace("/stocktakes", { scroll: false });
+              }
             }}
           >
-            <RefreshCw size={14} />
-            Обновить документы
+            <ArrowLeft size={15} aria-hidden="true" />К списку
           </Button>
-          {isManager && (
+        ) : (
+          isManager && (
             <Button
-              disabled={busy || !canCreate || ui.dirtyRows.size > 0}
+              disabled={busy || !canCreate}
+              aria-haspopup="dialog"
               onClick={() => {
                 commands.clearError();
                 ui.setCreating(true);
               }}
             >
-              <Plus size={15} />
+              <Plus size={15} aria-hidden="true" />
               Новая инвентаризация
             </Button>
-          )}
-        </div>
+          )
+        )}
       </header>
-      {isManager && !canCreate && !workspace.isPending && (
-        <div className={styles.notice}>
-          Сначала создайте действующие ячейки стеллажей или места на полу на
-          карте склада.
-        </div>
-      )}
-      {ui.dirtyRows.size > 0 && (
-        <p className={styles.footerNote}>
-          Есть несохранённый подсчёт. Сохраните его перед созданием нового
-          документа или перед передачей на проверку.
+      {!ui.selectedId && isManager && workspace.data && !canCreate && (
+        <p className={styles.notice}>
+          На карте нет адресов для инвентаризации.
         </p>
       )}
       {ui.creating && workspace.data && (
@@ -104,9 +106,7 @@ export function StocktakesFeature({
             if (!result) return false;
             ui.setSelectedId(result.id);
             ui.showArchive(false);
-            success(
-              `Создан документ ${result.code}. Теперь его можно взять в работу.`,
-            );
+            success(`${result.code} создан.`);
             return true;
           }}
         />
@@ -118,33 +118,35 @@ export function StocktakesFeature({
       )}
       {ui.pendingSelection !== null && (
         <div className={styles.confirm}>
-          <h3>Перейти к другому документу?</h3>
-          <p>
-            Несохранённый подсчёт останется только в текущей форме и будет
-            потерян при переходе. Сохранённые результаты останутся в документе.
-          </p>
+          <h3>Вернуться к списку?</h3>
+          <p>Несохранённый подсчёт будет потерян.</p>
           <div className={styles.inlineActions}>
             <Button
               variant="secondary"
               disabled={busy}
-              onClick={ui.forceSelect}
+              onClick={() => {
+                ui.forceSelect();
+                if (initialDocumentId) {
+                  router.replace("/stocktakes", { scroll: false });
+                }
+              }}
             >
-              Перейти и очистить несохранённый ввод
+              Выйти без сохранения
             </Button>
             <Button
               variant="ghost"
               onClick={() => ui.setPendingSelection(null)}
             >
-              Остаться в документе
+              Остаться
             </Button>
           </div>
         </div>
       )}
-      <div className={styles.layout}>
-        <aside className={styles.sidebar} aria-label="Документы инвентаризации">
+      {!ui.selectedId ? (
+        <div className={styles.detail}>
           {listQuery.isError && list && (
             <div role="alert" className={styles.error}>
-              Не удалось обновить список. Показана последняя загруженная версия.
+              Не удалось обновить список.
               <Button
                 variant="ghost"
                 size="sm"
@@ -165,9 +167,7 @@ export function StocktakesFeature({
             <StocktakeList
               data={list}
               archive={ui.archive}
-              selectedId={ui.selectedId}
               pending={listQuery.isFetching || busy}
-              page={ui.page}
               onPage={ui.setPage}
               onArchive={ui.showArchive}
               onSelect={(id) => {
@@ -180,39 +180,21 @@ export function StocktakesFeature({
               onSearch={ui.setSearch}
             />
           )}
-        </aside>
+        </div>
+      ) : (
         <section className={styles.detail} aria-label="Документ инвентаризации">
-          {!ui.selectedId ? (
-            <section className={`glass-panel ${styles.emptyDetail}`}>
-              <ClipboardCheck size={32} />
-              <h2>Выберите документ</h2>
-              <p>
-                Откройте инвентаризацию из списка, чтобы увидеть адреса и
-                результаты подсчёта.
-              </p>
-              {isManager && canCreate && (
-                <Button
-                  variant="secondary"
-                  onClick={() => ui.setCreating(true)}
-                >
-                  Новая инвентаризация
-                </Button>
-              )}
-            </section>
-          ) : docQuery.isPending ? (
+          {docQuery.isPending ? (
             <LoadingState label="Загружаем ячейки документа…" />
           ) : !doc ? (
             <ErrorState
-              message="Документ не удалось открыть: проверьте доступ или повторите загрузку. Выбранный документ и список сохранены."
+              message="Не удалось открыть документ."
               onRetry={() => void docQuery.refetch()}
             />
           ) : (
             <>
               {docQuery.isError && (
                 <div className={styles.error} role="alert">
-                  Документ не удалось обновить. Показана последняя загруженная
-                  версия. Перед записью сервер повторно проверит доступ и
-                  состояние.
+                  Не удалось обновить документ. Показана последняя версия.
                   <Button
                     variant="ghost"
                     size="sm"
@@ -236,9 +218,7 @@ export function StocktakesFeature({
                 onClaim={async () => {
                   const result = await commands.claim(doc);
                   if (!result) return false;
-                  success(
-                    `${doc.code} взят в работу. Исполнитель: ${user?.name ?? "текущий сотрудник"}.`,
-                  );
+                  success(`${doc.code} взят в работу.`);
                   return true;
                 }}
                 onCount={async (row, values, revision) => {
@@ -248,10 +228,7 @@ export function StocktakesFeature({
                     values,
                     revision,
                   );
-                  if (result)
-                    success(
-                      `Подсчёт ${row.locationCode} сохранён. Остатки не изменялись.`,
-                    );
+                  if (result) success(`Подсчёт ${row.locationCode} сохранён.`);
                   return result;
                 }}
                 onRefresh={async (row, revision) => {
@@ -260,17 +237,13 @@ export function StocktakesFeature({
                     row.locationId,
                   );
                   if (!result) return false;
-                  success(
-                    `Снимок ${row.locationCode} обновлён. Пересчитайте эту ячейку заново.`,
-                  );
+                  success(`Пересчитайте ${row.locationCode} заново.`);
                   return true;
                 }}
                 onSubmit={async () => {
                   const result = await commands.submit(doc);
                   if (!result) return false;
-                  success(
-                    `${doc.code} передан на проверку. Остатки не изменялись.`,
-                  );
+                  success(`${doc.code} передан на проверку.`);
                   return true;
                 }}
                 onApprove={async (reason, revision) => {
@@ -280,9 +253,7 @@ export function StocktakesFeature({
                   );
                   if (!result) return false;
                   ui.showArchive(true);
-                  success(
-                    `${doc.code} утверждён. Согласованные изменения применены к остаткам.`,
-                  );
+                  success(`${doc.code} утверждён. Остатки обновлены.`);
                   return true;
                 }}
                 onCancel={async (reason, revision) => {
@@ -292,16 +263,14 @@ export function StocktakesFeature({
                   );
                   if (!result) return false;
                   ui.showArchive(true);
-                  success(
-                    `${doc.code} отменён. Подсчёт сохранён в архиве, остатки не изменялись.`,
-                  );
+                  success(`${doc.code} отменён.`);
                   return true;
                 }}
               />
             </>
           )}
         </section>
-      </div>
+      )}
     </div>
   );
 }

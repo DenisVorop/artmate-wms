@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { Button, Input, Select } from "@/shared/ui";
+import { Button, Input, Modal, Select } from "@/shared/ui";
 import {
   resolveStocktakeScope,
   stocktakeLocations,
@@ -83,30 +83,13 @@ export function CreateStocktake({
       onClose();
   });
   return (
-    <section
-      className={`glass-panel ${styles.panel}`}
-      aria-label="Новая инвентаризация"
+    <Modal
+      open
+      title="Новая инвентаризация"
+      onClose={() => {
+        if (!pending) onClose();
+      }}
     >
-      <div
-        className={styles.sectionHeading}
-        style={{ padding: 0, marginBottom: 18 }}
-      >
-        <div>
-          <h2>
-            {values.mode === "opening"
-              ? "Первичная инвентаризация"
-              : "Новая инвентаризация"}
-          </h2>
-          <p>
-            {values.mode === "opening"
-              ? "Внесите товар, который уже физически есть на складе, но ещё не учтён в WMS. Адреса должны быть пустыми по данным системы. Остатки и QR появятся после утверждения."
-              : "Выберите адреса, которые нужно пересчитать. Остатки изменятся только после утверждения результатов."}
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" disabled={pending} onClick={onClose}>
-          Закрыть форму
-        </Button>
-      </div>
       <form className={styles.form} onSubmit={submit}>
         <fieldset className={styles.radioGroup} disabled={pending}>
           <legend>Что сделать</legend>
@@ -124,8 +107,7 @@ export function CreateStocktake({
         </fieldset>
         {values.mode === "opening" && (
           <p className={styles.notice}>
-            Уже учтённые, заблокированные и зарезервированные места исключены.
-            Для них используйте обычную сверку остатков.
+            Первичный ввод доступен для свободных адресов без учтённого товара.
           </p>
         )}
         <fieldset className={styles.radioGroup} disabled={pending}>
@@ -171,10 +153,7 @@ export function CreateStocktake({
                 ))}
             </Select>
             {!snapshot.warehouse.spaces.some((space) => !space.archived) && (
-              <small>
-                На плане пока нет помещений. Выберите секцию или отдельные
-                адреса.
-              </small>
+              <small>Помещений нет. Выберите секцию или адреса.</small>
             )}
           </label>
         )}
@@ -266,11 +245,6 @@ export function CreateStocktake({
             {selected.map((location) => location.code).join(" · ")}
           </div>
         )}
-        <p className={styles.footerNote}>
-          Список адресов зафиксирован при открытии формы. Только действующие
-          ячейки стеллажей и места на полу; зоны сборки, приёмки и отгрузки не
-          входят в подсчёт.
-        </p>
         {(form.formState.errors.root?.message || error) && (
           <div className={styles.error} role="alert">
             {form.formState.errors.root?.message || error}
@@ -280,11 +254,8 @@ export function CreateStocktake({
           <Button type="submit" disabled={pending} aria-busy={pending}>
             Создать документ
           </Button>
-          <Button variant="secondary" disabled={pending} onClick={onClose}>
-            Отмена
-          </Button>
         </div>
       </form>
-    </section>
+    </Modal>
   );
 }

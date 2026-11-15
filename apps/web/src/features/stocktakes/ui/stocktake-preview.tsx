@@ -49,13 +49,6 @@ export function StocktakePreview({
                 ? "Применённые изменения"
                 : "Расхождения и изменения"}
           </h2>
-          <p>
-            {applied
-              ? "Сохранённый результат утверждения. Последующие складские операции его не меняют."
-              : presentation.showChanges
-                ? "Подсчёт ещё не изменил остатки. Ниже — полный состав предлагаемых изменений."
-                : "Подсчёт ещё не завершён. Остатки не изменялись."}
-          </p>
         </div>
         {presentation.unitsDelta !== null && (
           <div className={styles.subtle}>
@@ -98,9 +91,7 @@ export function StocktakePreview({
       )}
       {!presentation.showChanges ? (
         <p className={styles.panel} role="status">
-          Расхождения появятся после подсчёта всех ячеек. Сейчас пересчитано{" "}
-          {doc.rows.filter((row) => row.count != null).length} из{" "}
-          {doc.rows.length}. Непересчитанные ячейки не считаются пустыми.
+          Расхождения появятся после подсчёта всех ячеек.
         </p>
       ) : presentation.changes.length ? (
         <div className={styles.diffs}>
@@ -114,8 +105,8 @@ export function StocktakePreview({
               }}
             >
               {doc.mode === "opening"
-                ? `Адресов с товаром: ${presentation.changes.length}. Количество внесено по датам поступления.`
-                : `Изменений: ${presentation.changes.length}. Внутренние переносы сохраняют количество и партии.`}
+                ? `Адресов с товаром: ${presentation.changes.length}`
+                : `Изменений: ${presentation.changes.length}`}
             </caption>
             <thead>
               <tr>
