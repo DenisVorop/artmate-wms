@@ -3,7 +3,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useSession } from "@/entities/session";
-import { useAssemblyPlan } from "@/entities/assembly-plan";
+import {
+  useAssemblyPlan,
+  type MarketplacePlanDto,
+} from "@/entities/assembly-plan";
 import { Button, ErrorState, LoadingState } from "@/shared/ui";
 import { usePlanningActions } from "../model/use-planning-actions";
 import { displayedPlanningPlan } from "../lib/planning-display";
@@ -20,9 +23,13 @@ import { PlanningRow } from "./planning-row";
 import { PlanningTable } from "./planning-table";
 import styles from "./assembly-planning.module.css";
 
-export function AssemblyPlanningFeature() {
+export function AssemblyPlanningFeature({
+  preview,
+}: {
+  preview?: MarketplacePlanDto;
+}) {
   const session = useSession();
-  const query = useAssemblyPlan(session.isManager);
+  const query = useAssemblyPlan(session.isManager && !preview);
   const actions = usePlanningActions();
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState<PlanningFilter>("all");
@@ -37,16 +44,23 @@ export function AssemblyPlanningFeature() {
     }
   }, [selectedId]);
 
-  if (query.isPending) return <LoadingState label="Загружаем план…" />;
-  if (!query.data) return <ErrorState onRetry={() => void query.refetch()} />;
-  const { settings, connections, products, planStatus, previousPlan } =
-    query.data;
-  const connected = connections.some((item) => item.configured && item.enabled);
+  const data = query.data;
+  if (!preview && query.isPending)
+    return <LoadingState label="Загружаем план…" />;
+  if (!preview && !data)
+    return <ErrorState onRetry={() => void query.refetch()} />;
+
+  const connected = !!data?.connections.some(
+    (item) => item.configured && item.enabled,
+  );
+  const planStatus = data?.planStatus;
   const plan =
-    connected && products.length
-      ? displayedPlanningPlan(query.data.plan, previousPlan, planStatus)
-      : null;
-  const isPrevious = previousPlan !== null;
+    preview ??
+    (data && connected && data.products.length
+      ? displayedPlanningPlan(data.plan, data.previousPlan, data.planStatus)
+      : null);
+  const isPrevious = !preview && !!data?.previousPlan;
+  const readOnly = !!preview || isPrevious;
   const groups = planningGroups(plan?.rows ?? []);
   const selected = plan?.rows.find((row) => row.skuId === selectedId);
   const create = async (
@@ -55,7 +69,7 @@ export function AssemblyPlanningFeature() {
     skuName: string,
     purpose: "urgent" | "backlog",
   ) => {
-    if (isPrevious) return;
+    if (readOnly) return;
     setNotice("");
     if (await actions.create(skuId, proposalHash, purpose))
       setNotice(`Задание на один короб «${skuName}» создано.`);
@@ -77,17 +91,27 @@ export function AssemblyPlanningFeature() {
           </Button>
         )}
       </header>
-      {plan && (
-        <p className={isPrevious ? styles.warning : styles.help} role="status">
-          {isPrevious ? "Предыдущий расчёт" : "Расчёт"}
-          {planStatus.calculatedAt && (
-            <> от {planningTimestamp(planStatus.calculatedAt)}</>
-          )}
-          {planStatus.salesThrough && (
-            <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
-          )}
-          {planStatus.state === "refreshing" && " · Обновляется"}
+      {preview ? (
+        <p className={styles.help} role="status">
+          Демоданные WB и Ozon
         </p>
+      ) : (
+        plan &&
+        planStatus && (
+          <p
+            className={isPrevious ? styles.warning : styles.help}
+            role="status"
+          >
+            {isPrevious ? "Предыдущий расчёт" : "Расчёт"}
+            {planStatus.calculatedAt && (
+              <> от {planningTimestamp(planStatus.calculatedAt)}</>
+            )}
+            {planStatus.salesThrough && (
+              <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
+            )}
+            {planStatus.state === "refreshing" && " · Обновляется"}
+          </p>
+        )
       )}
       {notice && (
         <p className={styles.notice} role="status">
@@ -100,7 +124,7 @@ export function AssemblyPlanningFeature() {
           плана.
         </p>
       )}
-      {query.isError && (
+      {!preview && query.isError && (
         <div className={styles.readError} role="alert">
           Не удалось обновить план.
           <Button
@@ -115,7 +139,7 @@ export function AssemblyPlanningFeature() {
       {plan && selected ? (
         <PlanningRow
           row={selected}
-          previous={isPrevious}
+          previous={readOnly}
           pending={actions.pending}
           onCreate={() =>
             create(
@@ -168,7 +192,7 @@ export function AssemblyPlanningFeature() {
                         <p className={styles.help}>{row.backlogReason}</p>
                       )}
                     </div>
-                    {!isPrevious && row.backlogCanCreate && (
+                    {!readOnly && row.backlogCanCreate && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -198,28 +222,28 @@ export function AssemblyPlanningFeature() {
           <p role="status">
             {!connected
               ? "Подключите маркетплейсы, чтобы получить план."
-              : !products.length
+              : !data?.products.length
                 ? "Нет товаров маркетплейсов."
                 : plan
                   ? "Свяжите товары маркетплейсов с тематиками склада."
-                  : planStatus.message}
+                  : planStatus?.message}
           </p>
           <Link className={styles.textLink} href="/integrations">
             К маркетплейсам
           </Link>
         </section>
       )}
-      {!selected && (
+      {!preview && data && !selected && (
         <>
           <PlanningSettings
-            key={JSON.stringify(settings)}
-            settings={settings}
+            key={JSON.stringify(data.settings)}
+            settings={data.settings}
             pending={actions.pending}
             onSave={async (values) => !!(await actions.save(values))}
           />
           {connected && (
             <PlanningResolutions
-              data={query.data}
+              data={data}
               pending={actions.pending}
               onSave={async (values) => !!(await actions.resolution(values))}
             />
