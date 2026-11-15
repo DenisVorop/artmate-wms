@@ -31,6 +31,17 @@ export function marketplacePlan(
   presentation?: { savedSnapshots: true },
 ): MarketplacePlanDto {
   m = applyMarketplaceResolutions(m, clock);
+  const activeMoves = new Map(
+    (w.movements ?? [])
+      .filter((move) => ["planned", "in_transit"].includes(move.status))
+      .map((move) => [move.palletId, move]),
+  );
+  const reservedRaw = new Map<string, number>();
+  for (const task of w.tasks) {
+    if (task.status === "completed") continue;
+    for (const { palletId, quantity } of task.reservations)
+      reservedRaw.set(palletId, (reservedRaw.get(palletId) ?? 0) + quantity);
+  }
   const generatedAt = clock.toISOString(),
     global: string[] = [];
   const enabled = m.connections.filter((c) => c.enabled);
@@ -594,40 +605,36 @@ export function marketplacePlan(
             s + Math.max(0, t.boxesTarget - t.boxesCompleted) * t.unitsPerBox,
           0,
         );
-      const rawAvailableUnits = w.pallets
-        .filter(
-          (p) =>
-            p.skuId === sku.id &&
-            p.kind === "raw" &&
-            p.status === "stored" &&
-            p.locationId &&
-            w.locations.some(
-              (l) =>
-                l.id === p.locationId &&
-                !l.archived &&
-                !l.blocked &&
-                !w.sections.some((s) => s.id === l.sectionId && s.archived),
-            ) &&
-            !w.movements.some(
-              (x) =>
-                x.palletId === p.id &&
-                ["planned", "in_transit"].includes(x.status),
-            ),
-        )
-        .reduce(
-          (sum, p) =>
-            sum +
-            Math.max(
-              0,
-              p.quantity -
-                w.tasks
-                  .filter((t) => t.status !== "completed")
-                  .flatMap((t) => t.reservations)
-                  .filter((r) => r.palletId === p.id)
-                  .reduce((s, r) => s + r.quantity, 0),
-            ),
+      let rawAvailableUnits = 0;
+      let movingRawUnits = 0;
+      let lowering = false;
+      for (const pallet of w.pallets) {
+        if (pallet.skuId !== sku.id || pallet.kind !== "raw") continue;
+        const move = activeMoves.get(pallet.id);
+        const free = Math.max(
           0,
+          pallet.quantity - (reservedRaw.get(pallet.id) ?? 0),
         );
+        if (move) {
+          if (pallet.status === "stored" || pallet.status === "in_transit")
+            movingRawUnits += free;
+          lowering ||= move.autoPurpose === "accessible_raw";
+        } else if (
+          pallet.status === "stored" &&
+          w.locations.some(
+            (location) =>
+              location.id === pallet.locationId &&
+              !location.archived &&
+              !location.blocked &&
+              !w.sections.some(
+                (section) =>
+                  section.id === location.sectionId && section.archived,
+              ),
+          )
+        ) {
+          rawAvailableUnits += free;
+        }
+      }
       const unified = unifiedStockPlan({
         providers,
         ownUnits: readyUnits + shipmentReservedUnits,
@@ -637,11 +644,17 @@ export function marketplacePlan(
         monthlyOutboundUnits,
       });
       const { recommendedBoxes, recommendedUnits } = unified;
-      if (
-        dataComplete &&
-        recommendedBoxes > 0 &&
-        rawAvailableUnits < sku.unitsPerBox
-      )
+      const needsRaw = dataComplete && recommendedBoxes > 0;
+      const rawShort = rawAvailableUnits < sku.unitsPerBox;
+      const awaitsMovement =
+        needsRaw &&
+        (lowering ||
+          (rawShort && rawAvailableUnits + movingRawUnits >= sku.unitsPerBox));
+      const movementMessage = lowering
+        ? "Завершите спуск паллеты на доступный ярус, чтобы начать сборку."
+        : "Завершите перемещение паллеты с сырьём, чтобы начать сборку.";
+      if (awaitsMovement) blockers.push(movementMessage);
+      else if (needsRaw && rawShort)
         blockers.push(
           "Недостаточно свободных размещённых раскрасок для одного короба",
         );
@@ -663,31 +676,35 @@ export function marketplacePlan(
                 "Маркетплейсы ещё не передали полные данные о товаре в пути.",
               action: "integrations",
             }
-          : dataComplete &&
-              recommendedBoxes > 0 &&
-              rawAvailableUnits < sku.unitsPerBox
+          : awaitsMovement
             ? {
-                state: "raw_shortage",
-                message: `Примите и разместите товар: не хватает ${sku.unitsPerBox - rawAvailableUnits} шт.`,
-                action: "receiving",
+                state: "raw_movement",
+                message: movementMessage,
+                action: "movements",
               }
-            : canCreate
+            : needsRaw && rawShort
               ? {
-                  state: "ready",
-                  message: "Можно передать в сборку.",
-                  action: "create",
+                  state: "raw_shortage",
+                  message: `Примите и разместите товар: не хватает ${sku.unitsPerBox - rawAvailableUnits} шт.`,
+                  action: "receiving",
                 }
-              : dataComplete && recommendedBoxes === 0
+              : canCreate
                 ? {
-                    state: "covered",
-                    message: "Запаса и текущей сборки достаточно.",
-                    action: "none",
+                    state: "ready",
+                    message: "Можно передать в сборку.",
+                    action: "create",
                   }
-                : {
-                    state: "review",
-                    message: "Рекомендация требует проверки руководителем.",
-                    action: "none",
-                  };
+                : dataComplete && recommendedBoxes === 0
+                  ? {
+                      state: "covered",
+                      message: "Запаса и текущей сборки достаточно.",
+                      action: "none",
+                    }
+                  : {
+                      state: "review",
+                      message: "Рекомендация требует проверки руководителем.",
+                      action: "none",
+                    };
       const proposalHash = createHash("sha256")
         .update(
           JSON.stringify({

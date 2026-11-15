@@ -282,16 +282,29 @@ export class MarketplaceInboundSourceDto {
 }
 export class MarketplacePlanAdviceDto {
   @ApiProperty({
-    enum: ["ready", "covered", "raw_shortage", "review"],
+    enum: ["ready", "covered", "raw_shortage", "raw_movement", "review"],
     type: String,
   })
-  state!: "ready" | "covered" | "raw_shortage" | "review";
+  state!: "ready" | "covered" | "raw_shortage" | "raw_movement" | "review";
   @ApiProperty({ type: String }) message!: string;
   @ApiProperty({
-    enum: ["create", "receiving", "integrations", "transit", "none"],
+    enum: [
+      "create",
+      "receiving",
+      "movements",
+      "integrations",
+      "transit",
+      "none",
+    ],
     type: String,
   })
-  action!: "create" | "receiving" | "integrations" | "transit" | "none";
+  action!:
+    | "create"
+    | "receiving"
+    | "movements"
+    | "integrations"
+    | "transit"
+    | "none";
 }
 export class MarketplaceProviderPlanDto {
   @ApiProperty({ type: Number }) expectedSalesUnits30!: number;

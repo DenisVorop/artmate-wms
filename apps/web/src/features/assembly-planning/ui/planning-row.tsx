@@ -3,7 +3,12 @@ import Link from "next/link";
 import { Boxes } from "lucide-react";
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
 import { Badge, Button } from "@/shared/ui";
-import { boxesLabel, packagedLabel, dispatchLabel } from "../lib/planning-view";
+import {
+  boxesLabel,
+  packagedLabel,
+  dispatchLabel,
+  needsAssembly,
+} from "../lib/planning-view";
 import styles from "./assembly-planning.module.css";
 const number = (value: number | null, digits = 0) =>
   value == null
@@ -15,6 +20,7 @@ const status = {
   ready: "Можно собирать",
   covered: "Запаса достаточно",
   raw_shortage: "Не хватает сырья",
+  raw_movement: "Паллета ждёт перемещения",
   review: "Нужна проверка",
 };
 export function PlanningRow({
@@ -29,8 +35,7 @@ export function PlanningRow({
   onCreate: () => Promise<void>;
 }) {
   const { state, action, message } = row.advice;
-  const needsAssembly =
-    row.dataComplete && (state === "ready" || state === "raw_shortage");
+  const showAssembly = needsAssembly(row);
   return (
     <article className={`glass-panel ${styles.row}`}>
       <div className={styles.rowMain}>
@@ -89,15 +94,15 @@ export function PlanningRow({
           <div className={styles.quantity}>
             <span>Собрать на месяц</span>
             <strong
-              className={needsAssembly ? styles.quantityAccent : undefined}
+              className={showAssembly ? styles.quantityAccent : undefined}
             >
-              {needsAssembly
+              {showAssembly
                 ? boxesLabel(row.recommendedBoxes)
                 : state === "covered"
                   ? boxesLabel(0)
                   : "Расчёт ожидает проверки"}
             </strong>
-            {needsAssembly && (
+            {showAssembly && (
               <span>
                 {number(row.recommendedUnits)} шт. · по{" "}
                 {number(row.unitsPerBox)} в коробе
@@ -120,6 +125,11 @@ export function PlanningRow({
               Открыть приёмку
             </Link>
           )}
+          {!previous && action === "movements" && (
+            <Link className="button button--secondary" href="/movements">
+              Открыть перемещения
+            </Link>
+          )}
           {(action === "integrations" || action === "transit") && (
             <Link className="button button--ghost" href="/integrations">
               Проверить данные
@@ -127,7 +137,7 @@ export function PlanningRow({
           )}
         </div>
       </div>
-      {(state === "review" || state === "raw_shortage") && (
+      {["review", "raw_shortage", "raw_movement"].includes(state) && (
         <p className={styles.reason}>{message}</p>
       )}
       <details className={styles.detail}>

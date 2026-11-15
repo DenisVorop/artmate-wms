@@ -108,13 +108,18 @@ function settings(value: unknown) {
 function advice(value: unknown) {
   return (
     record(value) &&
-    ["ready", "covered", "raw_shortage", "review"].includes(
+    ["ready", "covered", "raw_shortage", "raw_movement", "review"].includes(
       String(value.state),
     ) &&
     text(value.message) &&
-    ["create", "receiving", "integrations", "transit", "none"].includes(
-      String(value.action),
-    )
+    [
+      "create",
+      "receiving",
+      "movements",
+      "integrations",
+      "transit",
+      "none",
+    ].includes(String(value.action))
   );
 }
 function planningStock(value: unknown) {

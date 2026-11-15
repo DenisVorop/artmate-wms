@@ -460,6 +460,45 @@ test("business advice asks for receiving only placed and free raw stock can sati
   });
 });
 
+test("the assembly plan distinguishes an existing pallet awaiting lowering from a raw shortage", () => {
+  const { w: seed, m } = fixture();
+  const w = migrateAddressesAndMovements(seed);
+  const pallet = w.pallets.find((item) => item.id === "pallet-raw-0")!;
+  pallet.quantity = 825;
+  w.pallets = [pallet];
+  w.movements = [
+    {
+      palletId: pallet.id,
+      autoPurpose: "accessible_raw",
+      status: "planned",
+    } as D.MovementDto,
+  ];
+
+  const pending = marketplacePlan(w, m, now).rows[0];
+  assert.equal(pending.recommendedBoxes, 8);
+  assert.equal(pending.rawAvailableUnits, 0);
+  assert.equal(pending.canCreate, false);
+  assert.deepEqual(pending.advice, {
+    state: "raw_movement",
+    message: "Завершите спуск паллеты на доступный ярус, чтобы начать сборку.",
+    action: "movements",
+  });
+
+  w.movements[0].status = "in_transit";
+  pallet.status = "in_transit";
+  const source = pallet.locationId;
+  pallet.locationId = null;
+  assert.equal(marketplacePlan(w, m, now).rows[0].advice.state, "raw_movement");
+
+  w.movements[0].status = "completed";
+  pallet.status = "stored";
+  pallet.locationId = source;
+  const placed = marketplacePlan(w, m, now).rows[0];
+  assert.equal(placed.rawAvailableUnits, 825);
+  assert.equal(placed.canCreate, true);
+  assert.equal(placed.advice.state, "ready");
+});
+
 test("business advice distinguishes covered demand from unknown quantities without raw stock", () => {
   const { w, m } = fixture();
   w.pallets = [];

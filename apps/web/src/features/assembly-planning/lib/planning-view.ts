@@ -25,11 +25,14 @@ export function dispatchLabel(date: string) {
     timeZone: "Europe/Moscow",
   }).format(new Date(`${date}T12:00:00+03:00`));
 }
-export function planningGroups(rows: MarketplacePlanRowDto[]) {
-  const assembly = rows.filter(
-    (row) =>
-      row.dataComplete && ["ready", "raw_shortage"].includes(row.advice.state),
+export function needsAssembly(row: MarketplacePlanRowDto) {
+  return (
+    row.dataComplete &&
+    ["ready", "raw_shortage", "raw_movement"].includes(row.advice.state)
   );
+}
+export function planningGroups(rows: MarketplacePlanRowDto[]) {
+  const assembly = rows.filter(needsAssembly);
   const review = rows.filter((row) => row.advice.state === "review");
   const complete = rows.filter(
     (row) => row.dataComplete && row.advice.state !== "review",
@@ -79,7 +82,13 @@ export function planningRows(
         : filter === "review"
           ? groups.review
           : rows;
-  const priority = { ready: 0, raw_shortage: 1, review: 2, covered: 3 };
+  const priority = {
+    ready: 0,
+    raw_movement: 1,
+    raw_shortage: 1,
+    review: 2,
+    covered: 3,
+  };
   return [...selected].sort(
     (a, b) =>
       priority[a.advice.state] - priority[b.advice.state] ||
