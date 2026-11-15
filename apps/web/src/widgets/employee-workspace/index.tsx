@@ -63,7 +63,7 @@ function EmployeeWorkspaceBody({
     auth = useAuthActions(),
     scan = useEmployeeScanActivity();
   const [menu, setMenu] = useState(false),
-    [showJobs, setShowJobs] = useState(initialShowJobs),
+    [jobsRequested, setShowJobs] = useState(initialShowJobs),
     [more, setMore] = useState(false),
     [help, setHelp] = useState(false),
     [password, setPassword] = useState(false),
@@ -73,12 +73,6 @@ function EmployeeWorkspaceBody({
   const [selectedShipmentId, setSelectedShipmentId] =
     useState(initialShipmentId);
   const workPanel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (showJobs) return;
-    workPanel.current
-      ?.querySelector<HTMLInputElement>('input[name="code"]:not(:disabled)')
-      ?.focus({ preventScroll: true });
-  }, [showJobs]);
   const data = workspace.data,
     employee = data?.employees.find((e) => e.id === user?.employeeId);
   const priority =
@@ -150,6 +144,7 @@ function EmployeeWorkspaceBody({
       setProblem(null);
       setMenu(false);
       setShowZoneScan(false);
+      setShowJobs(false);
       setNotice(null);
     },
   });
@@ -220,6 +215,14 @@ function EmployeeWorkspaceBody({
     }
   };
   const noShift = employee?.status !== "working";
+  const canViewJobs = !!currentZone && !noShift && !showZoneScan;
+  const showJobs = jobsRequested && canViewJobs;
+  useEffect(() => {
+    if (showJobs) return;
+    workPanel.current
+      ?.querySelector<HTMLInputElement>('input[name="code"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [showJobs]);
   const needsZone =
     !currentZone &&
     !priority?.carrying &&
@@ -308,25 +311,27 @@ function EmployeeWorkspaceBody({
             </button>
           </header>
           {!menu && <EmployeeDeviceControls />}
-          <nav className={styles.workViews} aria-label="Работа сотрудника">
-            <button
-              type="button"
-              aria-pressed={!showJobs}
-              onClick={() => setShowJobs(false)}
-            >
-              Текущая работа
-            </button>
-            <button
-              type="button"
-              aria-pressed={showJobs}
-              onClick={() => {
-                setShowJobs(true);
-                setMenu(false);
-              }}
-            >
-              Все задания
-            </button>
-          </nav>
+          {canViewJobs && (
+            <nav className={styles.workViews} aria-label="Работа сотрудника">
+              <button
+                type="button"
+                aria-pressed={!showJobs}
+                onClick={() => setShowJobs(false)}
+              >
+                Текущая работа
+              </button>
+              <button
+                type="button"
+                aria-pressed={showJobs}
+                onClick={() => {
+                  setShowJobs(true);
+                  setMenu(false);
+                }}
+              >
+                Все задания
+              </button>
+            </nav>
+          )}
           {menu && (
             <section
               id="employee-menu"
