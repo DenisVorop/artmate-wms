@@ -14,11 +14,17 @@ import sessionStyles from "./session-controls.module.css";
 import { navigationLinks } from "./navigation";
 import { WorkspaceSidebar } from "./workspace-sidebar";
 
-export function WorkspaceShell({ children }: { children: ReactNode }) {
+export function WorkspaceShell({
+  children,
+  showFooter = true,
+}: {
+  children: ReactNode;
+  showFooter?: boolean;
+}) {
   const { user } = useSession();
   if (user?.role !== "employee")
     return (
-      <ManagerWorkspaceShell name={user?.name}>
+      <ManagerWorkspaceShell name={user?.name} showFooter={showFooter}>
         {children}
       </ManagerWorkspaceShell>
     );
@@ -53,9 +59,11 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
 function ManagerWorkspaceShell({
   children,
   name,
+  showFooter,
 }: {
   children: ReactNode;
   name?: string;
+  showFooter: boolean;
 }) {
   const pathname = usePathname();
   const auth = useAuthActions();
@@ -239,7 +247,7 @@ function ManagerWorkspaceShell({
         <main id="workspace-main" className="main-content">
           {children}
         </main>
-        {children != null && (
+        {showFooter && (
           <footer className="workspace-footer">
             <span>
               artmate wms <span className="footer-dot">·</span> Локальный склад

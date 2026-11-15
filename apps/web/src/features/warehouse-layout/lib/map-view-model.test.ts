@@ -18,6 +18,7 @@ import {
   addressInventory,
   mapObjects,
   selectSavedCanvasObject,
+  storageOccupancy,
 } from "./map-view-model";
 import {
   locationDefaults,
@@ -285,6 +286,26 @@ test("Movement targets are reserved only while planned or in transit", () => {
     movements: [movement({ status: MovementDtoStatus.completed })],
   });
   assert.equal(addressAvailability(completed, location()), "Свободно");
+});
+
+test("Storage occupancy counts physical contents once and excludes blocked, archived and work addresses", () => {
+  const data = workspace({
+    locations: [
+      location(),
+      location({ id: "supplies", kind: LocationDtoKind.floor }),
+      location({ id: "reserved" }),
+      location({ id: "blocked", blocked: true }),
+      location({ id: "archived", archived: true }),
+      location({ id: "assembly", kind: LocationDtoKind.assembly }),
+    ],
+    pallets: [pallet(), pallet({ id: "work", locationId: "assembly" })],
+    movements: [movement({ toLocationId: "reserved" })],
+  });
+  data.warehouse.consumables = [
+    { locationId: "supplies", item: "individual_box", quantity: 200 },
+    { locationId: "supplies", item: "transport_carton", quantity: 20 },
+  ];
+  assert.deepEqual(storageOccupancy(data), { occupied: 2, total: 3 });
 });
 
 test("Rack limit editing never moves a child independently; picking requires four access sides", () => {

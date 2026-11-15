@@ -2,6 +2,7 @@
 import { EmployeeWorkspace } from "@/widgets/employee-workspace";
 import type { EmployeeMode } from "@/features/employee-workday";
 import { WorkspaceShell } from "@/widgets/workspace-shell";
+import { OverviewScreen } from "./overview-screen";
 import { WarehouseLayoutFeature } from "@/features/warehouse-layout";
 import { InventoryScreen } from "./inventory-screen";
 import { StockLedgerScreen } from "./stock-ledger-screen";
@@ -17,7 +18,7 @@ import Link from "next/link";
 import { LoadingState } from "@/shared/ui";
 import { canOpenWorkspaceView, landingForRole } from "./workspace-access";
 const views = {
-  overview: null,
+  overview: OverviewScreen,
   warehouse: WarehouseLayoutFeature,
   inventory: InventoryScreen,
   "stock-ledger": StockLedgerScreen,
@@ -62,5 +63,9 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
   if (user.role === "employee" && workerModes[view])
     return <EmployeeWorkspace key={view} initialMode={workerModes[view]} />;
   const Feature = views[view];
-  return <WorkspaceShell>{Feature ? <Feature /> : null}</WorkspaceShell>;
+  return (
+    <WorkspaceShell showFooter={view !== "overview"}>
+      <Feature />
+    </WorkspaceShell>
+  );
 }

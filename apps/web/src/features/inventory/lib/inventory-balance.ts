@@ -21,6 +21,13 @@ export function isVisibleInventoryPallet(
 ): boolean {
   return isAccountedPallet(pallet) || pallet.status === PalletDtoStatus.retired;
 }
+export function isAccountedBox(box: Pick<BoxDto, "status">): boolean {
+  return (
+    box.status === BoxDtoStatus.stored ||
+    box.status === BoxDtoStatus.in_transit ||
+    box.status === BoxDtoStatus.staged
+  );
+}
 /** Per-SKU projection; the global balance comes directly from WorkspaceDto.balance. */
 export function skuInventory(data: InventorySource, skuId: string) {
   const rawPallets = data.pallets.filter(
@@ -35,11 +42,7 @@ export function skuInventory(data: InventorySource, skuId: string) {
     .filter((task) => task.skuId === skuId)
     .reduce((sum, task) => sum + task.scannedUnits, 0);
   const boxes = data.boxes.filter(
-    (box) =>
-      box.skuId === skuId &&
-      (box.status === BoxDtoStatus.stored ||
-        box.status === BoxDtoStatus.in_transit ||
-        box.status === BoxDtoStatus.staged),
+    (box) => box.skuId === skuId && isAccountedBox(box),
   );
   const boxedUnits = boxes.reduce((sum, box) => sum + box.units, 0);
   const reservedUnits = data.tasks

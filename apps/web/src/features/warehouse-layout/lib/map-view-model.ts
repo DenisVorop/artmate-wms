@@ -132,6 +132,22 @@ export function addressInventory(data: WorkspaceDto, ids: string[]) {
       returnPallets.length > 0,
   };
 }
+export function storageOccupancy(data: WorkspaceDto) {
+  const storageIds = data.locations
+    .filter(
+      (address) =>
+        !address.archived &&
+        !address.blocked &&
+        (address.kind === "rack" || address.kind === "floor"),
+    )
+    .map((address) => address.id);
+  const { pallets, boxes, consumables } = addressInventory(data, storageIds);
+  const occupied = new Set(
+    [...pallets, ...boxes, ...consumables].map((item) => item.locationId),
+  ).size;
+  return { occupied, total: storageIds.length };
+}
+
 export function addressAvailability(
   data: WorkspaceDto,
   address: LocationDto,

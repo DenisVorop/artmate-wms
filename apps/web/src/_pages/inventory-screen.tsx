@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import { ConsumablesFeature } from "@/features/consumables";
 import { InventoryFeature } from "@/features/inventory";
 import { PackagingFeature } from "@/features/packaging";
 import { StockAdjustmentModal } from "@/features/stock-adjustment";
+import { LoadingState } from "@/shared/ui";
 
 export function InventoryScreen() {
   const { data } = useWorkspace();
@@ -13,7 +14,9 @@ export function InventoryScreen() {
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
   return (
     <>
-      <InventoryFeature onCorrection={() => setAdjustmentOpen(true)} />
+      <Suspense fallback={<LoadingState />}>
+        <InventoryFeature onCorrection={() => setAdjustmentOpen(true)} />
+      </Suspense>
       {isManager && data && <ConsumablesFeature data={data} />}
       <PackagingFeature />
       {data && (
