@@ -88,7 +88,7 @@ export function EmployeeZoneGuide({
       )}
       <h2 aria-live="polite">
         {job ??
-          (next ? `Идите к табличке «${next.name}»` : "Сейчас заданий нет")}
+          (next ? `Перейдите в зону «${next.name}»` : "Сейчас заданий нет")}
       </h2>
       {job ? (
         <Button disabled={blocked} onClick={onTake}>

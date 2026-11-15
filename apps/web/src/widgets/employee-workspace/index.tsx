@@ -240,7 +240,7 @@ function EmployeeWorkspaceBody({
   const intercept = async (value: string) => {
     if (isWorkZoneScan(value)) return zones.intercept(value);
     if (zoneEntry) {
-      setProblem("Сканируйте QR на табличке зоны.");
+      setProblem("Сканируйте QR рабочей зоны.");
       return "blocked" as const;
     }
     return "pass" as const;
