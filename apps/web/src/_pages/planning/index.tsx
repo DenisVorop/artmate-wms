@@ -10,7 +10,7 @@ export function PlanningPage() {
   const session = useSession();
   if (session.isPending || !session.user) return <LoadingState />;
   return (
-    <WorkspaceShell>
+    <WorkspaceShell theme="light" showFooter={false}>
       {session.isManager ? (
         <div key={`${getAuthIdentityScope()}:${getAuthEpoch()}`}>
           <AssemblyPlanningFeature />

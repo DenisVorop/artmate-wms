@@ -1,4 +1,5 @@
 "use client";
+import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -49,20 +50,15 @@ export function PlanningResolutions({
   const supplies = data.supplies.filter((s) => s.provider === provider);
   const enabled = data.resolutions.filter((r) => r.enabled);
   return (
-    <details className={`glass-panel ${styles.settings}`}>
+    <details className={styles.settings}>
       <summary className={styles.settingsSummary}>
         Уточнения плана{" "}
         <span className={styles.settingsAction}>
-          {enabled.filter((r) => r.active).length
-            ? `Действует: ${enabled.filter((r) => r.active).length}`
-            : "Поставки, остатки и новинки"}
+          {enabled.some((r) => r.active) &&
+            `Действует: ${enabled.filter((r) => r.active).length}`}
+          <ChevronDown size={16} aria-hidden="true" />
         </span>
       </summary>
-      <p className={styles.help}>
-        Укажите подтверждённые факты, которых пока нет в данных площадки. Они
-        меняют только план. Складские остатки и историю поставок это не
-        переписывает.
-      </p>
       {enabled.map((r) => (
         <div className={styles.resolution} key={r.id}>
           <div>
@@ -123,7 +119,7 @@ export function PlanningResolutions({
           setNotice("");
           if (!pending && (await onSave(resolutionCommand(values)))) {
             form.reset({ ...values, note: "" });
-            setNotice("Уточнение сохранено. План обновляется автоматически.");
+            setNotice("Уточнение сохранено.");
           }
         })}
       >

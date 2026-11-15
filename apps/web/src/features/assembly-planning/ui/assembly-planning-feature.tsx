@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useAssemblyPlan } from "@/entities/assembly-plan";
-import { Button, EmptyState, ErrorState, LoadingState } from "@/shared/ui";
+import { Button, ErrorState, LoadingState } from "@/shared/ui";
 import { usePlanningActions } from "../model/use-planning-actions";
 import { displayedPlanningPlan } from "../lib/planning-display";
 import {
@@ -11,213 +12,153 @@ import {
   dispatchLabel,
   planningTimestamp,
   planningGroups,
-  planningRows,
   type PlanningFilter,
 } from "../lib/planning-view";
 import { PlanningResolutions } from "./planning-resolutions";
 import { PlanningSettings } from "./planning-settings";
 import { PlanningRow } from "./planning-row";
+import { PlanningTable } from "./planning-table";
 import styles from "./assembly-planning.module.css";
+
 export function AssemblyPlanningFeature() {
-  const session = useSession(),
-    query = useAssemblyPlan(session.isManager),
-    actions = usePlanningActions();
-  const [notice, setNotice] = useState(""),
-    [filter, setFilter] = useState<PlanningFilter | null>(null);
-  if (query.isPending) return <LoadingState label="Готовим план…" />;
+  const session = useSession();
+  const query = useAssemblyPlan(session.isManager);
+  const actions = usePlanningActions();
+  const [notice, setNotice] = useState("");
+  const [filter, setFilter] = useState<PlanningFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousSelection = useRef(selectedId);
+  useLayoutEffect(() => {
+    if (previousSelection.current !== selectedId) {
+      previousSelection.current = selectedId;
+      heading.current?.focus();
+    }
+  }, [selectedId]);
+
+  if (query.isPending) return <LoadingState label="Загружаем план…" />;
   if (!query.data) return <ErrorState onRetry={() => void query.refetch()} />;
   const { settings, connections, products, planStatus, previousPlan } =
     query.data;
-  const plan = displayedPlanningPlan(query.data.plan, previousPlan, planStatus);
-  const isPrevious = previousPlan !== null;
   const connected = connections.some((item) => item.configured && item.enabled);
+  const plan =
+    connected && products.length
+      ? displayedPlanningPlan(query.data.plan, previousPlan, planStatus)
+      : null;
+  const isPrevious = previousPlan !== null;
   const groups = planningGroups(plan?.rows ?? []);
-  const active = filter ?? "all";
-  const rows = planningRows(plan?.rows ?? [], active);
-  const tabs: { id: PlanningFilter; label: string; count: number }[] = [
-    { id: "all", label: "Все товары", count: plan?.rows.length ?? 0 },
-    { id: "shipping", label: "К отправке", count: groups.shipping.length },
-    { id: "assembly", label: "Нужно собрать", count: groups.assembly.length },
-    { id: "review", label: "Нужна проверка", count: groups.review.length },
-  ];
+  const selected = plan?.rows.find((row) => row.skuId === selectedId);
+  const create = async (
+    skuId: string,
+    proposalHash: string,
+    skuName: string,
+    purpose: "urgent" | "backlog",
+  ) => {
+    if (isPrevious) return;
+    setNotice("");
+    if (await actions.create(skuId, proposalHash, purpose))
+      setNotice(`Задание на один короб «${skuName}» создано.`);
+  };
+
   return (
     <div className={styles.feature}>
       <header className={styles.header}>
-        <div>
-          <p className="eyebrow">ЗАПАСЫ И ПРОДАЖИ</p>
-          <h1 className="page-heading">Поставки и сборка</h1>
-          <p>
-            {plan
-              ? `К отгрузке ${dispatchLabel(plan.dispatchDate)} · данные обновляются каждые 30 минут.`
-              : "План рассчитывается в фоне. Данные обновляются каждые 30 минут."}
-          </p>
-        </div>
-        <div className={styles.actions}>
-          <Link className="button button--ghost" href="/integrations">
-            Маркетплейсы
-          </Link>
-        </div>
+        <h1 className="page-heading" ref={heading} tabIndex={-1}>
+          Поставки и сборка
+        </h1>
+        {selected && (
+          <Button
+            variant="secondary"
+            disabled={actions.pending}
+            onClick={() => setSelectedId(null)}
+          >
+            <ArrowLeft size={15} aria-hidden="true" />К плану
+          </Button>
+        )}
       </header>
-      <p
-        className={isPrevious ? styles.warning : styles.notice}
-        role="status"
-        aria-live="polite"
-      >
-        {planStatus.message}
-        {plan && planStatus.calculatedAt && (
-          <> · Расчёт от {planningTimestamp(planStatus.calculatedAt)}</>
-        )}
-        {plan && planStatus.salesThrough && (
-          <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
-        )}
-        {isPrevious && " · Количества и даты относятся к сохранённому расчёту."}
-      </p>
+      {plan && (
+        <p className={isPrevious ? styles.warning : styles.help} role="status">
+          {isPrevious ? "Предыдущий расчёт" : "Расчёт"}
+          {planStatus.calculatedAt && (
+            <> от {planningTimestamp(planStatus.calculatedAt)}</>
+          )}
+          {planStatus.salesThrough && (
+            <> · Продажи по {dispatchLabel(planStatus.salesThrough)}</>
+          )}
+          {planStatus.state === "refreshing" && " · Обновляется"}
+        </p>
+      )}
       {notice && (
         <p className={styles.notice} role="status">
-          {notice} <Link href="/assembly">Открыть задания →</Link>
+          {notice} <Link href="/assembly">К заданиям</Link>
         </p>
       )}
       {actions.error && (
         <p className={styles.error} role="alert">
-          Изменения не сохранены. Обновите план и повторите попытку.
+          Не удалось сохранить изменения. Повторите попытку после обновления
+          плана.
         </p>
       )}
       {query.isError && (
-        <p className={styles.warning} role="alert">
-          {plan
-            ? "Не удалось обновить план. Показан предыдущий расчёт. Повторите обновление."
-            : "Не удалось обновить план. Повторите обновление — расчёт ещё не готов."}
-        </p>
-      )}
-      <PlanningSettings
-        key={JSON.stringify(settings)}
-        settings={settings}
-        pending={actions.pending}
-        onSave={async (values) => !!(await actions.save(values))}
-      />
-      {connected && (
-        <PlanningResolutions
-          data={query.data}
-          pending={actions.pending}
-          onSave={async (values) => !!(await actions.resolution(values))}
-        />
-      )}
-      {!connected || !products.length ? (
-        <section className="glass-panel">
-          <EmptyState
-            title={
-              !connected
-                ? "Подключите маркетплейсы"
-                : "Загрузите товары и продажи"
-            }
-            description="После подключения появится рекомендация, что и сколько собирать."
-            action={
-              <Link className="button button--primary" href="/integrations">
-                Открыть маркетплейсы
-              </Link>
-            }
-          />
-        </section>
-      ) : !plan ? (
-        <LoadingState label="Пересчитываем план под текущие настройки…" />
-      ) : !plan.rows.length ? (
-        <section className="glass-panel">
-          <EmptyState
-            title="Пока нет товаров для расчёта"
-            description="Свяжите товары маркетплейсов с тематиками склада."
-            action={
-              <Link className="button button--secondary" href="/integrations">
-                Настроить товары
-              </Link>
-            }
-          />
-        </section>
-      ) : (
-        <>
-          {plan.rows.some(
-            (row) =>
-              row.dataComplete &&
-              row.providers.some((source) => source.scenario),
-          ) && (
-            <p className={styles.warning} role="status">
-              Предварительный сезонный план. Потребность включает пополнение
-              запаса на маркетплейсах; сезонные объёмы пока оценочные.
-            </p>
-          )}
-          <section
-            className={`glass-panel ${styles.overview}`}
-            aria-label="Итог плана"
+        <div className={styles.readError} role="alert">
+          Не удалось обновить план.
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void query.refetch()}
           >
-            <div className={styles.total}>
-              <span>Ближайшая отправка</span>
-              <strong>
-                {groups.completeCount
-                  ? boxesLabel(groups.outboundBoxes)
-                  : "Нужны данные"}
-              </strong>
-              <small>Потребность к {dispatchLabel(plan.dispatchDate)}</small>
-            </div>
-            <div className={styles.total}>
-              <span>Останется после этой отправки</span>
-              <strong>
-                {groups.completeCount
-                  ? boxesLabel(groups.remainingBoxes)
-                  : "Нужны данные"}
-              </strong>
-              <small>
-                {groups.partialBoxes
-                  ? "И товар в неполных коробах"
-                  : "Из текущего готового запаса"}
-              </small>
-            </div>
-            <div className={styles.total}>
-              <span>Собрать на месяц</span>
-              <strong className={styles.quantityAccent}>
-                {groups.completeCount
-                  ? boxesLabel(groups.boxes)
-                  : "Нужны данные"}
-              </strong>
-              <small>
-                На все отправки до {dispatchLabel(plan.preparationThrough)} ·
-                текущая сборка учтена
-              </small>
-            </div>
-          </section>
-          {groups.review.length > 0 && (
-            <p className={styles.warning} role="status">
-              Итог пока неполный: {groups.review.length} товаров требуют
-              проверки. Их количество не включено.
-            </p>
+            Повторить
+          </Button>
+        </div>
+      )}
+      {plan && selected ? (
+        <PlanningRow
+          row={selected}
+          previous={isPrevious}
+          pending={actions.pending}
+          onCreate={() =>
+            create(
+              selected.skuId,
+              selected.proposalHash,
+              selected.skuName,
+              "urgent",
+            )
+          }
+        />
+      ) : plan?.rows.length ? (
+        <>
+          <PlanningTable
+            rows={plan.rows}
+            totals={groups}
+            dispatchDate={plan.dispatchDate}
+            preparationThrough={plan.preparationThrough}
+            filter={filter}
+            search={search}
+            onFilter={setFilter}
+            onSearch={setSearch}
+            onSelect={setSelectedId}
+          />
+          {groups.weeklyDispatches.length > 0 && (
+            <details className={styles.settings}>
+              <summary className={styles.settingsSummary}>
+                Отправки по неделям <ChevronDown size={16} aria-hidden="true" />
+              </summary>
+              <dl className={styles.weekTotals}>
+                {groups.weeklyDispatches.map((week) => (
+                  <div key={week.date}>
+                    <dt>{dispatchLabel(week.date)}</dt>
+                    <dd>{boxesLabel(week.boxes)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
           )}
-          <details className={`glass-panel ${styles.backlog}`}>
+          <details className={styles.settings}>
             <summary className={styles.settingsSummary}>
-              Отправки на месяц{" "}
-              <span>
-                {groups.completeCount
-                  ? boxesLabel(groups.monthlyOutboundBoxes)
-                  : "Нужны данные"}
-              </span>
+              Сборка впрок <ChevronDown size={16} aria-hidden="true" />
             </summary>
-            <div className={styles.weeklyPlan}>
-              {groups.weeklyDispatches.map((week) => (
-                <div className={styles.quantity} key={week.date}>
-                  <span>{dispatchLabel(week.date)}</span>
-                  <strong>{boxesLabel(week.boxes)}</strong>
-                </div>
-              ))}
-            </div>
-            <p className={styles.help}>
-              План до {dispatchLabel(plan.preparationThrough)}. Это
-              рекомендации; поставки автоматически не создаются.
-            </p>
-          </details>
-          <details className={`glass-panel ${styles.backlog}`}>
-            <summary className={styles.settingsSummary}>
-              Что собирать после срочных заданий{" "}
-              <span className={styles.settingsAction}>Очередь впрок</span>
-            </summary>
-            <p className={styles.help}>{plan.backlogMessage}</p>
-            {groups.backlog.length > 0 && (
+            {groups.backlog.length ? (
               <ol className={styles.backlogList}>
                 {groups.backlog.slice(0, 5).map((row) => (
                   <li key={row.skuId}>
@@ -227,109 +168,62 @@ export function AssemblyPlanningFeature() {
                         <p className={styles.help}>{row.backlogReason}</p>
                       )}
                     </div>
-                    {row.backlogCanCreate && (
+                    {!isPrevious && row.backlogCanCreate && (
                       <Button
                         variant="secondary"
+                        size="sm"
                         disabled={actions.pending}
                         onClick={() =>
-                          void (async () => {
-                            const result = await actions.create(
-                              row.skuId,
-                              row.proposalHash,
-                              "backlog",
-                            );
-                            if (result)
-                              setNotice(
-                                `В очередь добавлен один короб «${row.skuName}».`,
-                              );
-                          })()
+                          void create(
+                            row.skuId,
+                            row.proposalHash,
+                            row.skuName,
+                            "backlog",
+                          )
                         }
                       >
-                        Собрать следующий короб
+                        Создать задание
                       </Button>
                     )}
                   </li>
                 ))}
               </ol>
+            ) : (
+              <p className={styles.help}>{plan.backlogMessage}</p>
             )}
-            <Link className={styles.textLink} href="/tasks">
-              Все задания склада →
-            </Link>
           </details>
-          <div
-            className={styles.filters}
-            role="group"
-            aria-label="Какие товары показать"
-          >
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={
-                  active === tab.id ? styles.filterActive : styles.filter
-                }
-                aria-pressed={active === tab.id}
-                onClick={() => setFilter(tab.id)}
-              >
-                {tab.label}
-                <span>{tab.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className={styles.rows}>
-            {!rows.length && (
-              <section className="glass-panel">
-                <EmptyState
-                  title={
-                    active === "assembly"
-                      ? "Срочная сборка не нужна"
-                      : active === "shipping"
-                        ? "Отправка пока не требуется"
-                        : "Проверка не требуется"
-                  }
-                  description={
-                    active === "assembly" && groups.review.length
-                      ? "Для части товаров сначала нужно уточнить данные."
-                      : "Откройте все товары, чтобы посмотреть запас."
-                  }
-                  action={
-                    <Button
-                      variant="secondary"
-                      onClick={() =>
-                        setFilter(
-                          active === "assembly" && groups.review.length
-                            ? "review"
-                            : "all",
-                        )
-                      }
-                    >
-                      {active === "assembly" && groups.review.length
-                        ? "Посмотреть, что проверить"
-                        : "Показать все товары"}
-                    </Button>
-                  }
-                />
-              </section>
-            )}
-            {rows.map((row) => (
-              <PlanningRow
-                key={row.skuId}
-                row={row}
-                previous={isPrevious}
-                pending={actions.pending}
-                onCreate={async () => {
-                  const result = await actions.create(
-                    row.skuId,
-                    row.proposalHash,
-                  );
-                  if (result)
-                    setNotice(
-                      `Задание «${row.skuName}» добавлено в очередь: один короб.`,
-                    );
-                }}
-              />
-            ))}
-          </div>
+        </>
+      ) : (
+        <section className={styles.emptyPanel}>
+          <p role="status">
+            {!connected
+              ? "Подключите маркетплейсы, чтобы получить план."
+              : !products.length
+                ? "Нет товаров маркетплейсов."
+                : plan
+                  ? "Свяжите товары маркетплейсов с тематиками склада."
+                  : planStatus.message}
+          </p>
+          <Link className={styles.textLink} href="/integrations">
+            К маркетплейсам
+          </Link>
+        </section>
+      )}
+      {!selected && (
+        <>
+          <PlanningSettings
+            key={JSON.stringify(settings)}
+            settings={settings}
+            pending={actions.pending}
+            onSave={async (values) => !!(await actions.save(values))}
+          />
+          {connected && (
+            <PlanningResolutions
+              data={query.data}
+              pending={actions.pending}
+              onSave={async (values) => !!(await actions.resolution(values))}
+            />
+          )}
         </>
       )}
     </div>

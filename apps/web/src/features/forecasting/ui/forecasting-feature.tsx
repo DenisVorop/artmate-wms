@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { ChevronDown, TrendingUp } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
   useForecast,
   useForecastHistory,
@@ -376,11 +376,7 @@ export function ForecastingFeature() {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className={styles.summary}>
-        <span>
-          <TrendingUp size={18} />
-          <strong>Прогноз и история</strong>
-          <small>Сезонность и минимальный запас</small>
-        </span>
+        <strong>Прогноз и история</strong>
         <ChevronDown size={18} aria-hidden="true" />
       </summary>
       {open && <ForecastContent />}

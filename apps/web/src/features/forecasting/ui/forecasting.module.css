@@ -1,33 +1,23 @@
 .feature {
-  padding: 22px 26px;
-  margin-top: 22px;
+  padding: 14px 16px;
+  margin-top: 16px;
   min-width: 0;
 }
 .summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   list-style: none;
   cursor: pointer;
-  min-height: 32px;
+  min-height: 22px;
 }
 .summary::-webkit-details-marker {
   display: none;
 }
-.summary > span {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 .summary strong {
-  font-size: 15px;
-  font-weight: 500;
-}
-.summary small {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 550;
 }
 .summary > svg {
   transition: transform 0.18s;

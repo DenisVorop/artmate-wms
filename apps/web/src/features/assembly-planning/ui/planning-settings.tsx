@@ -1,4 +1,5 @@
 "use client";
+import { ChevronDown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { MarketplaceSettingsDto } from "@/entities/assembly-plan";
@@ -33,13 +34,13 @@ export function PlanningSettings({
     },
   });
   return (
-    <details className={`glass-panel ${styles.settings}`}>
+    <details className={styles.settings}>
       <summary className={styles.settingsSummary}>
-        <span>
-          На маркетплейсах — запас на{" "}
-          <strong>{settings.horizonDays} дней</strong>
+        Настройки плана
+        <span className={styles.settingsAction}>
+          Запас на площадках: {settings.horizonDays} дн.
+          <ChevronDown size={16} aria-hidden="true" />
         </span>
-        <span className={styles.settingsAction}>Настроить</span>
       </summary>
       <form
         noValidate
@@ -91,12 +92,6 @@ export function PlanningSettings({
           Сохранить настройки
         </Button>
       </form>
-      <p className={styles.help}>
-        Модель обучается на всей загруженной истории с начала продаж. Окно
-        недавнего спроса задаёт текущий уровень продаж для сравнения и не
-        обрезает архив обучения. Запас на площадках — отдельно от подготовки
-        наших еженедельных отправок на месяц.
-      </p>
     </details>
   );
 }

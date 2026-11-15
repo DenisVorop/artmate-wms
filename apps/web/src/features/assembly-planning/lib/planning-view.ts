@@ -1,4 +1,14 @@
 import type { MarketplacePlanRowDto } from "@/entities/assembly-plan";
+export const planningStatus: Record<
+  MarketplacePlanRowDto["advice"]["state"],
+  string
+> = {
+  ready: "Можно собирать",
+  covered: "Запаса достаточно",
+  raw_shortage: "Не хватает сырья",
+  raw_movement: "Паллета ждёт перемещения",
+  review: "Нужна проверка",
+};
 export type PlanningFilter = "assembly" | "shipping" | "review" | "all";
 export function boxesLabel(count: number) {
   const last = count % 10,
