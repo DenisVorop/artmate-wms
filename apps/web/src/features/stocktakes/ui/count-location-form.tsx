@@ -211,7 +211,11 @@ export function CountLocationForm({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="Введите или отсканируйте код адреса"
+          placeholder={
+            compact
+              ? "Сканируйте код адреса"
+              : "Введите или отсканируйте код адреса"
+          }
           disabled={disabled}
           {...form.register("locationCode")}
           onKeyDown={(event) => {
@@ -280,9 +284,7 @@ export function CountLocationForm({
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    placeholder={
-                      compact ? "Отсканируйте QR паллеты" : undefined
-                    }
+                    placeholder={compact ? "Сканируйте QR" : undefined}
                     readOnly={!!known && !compact}
                     disabled={disabled}
                     {...form.register(`rawPallets.${index}.palletCode`)}
@@ -413,7 +415,7 @@ export function CountLocationForm({
             }
             placeholder={
               compact
-                ? "Отсканируйте код найденного короба"
+                ? "Сканируйте код короба"
                 : "Другой найденный короб: введите код"
             }
             autoComplete="off"

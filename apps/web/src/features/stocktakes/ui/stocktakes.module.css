@@ -706,6 +706,28 @@
   font: inherit;
   width: 100%;
 }
+.employeeFeature :global(.field) {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.employeeFeature :global(.input) {
+  min-width: 0;
+  min-height: 48px;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  font-size: 16px;
+}
+.employeeFeature :global(.input)::placeholder {
+  color: var(--muted);
+}
+.employeeFeature :global(.input):focus {
+  border-color: var(--accent);
+}
+.employeeFeature :global(.input)[aria-invalid="true"] {
+  border-color: var(--danger);
+}
 .employeeFeature button,
 .employeeFeature input {
   min-height: 44px;
@@ -731,7 +753,22 @@
   gap: 20px;
 }
 .compactForm .rawRow {
-  grid-template-columns: minmax(0, 1fr) minmax(90px, 120px) auto;
+  grid-template-columns: minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+.compactForm .rawRow > button {
+  justify-self: start;
+}
+.compactForm .rawRow .numberEntry {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.compactForm .rawRow .numberEntry > button {
+  min-height: 48px;
+}
+.compactForm .tag {
+  min-width: 0;
+  max-width: 100%;
 }
 .compactForm .inlineActions > button[type="submit"] {
   width: 100%;
@@ -741,8 +778,8 @@
   .employeeEmpty {
     padding: 20px;
   }
-  .compactForm .rawRow {
-    grid-template-columns: 1fr;
+  .compactForm .scanLine > button {
+    justify-self: start;
   }
   .employeeHeader {
     gap: 6px;
