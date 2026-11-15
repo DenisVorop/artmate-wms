@@ -10,7 +10,6 @@ export function useReceivingState() {
   } | null>(null);
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
-  const [completedId, setCompletedId] = useState<string | null>(null);
   return {
     view,
     setView,
@@ -24,7 +23,5 @@ export function useReceivingState() {
     setSearch,
     notice,
     setNotice,
-    completedId,
-    setCompletedId,
   };
 }

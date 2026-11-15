@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Check, Package, Printer, ScanLine } from "lucide-react";
+import { Printer, QrCode } from "lucide-react";
 import type { ReceiptDto, WorkspaceDto } from "@/shared/api/generated/model";
-import { Badge, Button } from "@/shared/ui";
+import { Button } from "@/shared/ui";
 import { number } from "@/shared/lib/format";
 import {
   receiptDate,
@@ -9,6 +9,7 @@ import {
   receiptStatusLabels,
 } from "../lib/receipt-view";
 import styles from "./receiving.module.css";
+
 export function ReceiptDetails({
   receipt,
   data,
@@ -22,132 +23,130 @@ export function ReceiptDetails({
 }) {
   const progress = receiptProgress(receipt);
   return (
-    <section
-      className={`glass-panel ${styles.detail}`}
-      aria-label={`Приёмка ${receipt.code}`}
-    >
-      <div className={styles.detailHeader}>
+    <section className={styles.panel} aria-label={`Приёмка ${receipt.code}`}>
+      <header className={styles.detailHeader}>
         <div>
-          <Badge tone={receipt.status === "completed" ? "success" : "warning"}>
-            {receiptStatusLabels[receipt.status]}
-          </Badge>
           <h2>{receipt.code}</h2>
-          <p>
-            Поступление {receiptDate(receipt.receivedAt)} · Москва
-            <br />
-            {receipt.completedAt
-              ? `Завершена ${receiptDate(receipt.completedAt)}`
-              : "Товар становится доступным после размещения каждой паллеты."}
+          <p className={styles.detailMeta}>
+            {receiptStatusLabels[receipt.status]} · {progress.placed} из{" "}
+            {progress.total} паллет
+          </p>
+          <p className={styles.detailMeta}>
+            Поступление{" "}
+            <time dateTime={receipt.receivedAt}>
+              {receiptDate(receipt.receivedAt)}
+            </time>
+            {receipt.completedAt && (
+              <>
+                {" "}
+                · Завершена{" "}
+                <time dateTime={receipt.completedAt}>
+                  {receiptDate(receipt.completedAt)}
+                </time>
+              </>
+            )}
           </p>
         </div>
-        <div className={styles.detailActions}>
-          <Link
-            className="button button--secondary button--sm"
-            href={`/receiving/${receipt.id}/labels`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Printer size={15} />
-            Этикетки приёмки
-          </Link>
-        </div>
-      </div>
-      <div className={styles.documentBottom}>
-        <span>
-          Размещено {progress.placed} из {progress.total} паллет
-        </span>
-        <span>{Math.round(progress.percent)}%</span>
-      </div>
+        <Link
+          className="button button--secondary button--sm"
+          href={`/receiving/${receipt.id}/labels`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Printer size={15} aria-hidden="true" />
+          Этикетки приёмки
+        </Link>
+      </header>
       <div
-        className={styles.progress}
-        role="progressbar"
-        aria-label="Размещение паллет"
-        aria-valuemin={0}
-        aria-valuemax={progress.total}
-        aria-valuenow={progress.placed}
+        className={styles.scroll}
+        role="region"
+        aria-label="Паллеты приёмки"
+        tabIndex={0}
       >
-        <span style={{ width: `${progress.percent}%` }} />
-      </div>
-      <div className={styles.palletList}>
-        {receipt.pallets.map((row) => {
-          const pallet = data.pallets.find((item) => item.id === row.palletId);
-          const sku = data.skus.find((item) => item.id === row.skuId);
-          const location = data.locations.find(
-            (item) => item.id === row.locationId,
-          );
-          const employee = data.employees.find(
-            (item) => item.id === row.placedByEmployeeId,
-          );
-          return (
-            <article key={row.palletId} className={styles.pallet}>
-              <div className={styles.palletTop}>
-                <span className={styles.palletIcon}>
-                  <Package size={17} />
-                </span>
-                <div className={styles.palletName}>
-                  <strong>{sku?.name ?? "Тематика недоступна"}</strong>
-                  <small>{pallet?.code ?? row.palletId}</small>
-                </div>
-                <div className={styles.palletQuantity}>
-                  {number(row.quantity)}
-                  <span>шт.</span>
-                </div>
-              </div>
-              <div className={styles.palletBottom}>
-                <Badge tone={row.placedAt ? "success" : "warning"}>
-                  {row.placedAt ? (
-                    <>
-                      <Check size={12} />
-                      Размещена
-                    </>
-                  ) : (
-                    "Ожидает размещения"
-                  )}
-                </Badge>
-                {pallet && (
-                  <span className={styles.help}>
-                    Груз с поддоном: {pallet.widthMm / 10} ×{" "}
-                    {pallet.depthMm / 10} × {pallet.heightMm / 10} см
-                  </span>
-                )}
-                <Link
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="button button--ghost button--sm"
-                  href={`/labels/pallet/${row.palletId}`}
-                  aria-label={`Этикетка паллеты ${pallet?.code ?? row.palletId}`}
-                >
-                  <ScanLine size={15} />
-                  QR
-                </Link>
-                {!row.placedAt && (
-                  <Button
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => onPlace(row.palletId)}
-                  >
-                    Разместить
-                  </Button>
-                )}
-              </div>
-              {row.placedAt && (
-                <div className={styles.history}>
-                  <span>
-                    Размещено:{" "}
-                    <strong>
-                      {location?.code ?? row.locationId ?? "Адрес недоступен"}
-                    </strong>{" "}
-                    · {employee?.name ?? "Сотрудник недоступен"}
-                  </span>
-                  <span>{receiptDate(row.placedAt)} · Москва</span>
-                  <span>
-                    Адрес и количество зафиксированы на момент приёмки.
-                  </span>
-                </div>
-              )}
-            </article>
-          );
-        })}
+        <table className={`${styles.table} ${styles.palletTable}`}>
+          <thead>
+            <tr>
+              <th scope="col">Паллета</th>
+              <th scope="col">Товар</th>
+              <th scope="col">Кол-во, шт.</th>
+              <th scope="col">Размещение</th>
+              <th scope="col">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipt.pallets.map((row) => {
+              const pallet = data.pallets.find(
+                (item) => item.id === row.palletId,
+              );
+              const sku = data.skus.find((item) => item.id === row.skuId);
+              const location = data.locations.find(
+                (item) => item.id === row.locationId,
+              );
+              const employee = data.employees.find(
+                (item) => item.id === row.placedByEmployeeId,
+              );
+              const code = pallet?.code ?? row.palletId;
+              return (
+                <tr key={row.palletId}>
+                  <th scope="row">
+                    {code}
+                    {pallet && (
+                      <span className={styles.secondary}>
+                        {pallet.widthMm / 10} × {pallet.depthMm / 10} ×{" "}
+                        {pallet.heightMm / 10} см
+                      </span>
+                    )}
+                  </th>
+                  <td>{sku?.name ?? "Товар недоступен"}</td>
+                  <td className={styles.quantity}>{number(row.quantity)}</td>
+                  <td>
+                    {row.placedAt ? (
+                      <>
+                        <strong>
+                          {location?.code ??
+                            row.locationId ??
+                            "Адрес недоступен"}
+                        </strong>
+                        <span className={styles.secondary}>
+                          <time dateTime={row.placedAt}>
+                            {receiptDate(row.placedAt)}
+                          </time>
+                          {employee && ` · ${employee.name}`}
+                        </span>
+                      </>
+                    ) : (
+                      <span className={styles.waiting}>Ожидает размещения</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className={styles.palletActions}>
+                      <Link
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.qr}
+                        href={`/labels/pallet/${row.palletId}`}
+                        aria-label={`Этикетка паллеты ${code}`}
+                        title={`Этикетка паллеты ${code}`}
+                      >
+                        <QrCode size={17} aria-hidden="true" />
+                      </Link>
+                      {!row.placedAt && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={pending}
+                          onClick={() => onPlace(row.palletId)}
+                        >
+                          Разместить
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );

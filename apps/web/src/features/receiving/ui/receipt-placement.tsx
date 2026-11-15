@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MapPin, ScanLine } from "lucide-react";
+import { MapPin } from "lucide-react";
 import type { ReceiptDto, WorkspaceDto } from "@/shared/api/generated/model";
 import { Button, Input, Modal } from "@/shared/ui";
 import { placementSchema, type PlacementValues } from "../lib/receipt-form";
@@ -68,11 +68,7 @@ export function ReceiptPlacement({
     >
       {!row || row.placedAt ? (
         <div className={styles.scanForm}>
-          <p className={styles.info}>
-            Паллета уже размещена или больше не ожидает приёмки. Обновлённая
-            история доступна в документе.
-          </p>
-          <Button onClick={onClose}>К документу</Button>
+          <p className={styles.info}>Паллета больше не ожидает размещения.</p>
         </div>
       ) : (
         <form
@@ -83,23 +79,19 @@ export function ReceiptPlacement({
         >
           {options.isPending && (
             <p className={styles.info} role="status">
-              Подбираем свободный адрес по габаритам паллеты…
+              Подбираем адрес…
             </p>
           )}
           {options.isError && (
             <div className={styles.readError} role="alert">
-              <p>
-                Не удалось обновить рекомендации. Ввод сохранён. Можно повторить
-                подбор или отсканировать подходящий адрес — сервер проверит его
-                при размещении.
-              </p>
+              <p>Не удалось подобрать адрес. Можно указать его вручную.</p>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => void options.refetch()}
                 disabled={options.isFetching}
               >
-                Обновить подбор
+                Повторить
               </Button>
             </div>
           )}
@@ -121,17 +113,13 @@ export function ReceiptPlacement({
               {options.data?.recommendation && (
                 <p>{options.data.recommendation.explanation}</p>
               )}
-              <p>
-                Адрес пока не зарезервирован. Разместите паллету и подтвердите
-                оба кода сканером или введите их вручную.
-              </p>
+              <p>Адрес пока не зарезервирован.</p>
             </div>
           )}
           {options.data && !suggested && (
             <div className={styles.info}>
               <p>
-                {options.data.reason ||
-                  "Сейчас нет подходящих свободных адресов. Документ и паллета сохранятся в ожидающей приёмке."}
+                {options.data.reason || "Нет подходящих свободных адресов."}
               </p>
               <Link href="/warehouse" target="_blank" rel="noopener noreferrer">
                 Проверить карту склада ↗
@@ -140,21 +128,17 @@ export function ReceiptPlacement({
           )}
           {options.data && options.data.locations.length > 1 && (
             <p className={styles.help}>
-              Подходящих адресов: {options.data.locations.length}. Можно
-              отсканировать другой подходящий свободный адрес.
+              Подходящих адресов: {options.data.locations.length}
             </p>
           )}
           <fieldset disabled={pending} className={styles.fieldset}>
             <input type="hidden" {...form.register("employeeId")} />
-            <p className={styles.info}>
-              Размещает: <strong>{actor?.name ?? user?.name}</strong>.{" "}
-              {actor?.status !== "working" && (
-                <>
-                  Начните свою смену в{" "}
-                  <Link href="/team">разделе «Команда»</Link>.
-                </>
-              )}
-            </p>
+            {actor?.status !== "working" && (
+              <p className={styles.info}>
+                <Link href="/team">Начните или возобновите смену</Link>, чтобы
+                разместить паллету.
+              </p>
+            )}
             <label className="field">
               <span className={styles.scanSteps}>
                 <span>1</span>Код паллеты
@@ -212,14 +196,7 @@ export function ReceiptPlacement({
               {error}
             </div>
           )}
-          <p className={styles.help}>
-            <ScanLine size={13} /> Скан паллеты → скан адреса → товар на
-            балансе. При ошибке поля остаются заполненными.
-          </p>
           <div className={styles.detailActions}>
-            <Button variant="ghost" onClick={onClose} disabled={pending}>
-              К документу
-            </Button>
             <Button
               type="submit"
               disabled={pending || actor?.status !== "working"}

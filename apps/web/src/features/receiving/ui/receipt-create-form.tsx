@@ -44,7 +44,6 @@ export function ReceiptCreateForm({
     <Modal
       open
       title="Новая приёмка"
-      description="Одна строка — одна физическая паллета. После создания можно напечатать этикетки и начать размещение."
       onClose={() => {
         if (!pending) onClose();
       }}
@@ -58,7 +57,7 @@ export function ReceiptCreateForm({
         >
           <fieldset disabled={pending} className={styles.fieldset}>
             <label className="field">
-              Фактическое поступление · Москва
+              Дата поступления (МСК)
               <Input
                 type="datetime-local"
                 {...form.register("receivedAt")}
@@ -69,7 +68,7 @@ export function ReceiptCreateForm({
                   {form.formState.errors.receivedAt.message}
                 </span>
               )}
-              <small>Эта дата определяет старшинство партии по FIFO.</small>
+              <small>По этой дате определяется очередь партий (FIFO).</small>
             </label>
             <div className={styles.rows}>
               {rows.fields.map((row, index) => (
@@ -109,14 +108,8 @@ export function ReceiptCreateForm({
             </div>
           )}
           <div className={styles.formFooter}>
-            <small>
-              На баланс — после размещения. Создание документа и печать этикеток
-              ещё не добавляют товар в доступный запас.
-            </small>
+            <small>Товар зачисляется на баланс после размещения.</small>
             <div className={styles.detailActions}>
-              <Button variant="ghost" disabled={pending} onClick={onClose}>
-                Отмена
-              </Button>
               <Button type="submit" disabled={pending} aria-busy={pending}>
                 Создать приёмку
               </Button>
@@ -311,9 +304,8 @@ function PalletFields({
           </label>
           {existingBarcode && (
             <p className={styles.info}>
-              Штрихкод уже есть в каталоге: «{existingBarcode.name}». Выберите
-              «Из каталога», если это та же тематика. При совпадении всех данных
-              сервер использует существующую тематику.
+              Штрихкод уже у товара «{existingBarcode.name}». Для него выберите
+              «Из каталога».
             </p>
           )}
         </div>
@@ -368,10 +360,6 @@ function PalletFields({
             )}
           </label>
         </div>
-        <p className={styles.help}>
-          Размеры и масса вместе с поддоном. По ним система подберёт подходящий
-          адрес.
-        </p>
       </details>
     </section>
   );
