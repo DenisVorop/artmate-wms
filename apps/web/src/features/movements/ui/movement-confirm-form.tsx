@@ -1,8 +1,7 @@
 "use client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowDownToLine, ScanLine } from "lucide-react";
-import { Button } from "@/shared/ui";
+import { Button, Input } from "@/shared/ui";
 import { scanSchema, type ScanValues } from "../lib/movement-form";
 import styles from "./movements.module.css";
 
@@ -30,7 +29,8 @@ export function MovementConfirmForm({
   });
   return (
     <form
-      className={`ops-form ${styles.confirm}`}
+      className={styles.confirm}
+      aria-busy={pending}
       onSubmit={handleSubmit(async (values) => {
         try {
           await onConfirm(values);
@@ -39,53 +39,42 @@ export function MovementConfirmForm({
         }
       })}
     >
-      <div>
-        <h3>
-          {mode === "take"
-            ? "Подтвердить забор"
-            : mode === "place"
-              ? "Подтвердить размещение"
-              : "Подтвердить вывоз"}
-        </h3>
-        <p className="ops-sub">
-          Отсканируйте паллету{" "}
-          <strong className={styles.code}>{palletCode}</strong> и{" "}
-          {mode === "place" ? "целевой" : "исходный"} адрес{" "}
-          <strong className={styles.code}>{locationCode}</strong>. Без сканера
-          введите коды вручную.
-        </p>
-      </div>
-      <label>
+      <label className="field">
         Код паллеты
-        <input
+        <Input
           {...register("palletCode")}
-          className="ops-scan-input"
+          className={styles.scanInput}
+          disabled={pending}
+          autoCapitalize="off"
+          spellCheck={false}
           autoComplete="off"
-          placeholder="Отсканируйте QR паллеты"
+          placeholder={palletCode || "Отсканируйте QR паллеты"}
+          aria-invalid={!!errors.palletCode}
           autoFocus
         />
         {errors.palletCode && (
-          <span className="ops-field-error">{errors.palletCode.message}</span>
+          <span className={styles.fieldError}>{errors.palletCode.message}</span>
         )}
       </label>
-      <label>
-        Код {mode === "place" ? "целевого" : "исходного"} адреса
-        <input
+      <label className="field">
+        Код адреса
+        <Input
           {...register("locationCode")}
-          className="ops-scan-input"
+          className={styles.scanInput}
+          disabled={pending}
+          autoCapitalize="off"
+          spellCheck={false}
           autoComplete="off"
-          placeholder="Отсканируйте QR адреса"
+          placeholder={locationCode || "Отсканируйте QR адреса"}
+          aria-invalid={!!errors.locationCode}
         />
         {errors.locationCode && (
-          <span className="ops-field-error">{errors.locationCode.message}</span>
+          <span className={styles.fieldError}>
+            {errors.locationCode.message}
+          </span>
         )}
       </label>
       <Button type="submit" disabled={pending}>
-        {mode === "place" ? (
-          <ArrowDownToLine size={16} />
-        ) : (
-          <ScanLine size={16} />
-        )}
         {pending
           ? "Подтверждаем…"
           : mode === "take"

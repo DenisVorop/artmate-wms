@@ -1,7 +1,6 @@
 "use client";
 import { useSession } from "@/entities/session";
-import Link from "next/link";
-import { ArrowRight, CheckCircle2, Package, X } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { MovementDto, WorkspaceDto } from "@/shared/api/generated/model";
 import { Badge, Button } from "@/shared/ui";
 import {
@@ -57,22 +56,29 @@ export function MovementDetail({
   const held = data.locations.find(
     (item) => item.id === pallet?.returnLocationId,
   );
-  const step =
-    movement.status === "completed"
-      ? 3
-      : movement.status === "in_transit"
-        ? 2
-        : movement.status === "planned"
-          ? 1
-          : 0;
+  const employee = data.employees.find(
+    (item) => item.id === movement.employeeId,
+  );
   return (
-    <section className={`glass-panel ops-panel ${styles.detail}`}>
-      <div className="ops-card-top">
-        <h2>
-          {movement.autoPurpose === "accessible_raw"
-            ? "Спустить сырьё ниже"
-            : "Выполнение задания"}
-        </h2>
+    <section
+      className={`glass-panel ${styles.detail}`}
+      aria-label={`Перемещение ${movement.code}`}
+    >
+      <header className={styles.detailHeader}>
+        <div>
+          <h2>{movementPalletName(data, pallet)}</h2>
+          <p>
+            {movement.code} · {movementTitle(movement)}
+            {pallet && (
+              <>
+                {" "}
+                · {pallet.code} · {pallet.quantity}{" "}
+                {pallet.kind === "raw" ? "шт." : "кор."}
+              </>
+            )}
+            {employee && <> · {employee.name}</>}
+          </p>
+        </div>
         <Badge
           tone={
             movement.status === "completed"
@@ -84,84 +90,19 @@ export function MovementDetail({
         >
           {movementStatuses[movement.status]}
         </Badge>
-      </div>
-      {movement.autoPurpose === "accessible_raw" && (
-        <h3 className={styles.theme}>{movementPalletName(data, pallet)}</h3>
-      )}
-      <div className={styles.steps} aria-label={`Этап ${step} из 3`}>
-        {[1, 2, 3].map((value) => (
-          <span
-            key={value}
-            className={`${styles.step} ${step >= value ? styles.stepDone : ""}`}
-          />
-        ))}
-      </div>
-      <div className={styles.meta}>
-        <div>
-          <span>Задание</span>
-          <strong className={styles.code}>{movement.code}</strong>
+      </header>
+      <div className={styles.addresses}>
+        <div className={styles.address}>
+          <span>Откуда</span>
+          <strong>{source?.code ?? "—"}</strong>
+          {source?.kind === "rack" && <span>Ярус {source.level}</span>}
         </div>
-        <div>
-          <span>Операция</span>
-          <strong>{movementTitle(movement)}</strong>
+        <ArrowRight size={20} className={styles.arrow} aria-hidden="true" />
+        <div className={styles.address}>
+          <span>Куда</span>
+          <strong>{target?.code ?? "—"}</strong>
+          {target?.kind === "rack" && <span>Ярус {target.level}</span>}
         </div>
-        <div>
-          <span>Паллета</span>
-          <strong className={styles.code}>{pallet?.code}</strong>
-        </div>
-        <div>
-          <span>Тематика</span>
-          <strong>{movementPalletName(data, pallet)}</strong>
-        </div>
-        <div>
-          <span>Исполнитель</span>
-          <strong>
-            {movement.employeeId === null
-              ? "Свободное задание"
-              : (data.employees.find(
-                  (employee) => employee.id === movement.employeeId,
-                )?.name ?? "Исполнитель недоступен")}
-          </strong>
-        </div>
-        <div>
-          <span>Текущий остаток</span>
-          <strong>
-            {pallet?.quantity} {pallet?.kind === "raw" ? "шт." : "кор."}
-          </strong>
-        </div>
-      </div>
-      <div className={styles.route}>
-        <code>
-          {source?.code ?? "—"}
-          {movement.autoPurpose && source?.kind === "rack"
-            ? ` · ярус ${source.level}`
-            : ""}
-        </code>
-        <ArrowRight size={16} />
-        <code>
-          {target?.code ?? "—"}
-          {movement.autoPurpose && target?.kind === "rack"
-            ? ` · ярус ${target.level}`
-            : ""}
-        </code>
-      </div>
-      <div className={styles.meta}>
-        <div>
-          <span>Создано</span>
-          <strong>{movementTime(movement.createdAt)}</strong>
-        </div>
-        {movement.takenAt && (
-          <div>
-            <span>Забрано</span>
-            <strong>{movementTime(movement.takenAt)}</strong>
-          </div>
-        )}
-        {movement.completedAt && (
-          <div>
-            <span>Размещено</span>
-            <strong>{movementTime(movement.completedAt)}</strong>
-          </div>
-        )}
       </div>
       {movement.keepSourceReserved &&
         movement.kind === "lower" &&
@@ -171,40 +112,36 @@ export function MovementDetail({
               "После забора исходный адрес будет удерживаться для возврата."
             ) : held ? (
               <>
-                Для возврата удерживается <strong>{held.code}</strong>.
+                Адрес возврата зарезервирован: <strong>{held.code}</strong>.
               </>
             ) : (
               "Исходный адрес больше не удерживается."
             )}
           </p>
         )}
-      {movement.kind === "return" && (
-        <p className={styles.hint}>
-          Возвращается текущий остаток паллеты. Количество и партии коробов
-          сохранятся.
-        </p>
-      )}
       {!["completed", "cancelled"].includes(movement.status) &&
         !canExecute &&
         !free && (
-          <p className={styles.hint}>
-            Сканы выполняет назначенный сотрудник в своей учётной записи на
-            смене.
+          <p className={styles.context}>
+            {user?.employeeId === movement.employeeId
+              ? "Начните смену, чтобы продолжить."
+              : "Сканы принимает только учётная запись исполнителя."}
           </p>
         )}
       {movement.status === "planned" && (
         <>
-          {free && (
-            <>
-              {claimHint && <p className={styles.hint}>{claimHint}</p>}
+          {free &&
+            (claimHint ? (
+              <p className={styles.context}>{claimHint}</p>
+            ) : (
               <Button
-                disabled={pending || !!claimHint}
+                className={styles.action}
+                disabled={pending}
                 onClick={() => void onClaim().catch(() => {})}
               >
                 Взять задание
               </Button>
-            </>
-          )}
+            ))}
           {canExecute && (
             <MovementConfirmForm
               key={`${movement.id}-take`}
@@ -217,61 +154,47 @@ export function MovementDetail({
           )}
           {(isManager || user?.employeeId === movement.employeeId) && (
             <Button
+              className={styles.action}
               variant="ghost"
               size="sm"
               disabled={pending}
               onClick={() => void onCancel().catch(() => {})}
             >
-              <X size={14} />
               Отменить до забора
             </Button>
           )}
         </>
       )}
-      {movement.status === "in_transit" && (
-        <>
-          <p className={styles.hint}>
-            Паллета в пути. Исходный адрес уже снят, целевой адрес остаётся
-            зарезервированным. Завершите размещение.
-          </p>
-          {canExecute && (
-            <MovementConfirmForm
-              key={`${movement.id}-place`}
-              mode="place"
-              palletCode={pallet?.code ?? ""}
-              locationCode={target?.code ?? ""}
-              pending={pending}
-              onConfirm={onPlace}
-            />
-          )}
-        </>
-      )}
-      {movement.status === "completed" && (
-        <>
-          <div className="ops-success">
-            <CheckCircle2 size={16} />
-            Размещение подтверждено
-          </div>
-          {isManager &&
-            movement.kind === "lower" &&
-            pallet &&
-            pallet.quantity > 0 && (
-              <Link href="/shipments" className="button button--secondary">
-                <Package size={16} />К отгрузкам
-              </Link>
-            )}
-        </>
-      )}
-      {movement.status === "cancelled" && (
-        <p>
-          Перемещение отменено до забора. Паллета осталась на исходном адресе.
-        </p>
+      {movement.status === "in_transit" && canExecute && (
+        <MovementConfirmForm
+          key={`${movement.id}-place`}
+          mode="place"
+          palletCode={pallet?.code ?? ""}
+          locationCode={target?.code ?? ""}
+          pending={pending}
+          onConfirm={onPlace}
+        />
       )}
       {error && (
         <div className="ops-error" role="alert">
           {error}
         </div>
       )}
+      <div className={styles.history}>
+        <span>
+          Создано <strong>{movementTime(movement.createdAt)}</strong>
+        </span>
+        {movement.takenAt && (
+          <span>
+            Забрано <strong>{movementTime(movement.takenAt)}</strong>
+          </span>
+        )}
+        {movement.completedAt && (
+          <span>
+            Размещено <strong>{movementTime(movement.completedAt)}</strong>
+          </span>
+        )}
+      </div>
     </section>
   );
 }

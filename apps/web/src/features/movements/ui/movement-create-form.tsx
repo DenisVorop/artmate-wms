@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { Button, Modal } from "@/shared/ui";
+import { Button, Modal, Select } from "@/shared/ui";
 import {
   canReturn,
   wholePalletMovementAllowed,
@@ -77,13 +77,15 @@ export function MovementCreateForm({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!pending) onClose();
+      }}
       title="Новое перемещение"
-      description="Назначьте паллету, целевой адрес и исполнителя."
     >
       <form
-        className="ops-form"
+        className={styles.form}
         onSubmit={handleSubmit(async (values) => {
+          if (pending) return;
           try {
             await onCreate(values);
             onClose();
@@ -92,9 +94,9 @@ export function MovementCreateForm({
           }
         })}
       >
-        <label>
+        <label className="field">
           Паллета
-          <select {...register("palletId")}>
+          <Select disabled={pending} {...register("palletId")}>
             <option value="">Выберите паллету</option>
             {available.map((item) => (
               <option key={item.id} value={item.id}>
@@ -107,14 +109,14 @@ export function MovementCreateForm({
                 }
               </option>
             ))}
-          </select>
+          </Select>
           {errors.palletId && (
-            <span className="ops-field-error">{errors.palletId.message}</span>
+            <span className={styles.fieldError}>{errors.palletId.message}</span>
           )}
         </label>
-        <label>
+        <label className="field">
           Операция
-          <select {...register("kind")}>
+          <Select disabled={pending} {...register("kind")}>
             <option value="transfer">Перемещение на другой адрес</option>
             <option value="lower" disabled={!!pallet?.returnLocationId}>
               Спуск для отбора с четырёх сторон
@@ -125,7 +127,7 @@ export function MovementCreateForm({
             >
               Возврат остатка на хранение
             </option>
-          </select>
+          </Select>
         </label>
         {kind === "return" && pallet && (
           <div className={styles.hint}>
@@ -145,7 +147,7 @@ export function MovementCreateForm({
                 </strong>
               </>
             ) : (
-              "Исходный адрес не удерживается. Выберите подходящее свободное место хранения для текущего остатка."
+              "Адрес возврата не зарезервирован. Выберите свободное место хранения."
             )}
           </div>
         )}
@@ -159,13 +161,12 @@ export function MovementCreateForm({
                 )?.code
               }
             </strong>{" "}
-            сохранится. Можно перевезти паллету из зоны отбора в зону отгрузки,
-            чтобы освободить место для следующей паллеты.
+            сохранится.
           </p>
         )}
-        <label>
+        <label className="field">
           Целевой адрес
-          <select {...register("toLocationId")}>
+          <Select disabled={pending} {...register("toLocationId")}>
             <option value="">Выберите адрес</option>
             {data.locations
               .filter((l) => !l.archived)
@@ -187,18 +188,18 @@ export function MovementCreateForm({
                   </option>
                 );
               })}
-          </select>
+          </Select>
           {errors.toLocationId && (
-            <span className="ops-field-error">
+            <span className={styles.fieldError}>
               {errors.toLocationId.message}
             </span>
           )}
         </label>
         {isManager ? (
           <>
-            <label>
+            <label className="field">
               Исполнитель
-              <select {...register("employeeId")}>
+              <Select disabled={pending} {...register("employeeId")}>
                 <option value="">Выберите сотрудника на смене</option>
                 {data.employees
                   .filter((item) => item.status === "working")
@@ -222,9 +223,9 @@ export function MovementCreateForm({
                         : ""}
                     </option>
                   ))}
-              </select>
+              </Select>
               {errors.employeeId && (
-                <span className="ops-field-error">
+                <span className={styles.fieldError}>
                   {errors.employeeId.message}
                 </span>
               )}
@@ -240,18 +241,14 @@ export function MovementCreateForm({
         )}
         {kind === "lower" && (
           <label className={styles.checkbox}>
-            <input type="checkbox" {...register("keepSourceReserved")} />
+            <input
+              type="checkbox"
+              disabled={pending}
+              {...register("keepSourceReserved")}
+            />
             <span>Сохранить исходный адрес для возврата остатка</span>
           </label>
         )}
-        <p className={styles.hint}>
-          Общая паллета сборки остаётся на месте. Разместите её короба по
-          тематическим паллетам через второстепенные задания.
-        </p>
-        <p className={styles.hint}>
-          Создание задания резервирует цель. Паллета сменит адрес только после
-          подтверждения забора и размещения по QR.
-        </p>
         {error && (
           <div className="ops-error" role="alert">
             {error}
@@ -268,7 +265,7 @@ export function MovementCreateForm({
             pending || (!isManager && ownEmployee?.status !== "working")
           }
         >
-          {pending ? "Создаём…" : "Создать перемещение"}
+          {pending ? "Создаём…" : "Создать"}
         </Button>
       </form>
     </Modal>

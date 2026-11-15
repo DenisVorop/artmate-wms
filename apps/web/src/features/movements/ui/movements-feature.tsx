@@ -1,32 +1,16 @@
 "use client";
 import { useSession } from "@/entities/session";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  CheckCircle2,
-  Plus,
-  Recycle,
-  Route,
-} from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
-import {
-  Badge,
-  Button,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  Modal,
-} from "@/shared/ui";
-import {
-  movementTitle,
-  movementStatuses,
-  movementPalletName,
-} from "../lib/movement-form";
+import { Button, ErrorState, LoadingState, Modal } from "@/shared/ui";
+import { isActiveMovement } from "../lib/movement-list";
 import { useMovementsState } from "../lib/use-movements-state";
 import { useMovements } from "../model/use-movements";
 import { MovementCreateForm } from "./movement-create-form";
 import { MovementConfirmForm } from "./movement-confirm-form";
 import { MovementDetail } from "./movement-detail";
+import { MovementTaskList } from "./movement-task-list";
 import styles from "./movements.module.css";
 
 export function MovementsFeature() {
@@ -47,22 +31,20 @@ export function MovementsFeature() {
     : undefined;
   const commands = useMovements();
   const ui = useMovementsState();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousSelection = useRef(ui.selectedId);
+  useLayoutEffect(() => {
+    if (previousSelection.current !== ui.selectedId) {
+      previousSelection.current = ui.selectedId;
+      if (!(document.activeElement instanceof HTMLInputElement))
+        heading.current?.focus();
+    }
+  }, [ui.selectedId]);
+
   if (isPending) return <LoadingState />;
-  if (isError || !data) return <ErrorState onRetry={() => void refetch()} />;
-  const active = data.movements.filter((item) =>
-    ["planned", "in_transit"].includes(item.status),
-  );
-  const list = [...data.movements]
-    .reverse()
-    .filter(
-      (item) =>
-        ui.filter === "all" ||
-        (ui.filter === "active"
-          ? ["planned", "in_transit"].includes(item.status)
-          : item.status === ui.filter),
-    );
-  const selected =
-    data.movements.find((item) => item.id === ui.selectedId) ?? list[0];
+  if (!data) return <ErrorState onRetry={() => void refetch()} />;
+  const active = data.movements.filter(isActiveMovement);
+  const selected = data.movements.find((item) => item.id === ui.selectedId);
   const emptyPallets = data.pallets.filter(
     (item) =>
       item.status === "stored" &&
@@ -72,230 +54,139 @@ export function MovementsFeature() {
       ),
   );
   const retiring = data.pallets.find((item) => item.id === ui.retireId);
+  const selectMovement = (id: string | null) => {
+    ui.setSelectedId(id);
+    ui.setNotice("");
+    commands.clearError();
+  };
+  const addresses = new Map(data.locations.map((item) => [item.id, item.code]));
+  const retireAddress = retiring?.locationId
+    ? addresses.get(retiring.locationId)
+    : undefined;
+
   return (
     <div className={styles.feature}>
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">ДВИЖЕНИЕ ПО СКЛАДУ</p>
-          <h1 className="page-heading">Перемещения</h1>
-          <p className="page-description">
-            Забрать, перевезти, подтвердить адрес. Каждый шаг сохраняется.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            commands.clearError();
-            ui.setCreating(true);
-          }}
-        >
-          <Plus size={16} />
-          Новое перемещение
-        </Button>
-      </div>
-      <div className={styles.summary}>
-        {[
-          [
-            "Ожидают забора",
-            data.movements.filter((item) => item.status === "planned").length,
-          ],
-          [
-            "Паллеты в пути",
-            data.movements.filter((item) => item.status === "in_transit")
-              .length,
-          ],
-          ["Пустые поддоны на местах", emptyPallets.length],
-        ].map(([title, value]) => (
-          <div className={`glass-panel ${styles.metric}`} key={title}>
-            <span>{title}</span>
-            <strong>{value}</strong>
-          </div>
-        ))}
-      </div>
+      <header className={styles.pageHeader}>
+        <h1 className="page-heading" ref={heading} tabIndex={-1}>
+          Перемещения
+        </h1>
+        {selected ? (
+          <Button
+            variant="secondary"
+            disabled={commands.pending}
+            onClick={() => selectMovement(null)}
+          >
+            <ArrowLeft size={15} aria-hidden="true" />К списку
+          </Button>
+        ) : (
+          <Button
+            disabled={commands.pending}
+            aria-haspopup="dialog"
+            onClick={() => {
+              commands.clearError();
+              ui.setNotice("");
+              ui.setCreating(true);
+            }}
+          >
+            <Plus size={15} aria-hidden="true" />
+            Новое перемещение
+          </Button>
+        )}
+      </header>
       {ui.notice && (
-        <div className="ops-success" role="status">
-          <CheckCircle2 size={16} />
+        <p className={styles.notice} role="status">
           {ui.notice}
+        </p>
+      )}
+      {isError && (
+        <div className={styles.readError} role="alert">
+          Не удалось обновить задания.
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={commands.pending}
+            onClick={() => void refetch()}
+          >
+            Повторить
+          </Button>
         </div>
       )}
-      <div className="ops-layout">
-        <section className="glass-panel ops-panel">
-          <h2>
-            <Route size={18} />
-            Задания на перемещение
-          </h2>
-          <div className={styles.filter} aria-label="Фильтр перемещений">
-            {[
-              ["active", "Активные"],
-              ["all", "Все"],
-              ["completed", "Завершены"],
-              ["cancelled", "Отменены"],
-            ].map(([value, title]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={ui.filter === value}
-                onClick={() => {
-                  ui.setFilter(value!);
-                  ui.setSelectedId(null);
-                }}
-              >
-                {title}
-              </button>
-            ))}
-          </div>
-          <div className={styles.list}>
-            {list.map((movement) => {
-              const pallet = data.pallets.find(
-                (item) => item.id === movement.palletId,
-              );
-              return (
-                <button
-                  type="button"
-                  className="ops-task-card"
-                  data-selected={movement.id === selected?.id}
-                  key={movement.id}
-                  onClick={() => {
-                    ui.setSelectedId(movement.id);
-                    commands.clearError();
-                  }}
-                >
-                  <div className="ops-card-top">
-                    <span className="ops-mono">{movement.code}</span>
-                    <Badge
-                      tone={
-                        movement.status === "completed"
-                          ? "success"
-                          : movement.status === "in_transit"
-                            ? "warning"
-                            : "neutral"
-                      }
-                    >
-                      {movementStatuses[movement.status]}
-                    </Badge>
-                  </div>
-                  <div className="ops-card-name">
-                    {pallet?.code} · {movementPalletName(data, pallet)}
-                  </div>
-                  <div className={styles.route}>
-                    <code>
-                      {
-                        data.locations.find(
-                          (item) => item.id === movement.fromLocationId,
-                        )?.code
-                      }
-                    </code>
-                    <ArrowRight size={15} />
-                    <code>
-                      {
-                        data.locations.find(
-                          (item) => item.id === movement.toLocationId,
-                        )?.code
-                      }
-                    </code>
-                  </div>
-                  <div className="ops-sub">
-                    {movementTitle(movement)} ·{" "}
-                    {movement.employeeId === null
-                      ? "Свободное задание"
-                      : (data.employees.find(
-                          (item) => item.id === movement.employeeId,
-                        )?.name ?? "Исполнитель недоступен")}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {list.length === 0 && (
-            <EmptyState
-              title="Перемещений пока нет"
-              description="Создайте задание для переноса паллеты или спуска готовых коробов."
-            />
-          )}
+      {selected ? (
+        <MovementDetail
+          key={selected.id}
+          movement={selected}
+          data={data}
+          pending={commands.pending}
+          error={commands.error}
+          onClaim={async () => {
+            await commands.claim(selected.id);
+            ui.setNotice("Задание взято.");
+          }}
+          onTake={async (values) => {
+            await commands.take(selected.id, values);
+            ui.setNotice("Паллета в пути.");
+          }}
+          onPlace={async (values) => {
+            await commands.place(selected.id, values);
+            ui.setNotice("Паллета размещена.");
+          }}
+          onCancel={async () => {
+            await commands.cancel(selected.id);
+            ui.setNotice("Перемещение отменено. Адрес освобождён.");
+          }}
+        />
+      ) : (
+        <>
+          <MovementTaskList
+            data={data}
+            addresses={addresses}
+            filter={ui.filter}
+            search={ui.search}
+            onFilter={ui.setFilter}
+            onSearch={ui.setSearch}
+            onSelect={selectMovement}
+          />
           {emptyPallets.length > 0 && (
-            <div className={styles.emptyPallets}>
-              <h3>
-                <Recycle size={17} /> Пустые поддоны
-              </h3>
-              <p className="ops-description">
-                Нулевой остаток не освобождает адрес. Подтвердите физический
-                вывоз.
-              </p>
-              {emptyPallets.map((pallet) => (
-                <div className={styles.emptyPallet} key={pallet.id}>
-                  <div>
-                    <strong>{pallet.code}</strong>
-                    <p>
-                      {
-                        data.locations.find(
-                          (item) => item.id === pallet.locationId,
-                        )?.code
-                      }{" "}
-                      · место занято поддоном
-                    </p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={
-                      active.some((item) => item.palletId === pallet.id) ||
-                      data.putawayTasks.some(
-                        (task) =>
-                          ["claimed", "in_transit"].includes(task.status) &&
-                          task.toLocationId === pallet.locationId,
-                      )
-                    }
-                    onClick={() => {
-                      commands.clearError();
-                      ui.setRetireId(pallet.id);
-                    }}
-                  >
-                    Поддон вывезен <ArrowUpRight size={14} />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            <section
+              className={styles.emptyPallets}
+              aria-labelledby="empty-pallets-title"
+            >
+              <h2 id="empty-pallets-title">Пустые поддоны</h2>
+              <ul>
+                {emptyPallets.map((pallet) => (
+                  <li className={styles.emptyPallet} key={pallet.id}>
+                    <div>
+                      <strong>{pallet.code}</strong>
+                      <span>
+                        {pallet.locationId && addresses.get(pallet.locationId)}
+                      </span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={
+                        commands.pending ||
+                        active.some((item) => item.palletId === pallet.id) ||
+                        data.putawayTasks.some(
+                          (task) =>
+                            ["claimed", "in_transit"].includes(task.status) &&
+                            task.toLocationId === pallet.locationId,
+                        )
+                      }
+                      onClick={() => {
+                        commands.clearError();
+                        ui.setRetireId(pallet.id);
+                      }}
+                    >
+                      Поддон вывезен
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
-        </section>
-        <aside className="ops-stack">
-          {selected ? (
-            <MovementDetail
-              movement={selected}
-              data={data}
-              pending={commands.pending}
-              error={commands.error}
-              onClaim={async () => {
-                await commands.claim(selected.id);
-                ui.setNotice(
-                  "Задание взято. Подтвердите забор паллеты сканами.",
-                );
-              }}
-              onTake={async (values) => {
-                await commands.take(selected.id, values);
-                ui.setNotice("Забор подтверждён. Паллета в пути.");
-              }}
-              onPlace={async (values) => {
-                await commands.place(selected.id, values);
-                ui.setNotice(
-                  "Размещение подтверждено. Адреса паллеты и коробов обновлены.",
-                );
-              }}
-              onCancel={async () => {
-                await commands.cancel(selected.id);
-                ui.setNotice("Перемещение отменено. Целевой адрес освобождён.");
-              }}
-            />
-          ) : (
-            <div className={`glass-panel ops-panel ${styles.hint}`}>
-              <h3>Два подтверждения</h3>
-              <p>
-                Сначала скан паллеты и исходного адреса, затем — паллеты и
-                целевого адреса. Простое создание задания не меняет фактическое
-                размещение.
-              </p>
-            </div>
-          )}
-        </aside>
-      </div>
+        </>
+      )}
       <MovementCreateForm
         open={ui.creating}
         data={data}
@@ -309,36 +200,27 @@ export function MovementsFeature() {
             result.movements.find((item) => !before.has(item.id))?.id ?? null,
           );
           ui.setFilter("active");
-          ui.setNotice("Задание создано. Целевой адрес зарезервирован.");
+          ui.setSearch("");
+          ui.setNotice("Задание создано. Адрес зарезервирован.");
         }}
       />
       <Modal
         open={!!retiring}
-        onClose={() => ui.setRetireId(null)}
+        onClose={() => {
+          if (!commands.pending) ui.setRetireId(null);
+        }}
         title="Подтвердить вывоз поддона"
-        description="Адрес освободится после подтверждения фактического вывоза."
       >
         {retiring && (
           <div className={styles.retirement}>
-            <p>
-              У паллеты <strong className={styles.code}>{retiring.code}</strong>{" "}
-              нет товара. Убедитесь, что поддон физически вывезен с адреса{" "}
-              <strong className={styles.code}>
-                {
-                  data.locations.find((item) => item.id === retiring.locationId)
-                    ?.code
-                }
-              </strong>
-              . Будут сняты адрес хранения и удерживаемое место возврата.
+            <p className={styles.hint}>
+              Подтверждайте вывоз, когда поддон уже убран с места.
             </p>
             <MovementConfirmForm
               key={retiring.id}
               mode="retire"
               palletCode={retiring.code}
-              locationCode={
-                data.locations.find((item) => item.id === retiring.locationId)
-                  ?.code ?? ""
-              }
+              locationCode={retireAddress ?? ""}
               pending={commands.pending}
               onConfirm={async (values) => {
                 await commands.retire(retiring.id, values);
