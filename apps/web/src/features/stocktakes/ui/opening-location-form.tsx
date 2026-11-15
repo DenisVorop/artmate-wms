@@ -162,6 +162,7 @@ export function OpeningLocationForm({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
+          placeholder={compact ? "Сканируйте код адреса" : undefined}
           disabled={disabled}
           {...form.register("locationCode")}
           aria-invalid={!!errs.locationCode}

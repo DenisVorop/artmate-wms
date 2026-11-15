@@ -737,6 +737,13 @@
   width: 20px;
   height: 20px;
 }
+.employeeFeature .radio input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+}
 .employeeFeature button:focus-visible,
 .employeeFeature select:focus-visible {
   outline: 2px solid var(--accent);
@@ -760,11 +767,40 @@
 .compactForm .rawRow > button {
   justify-self: start;
 }
-.compactForm .rawRow .numberEntry {
+.compactForm .numberEntry {
   grid-template-columns: minmax(0, 1fr) auto;
 }
-.compactForm .rawRow .numberEntry > button {
+.compactForm .numberEntry > button {
   min-height: 48px;
+}
+.compactForm .radioGroup,
+.compactForm .openingBatch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.compactForm .openingBatch {
+  align-items: start;
+}
+.compactForm .openingBatch > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.compactForm .radio {
+  min-height: 48px;
+}
+.compactForm .radio:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.compactForm .radio input:focus-visible {
+  outline: none;
+}
+@media (min-width: 560px) {
+  .compactForm .radioGroup,
+  .compactForm .openingBatch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .compactForm .tag {
   min-width: 0;
