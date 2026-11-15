@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import {
@@ -29,6 +29,20 @@ import styles from "./work-queue-page.module.css";
 
 const openStates = ["queued", "active", "paused", "review"] as const;
 type StateFilter = (typeof openStates)[number] | "open" | "archive";
+
+const kindFilterLabels: Partial<Record<WorkQueueKind, string>> = {
+  putaway: "Размещение",
+  movement: "Перемещение",
+};
+
+function FilterSelect(props: ComponentProps<typeof Select>) {
+  return (
+    <span className={styles.field}>
+      <Select {...props} />
+      <ChevronDown className={styles.chevron} size={16} aria-hidden="true" />
+    </span>
+  );
+}
 
 function WorkQueueRow({ job }: { job: WorkQueueJob }) {
   const name = job.skuName ?? job.objectLabel;
@@ -121,7 +135,7 @@ function ManagerWorkQueue() {
           <section className={styles.filters} aria-label="Фильтры заданий">
             <label>
               <span>Вид работы</span>
-              <Select
+              <FilterSelect
                 value={kind}
                 onChange={(event) =>
                   setKind(event.target.value as WorkQueueKind | "all")
@@ -130,46 +144,46 @@ function ManagerWorkQueue() {
                 <option value="all">Все виды</option>
                 {Object.entries(workQueueKindLabels).map(([value, label]) => (
                   <option key={value} value={value}>
-                    {label}
+                    {kindFilterLabels[value as WorkQueueKind] ?? label}
                   </option>
                 ))}
-              </Select>
+              </FilterSelect>
             </label>
             <label>
               <span>Статус</span>
-              <Select
+              <FilterSelect
                 value={state}
                 onChange={(event) =>
                   setState(event.target.value as StateFilter)
                 }
               >
-                <option value="open">Незавершённые</option>
+                <option value="open">Открытые</option>
                 {openStates.map((value) => (
                   <option key={value} value={value}>
                     {workQueueStateLabels[value]}
                   </option>
                 ))}
-                <option value="archive">Завершённые и отменённые</option>
-              </Select>
+                <option value="archive">Архив</option>
+              </FilterSelect>
             </label>
-            <label>
+            <label className={styles.assignee}>
               <span>Исполнитель</span>
-              <Select
+              <FilterSelect
                 value={employeeId}
                 onChange={(event) => setEmployeeId(event.target.value)}
               >
-                <option value="all">Все сотрудники</option>
-                <option value="free">Без исполнителя</option>
+                <option value="all">Все</option>
+                <option value="free">Не назначен</option>
                 {workspace.data.employees.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.name}
                   </option>
                 ))}
-              </Select>
+              </FilterSelect>
             </label>
-            <label>
+            <label className={styles.search}>
               <span>Поиск</span>
-              <span className={styles.search}>
+              <span className={styles.field}>
                 <Search size={16} aria-hidden="true" />
                 <Input
                   type="search"
@@ -180,7 +194,8 @@ function ManagerWorkQueue() {
               </span>
             </label>
             <Button
-              variant="secondary"
+              variant="ghost"
+              className={styles.clear}
               disabled={!filtered}
               onClick={() => {
                 setKind("all");
