@@ -7,14 +7,31 @@ export function createScanAudio(port: {
 }) {
   let context: AudioContext | null = null,
     closed = false,
-    errorUntil = 0;
+    errorUntil = 0,
+    resuming = 0,
+    pending: ScanSound | null = null;
+
   const playing = new Set<OscillatorNode>();
+  const stopTones = () => {
+    for (const oscillator of playing) {
+      try {
+        oscillator.stop();
+      } catch {}
+    }
+    playing.clear();
+  };
+  const silence = () => {
+    pending = null;
+    errorUntil = 0;
+    stopTones();
+  };
   const update = () => {
     if (!closed)
       port.changed(context?.state === "running" ? "ready" : "locked");
   };
   const play = (kind: ScanSound) => {
     if (closed || !context || context.state !== "running") {
+      if (!closed && resuming > 0 && pending !== "error") pending = kind;
       update();
       return;
     }
@@ -29,12 +46,7 @@ export function createScanAudio(port: {
       errorUntil = context.currentTime + frequencies.length * (duration + gap);
     try {
       // The latest result replaces old tones; never announce stale queued success.
-      for (const oscillator of playing) {
-        try {
-          oscillator.stop();
-        } catch {}
-      }
-      playing.clear();
+      stopTones();
       const start = context.currentTime;
       frequencies.forEach((frequency, index) => {
         const oscillator = context!.createOscillator(),
@@ -75,26 +87,31 @@ export function createScanAudio(port: {
           context.addEventListener("statechange", update);
         }
         // Called directly in a touch/key handler, before any await or API request.
-        if (context.state !== "running")
-          void context.resume().then(
-            () => {
-              update();
-              if (!closed && context?.state === "running") ready?.();
-            },
-            () => {
-              if (!closed) port.changed("locked");
-            },
-          );
-        else ready?.();
+        if (context.state !== "running") {
+          const resumed = context.resume();
+          resuming++;
+          const settled = () => {
+            resuming--;
+            const result = pending;
+            if (context?.state === "running" || resuming === 0) pending = null;
+            update();
+            if (!closed && context?.state === "running") {
+              if (result) play(result);
+              ready?.();
+            }
+          };
+          void resumed.then(settled, settled);
+        } else ready?.();
         update();
       } catch {
         port.changed("unavailable");
       }
     },
     play,
+    silence,
     close() {
       closed = true;
-      playing.clear();
+      silence();
       if (context) {
         context.removeEventListener("statechange", update);
         void context.close().catch(() => {});

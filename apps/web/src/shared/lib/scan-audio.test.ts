@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createScanAudio, type ScanAudioState } from "./scan-audio";
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-function fakeAudio() {
+function fakeAudio(beforeResume?: Promise<void>) {
   const frequencies: number[] = [],
     stops: (number | undefined)[] = [];
   let resumes = 0,
@@ -18,6 +18,7 @@ function fakeAudio() {
       listeners.delete(callback),
     resume: async () => {
       resumes++;
+      if (beforeResume) await beforeResume;
       context.state = "running";
       for (const fn of listeners) fn();
     },
@@ -134,5 +135,23 @@ test("a confirmed scan cannot mask a simultaneous dropped-scan error", async () 
   fake.context.currentTime += 0.5;
   audio.play("success");
   assert.deepEqual(fake.frequencies, [185, 1046, 1397]);
+  audio.close();
+});
+
+test("a scan can finish while the first gesture is unlocking audio", async () => {
+  let resume!: () => void;
+  const fake = fakeAudio(new Promise<void>((resolve) => (resume = resolve)));
+  const audio = createScanAudio({
+    create: () => fake.context as unknown as AudioContext,
+    changed: () => {},
+  });
+  audio.unlock();
+  audio.play("success");
+  audio.play("error");
+  audio.play("success");
+  assert.deepEqual(fake.frequencies, []);
+  resume();
+  await tick();
+  assert.deepEqual(fake.frequencies, [185]);
   audio.close();
 });
