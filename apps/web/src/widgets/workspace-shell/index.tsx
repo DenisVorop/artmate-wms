@@ -3,28 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  ArrowDownToLine,
-  MoveRight,
-  PackageCheck,
-  ArrowUpRight,
-  Boxes,
-  ChartNoAxesCombined,
-  Check,
-  ChevronDown,
-  Command,
-  Grid2X2,
-  Layers3,
-  NotebookTabs,
-  ClipboardCheck,
-  ClipboardList,
-  Menu,
-  Package,
-  Plug,
-  Search,
-  UsersRound,
-  X,
-} from "lucide-react";
+import { ArrowUpRight, Command, Menu, Search } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
 import { Modal, Input, Button } from "@/shared/ui";
 
@@ -32,65 +11,73 @@ import { useSession } from "@/entities/session";
 import { ChangePasswordModal, useAuthActions } from "@/features/auth";
 import sessionStyles from "./session-controls.module.css";
 
-const allNavigation = [
-  { href: "/", label: "Обзор", icon: ChartNoAxesCombined },
-  { href: "/tasks", label: "Все задания", icon: ClipboardList },
-  { href: "/warehouse", label: "Карта склада", icon: Grid2X2 },
-  { href: "/inventory", label: "Остатки", icon: Layers3 },
-  { href: "/planning", label: "Поставки и сборка", icon: ChartNoAxesCombined },
-  { href: "/integrations", label: "Маркетплейсы", icon: Plug },
-  { href: "/stocktakes", label: "Инвентаризация", icon: ClipboardCheck },
-  { href: "/stock-ledger", label: "Журнал учёта", icon: NotebookTabs },
-  { href: "/receiving", label: "Приёмка", icon: ArrowDownToLine },
-  { href: "/assembly", label: "Сборка", icon: Boxes },
-  { href: "/putaway", label: "Размещение коробов", icon: PackageCheck },
-  { href: "/movements", label: "Перемещения", icon: MoveRight },
-  { href: "/shipments", label: "Отгрузки", icon: ArrowUpRight },
-  { href: "/team", label: "Команда", icon: UsersRound },
-  {
-    href: "/performance",
-    label: "Смены и выработка",
-    icon: ChartNoAxesCombined,
-  },
-];
+import { navigationLinks } from "./navigation";
+import { WorkspaceSidebar } from "./workspace-sidebar";
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
+  const { user } = useSession();
+  if (user?.role !== "employee")
+    return (
+      <ManagerWorkspaceShell name={user?.name}>
+        {children}
+      </ManagerWorkspaceShell>
+    );
+  return (
+    <div style={{ minHeight: "100dvh", padding: "0 16px" }}>
+      <header
+        style={{
+          maxWidth: 1100,
+          margin: "auto",
+          minHeight: 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+        }}
+      >
+        <Link href="/work" className="button button--ghost">
+          ← К работе
+        </Link>
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>{user.name}</span>
+      </header>
+      <main
+        id="workspace-main"
+        style={{ maxWidth: 1100, margin: "auto", paddingBottom: 32 }}
+      >
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function ManagerWorkspaceShell({
+  children,
+  name,
+}: {
+  children: ReactNode;
+  name?: string;
+}) {
   const pathname = usePathname();
-  const session = useSession();
   const auth = useAuthActions();
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const workerPaths = [
-    "/tasks",
-    "/warehouse",
-    "/receiving",
-    "/assembly",
-    "/putaway",
-    "/movements",
-    "/team",
-    "/performance",
-    "/stocktakes",
-  ];
-  const navigation = allNavigation.filter(
-    (item) => session.isManager || workerPaths.includes(item.href),
-  );
   const initials =
-    session.user?.name
-      .trim()
+    name
+      ?.trim()
       .split(/\s+/)
       .slice(0, 2)
       .map((part) => part[0])
       .join("")
       .toUpperCase() || "?";
-  const roleLabel = session.isManager ? "Руководитель" : "Сотрудник";
   const { data, isError, isPending } = useWorkspace();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
-  const current =
-    allNavigation.find((item) => item.href === pathname) ||
-    navigation.find((item) => item.href === "/assembly") ||
-    navigation[0]!;
+  const current = navigationLinks.find(({ href }) =>
+    href === "/"
+      ? pathname === href
+      : pathname === href || pathname.startsWith(`${href}/`),
+  );
   useEffect(() => {
     setMobileOpen(false);
     setSearchOpen(false);
@@ -99,6 +86,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     function onKey(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        setMobileOpen(false);
         setSearchOpen((value) => !value);
       }
       if (event.key === "Escape") setMobileOpen(false);
@@ -111,66 +99,50 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const links = sidebarRef.current?.querySelectorAll<HTMLElement>(
-      "a[href], button:not(:disabled)",
-    );
-    links?.[0]?.focus();
+    const focusable = () =>
+      Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          "a[href], button:not(:disabled), summary",
+        ) ?? [],
+      ).filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          (element.tagName === "SUMMARY" ||
+            !element.closest("details:not([open])")),
+      );
+    const focusFrame = requestAnimationFrame(() => focusable()[0]?.focus());
+    const mobileViewport = window.matchMedia("(max-width: 680px)");
+    const closeOnDesktop = () => {
+      if (!mobileViewport.matches) setMobileOpen(false);
+    };
+    mobileViewport.addEventListener("change", closeOnDesktop);
     function trapFocus(event: KeyboardEvent) {
-      if (event.key !== "Tab" || !links?.length) return;
+      if (event.key !== "Tab") return;
+      const links = focusable();
       const first = links[0];
-      const last = links[links.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const last = links.at(-1);
+      const active = document.activeElement;
+      const atBoundary = active === (event.shiftKey ? first : last);
+      if (first && (atBoundary || !sidebarRef.current?.contains(active))) {
         event.preventDefault();
-        last?.focus();
-      }
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
+        (event.shiftKey ? last : first)?.focus();
       }
     }
     document.addEventListener("keydown", trapFocus);
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", trapFocus);
+      mobileViewport.removeEventListener("change", closeOnDesktop);
       previousFocus?.focus();
     };
   }, [mobileOpen]);
-  const links = navigation.filter((item) =>
+  const links = navigationLinks.filter((item) =>
     item.label.toLowerCase().includes(query.toLowerCase()),
   );
-  const activeEmployees =
-    data?.employees.filter((employee) =>
-      ["working", "break"].includes(String(employee.status)),
-    ).length ?? 0;
-  if (session.user?.role === "employee")
-    return (
-      <div style={{ minHeight: "100dvh", padding: "0 16px" }}>
-        <header
-          style={{
-            maxWidth: 1100,
-            margin: "auto",
-            minHeight: 64,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-          }}
-        >
-          <Link href="/work" className="button button--ghost">
-            ← К работе
-          </Link>
-          <span style={{ fontSize: 13, color: "var(--muted)" }}>
-            {session.user.name}
-          </span>
-        </header>
-        <main
-          id="workspace-main"
-          style={{ maxWidth: 1100, margin: "auto", paddingBottom: 32 }}
-        >
-          {children}
-        </main>
-      </div>
-    );
+  const activeEmployees = data?.employees.filter(
+    ({ status }) => status === "working" || status === "break",
+  ).length;
   return (
     <div className="workspace-layout">
       <a className="skip-link" href="#workspace-main">
@@ -179,123 +151,47 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       {mobileOpen && (
         <button
           className="sidebar-scrim"
-          aria-label="Закрыть меню"
+          tabIndex={-1}
+          aria-hidden="true"
           onClick={() => setMobileOpen(false)}
         />
       )}
-      <aside
-        ref={sidebarRef}
-        className={`sidebar ${mobileOpen ? "sidebar--open" : ""}`}
-        aria-label="Основная навигация"
+      <WorkspaceSidebar
+        sidebarRef={sidebarRef}
+        mobileOpen={mobileOpen}
+        currentHref={current?.href}
+        warehouse={data?.warehouse.name}
+        activeEmployees={activeEmployees}
+        name={name}
+        initials={initials}
+        onClose={() => setMobileOpen(false)}
       >
-        <Link
-          href={session.isManager ? "/" : "/assembly"}
-          className="brand"
-          aria-label="artmate WMS, главная"
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={auth.pending}
+          onClick={() => {
+            setMobileOpen(false);
+            setPasswordOpen(true);
+          }}
         >
-          <span className="brand-symbol">
-            <Package size={24} strokeWidth={1.5} />
-          </span>
-          <span>
-            artmate<span className="brand-subtitle">WAREHOUSE SYSTEM</span>
-          </span>
-        </Link>
-        <div className="warehouse-switch">
-          <span className="warehouse-switch-icon">
-            <Grid2X2 size={17} />
-          </span>
-          <div>
-            <strong title={data?.warehouse.name}>
-              {data?.warehouse.name ?? "Склад"}
-            </strong>
-            <span>Адресное хранение</span>
-          </div>
-          <span className="warehouse-selected" aria-label="Выбран">
-            <Check size={14} />
-          </span>
-        </div>
-        <p className="nav-caption">УПРАВЛЕНИЕ</p>
-        <nav className="main-navigation">
-          {navigation.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={pathname === href ? "page" : undefined}
-              className={`nav-item ${pathname === href ? "nav-item--active" : ""}`}
-            >
-              <Icon size={19} strokeWidth={1.7} />
-              <span>
-                {!session.isManager && href === "/team" ? "Моя смена" : label}
-              </span>
-              {pathname === href && <span className="nav-current-dot" />}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="shift-note">
-            <span className="status-dot" />
-            <span>
-              {session.isManager
-                ? activeEmployees
-                  ? `На смене: ${activeEmployees}`
-                  : "Управление сменами"
-                : data?.employees.find(
-                      (employee) => employee.id === session.user?.employeeId,
-                    )?.status === "working"
-                  ? "Ваша смена открыта"
-                  : data?.employees.find(
-                        (employee) => employee.id === session.user?.employeeId,
-                      )?.status === "break"
-                    ? "Ваша смена · перерыв"
-                    : "Вне смены"}
-            </span>
-            <Link
-              href="/team"
-              aria-label={
-                session.isManager ? "Открыть команду" : "Открыть мою смену"
-              }
-            >
-              <ArrowUpRight size={16} />
-            </Link>
-          </div>
-          <details className={sessionStyles.profile}>
-            <summary className="sidebar-profile">
-              <span className="avatar avatar--manager">{initials}</span>
-              <span>
-                <strong>{session.user?.name}</strong>
-                <small>
-                  {roleLabel} · {session.user?.login}
-                </small>
-              </span>
-              <ChevronDown size={15} />
-            </summary>
-            <div className={sessionStyles.menu}>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={auth.pending}
-                onClick={() => setPasswordOpen(true)}
-              >
-                Сменить пароль
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={auth.pending}
-                aria-busy={auth.pending}
-                onClick={() => void auth.logout()}
-              >
-                Выйти из склада
-              </Button>
-              {auth.error && (
-                <p className={sessionStyles.error} role="alert">
-                  {auth.error}
-                </p>
-              )}
-            </div>
-          </details>
-        </div>
-      </aside>
+          Сменить пароль
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={auth.pending}
+          aria-busy={auth.pending}
+          onClick={() => void auth.logout()}
+        >
+          Выйти из склада
+        </Button>
+        {auth.error && (
+          <p className={sessionStyles.error} role="alert">
+            {auth.error}
+          </p>
+        )}
+      </WorkspaceSidebar>
       <div className="workspace-content">
         <header className="topbar">
           <div className="topbar-breadcrumb">
@@ -303,20 +199,17 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               className="icon-button mobile-menu"
               aria-label={mobileOpen ? "Закрыть меню" : "Открыть меню"}
               aria-expanded={mobileOpen}
+              aria-controls="workspace-sidebar"
               onClick={() => setMobileOpen((value) => !value)}
             >
-              {mobileOpen ? <X size={21} /> : <Menu size={21} />}
+              <Menu size={21} aria-hidden="true" />
             </button>
             <span className="breadcrumb-workspace">Рабочее пространство</span>
             <span className="breadcrumb-divider">/</span>
-            <strong>
-              {!session.isManager && current.href === "/team"
-                ? "Моя смена"
-                : current.label}
-            </strong>
+            <strong>{current?.label ?? "Обзор"}</strong>
           </div>
           <div className="topbar-actions">
-            <span className={sessionStyles.role}>{roleLabel}</span>
+            <span className={sessionStyles.role}>Руководитель</span>
             <button
               className="search-button"
               onClick={() => {
@@ -378,9 +271,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           {links.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} onClick={() => setSearchOpen(false)}>
               <Icon size={19} />
-              <span>
-                {!session.isManager && href === "/team" ? "Моя смена" : label}
-              </span>
+              <span>{label}</span>
               <ArrowUpRight size={16} />
             </Link>
           ))}
