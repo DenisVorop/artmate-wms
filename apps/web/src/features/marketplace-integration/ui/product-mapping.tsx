@@ -6,18 +6,20 @@ import {
   providerName,
   type MarketplaceProductDto,
 } from "@/entities/marketplaces";
-import { Badge, Button, Input, Select } from "@/shared/ui";
+import { Button, Input, Select } from "@/shared/ui";
 import { mappingSchema, type MappingValues } from "../lib/integration-form";
 import styles from "./marketplace-integration.module.css";
 export function ProductMapping({
   product,
   skus,
   pending,
+  error,
   onSave,
 }: {
   product: MarketplaceProductDto;
   skus: SkuDto[];
   pending: boolean;
+  error: string | null;
   onSave: (values: MappingValues) => Promise<boolean>;
 }) {
   const form = useForm<MappingValues>({
@@ -29,21 +31,24 @@ export function ProductMapping({
   });
   const suggestion = skus.find((sku) => sku.id === product.suggestedSkuId);
   return (
-    <article className={styles.product}>
-      <div>
-        <Badge tone={product.skuId ? "success" : "warning"}>
-          {providerName(product.provider)} ·{" "}
-          {product.skuId ? "Сопоставлено" : "Нужна тематика"}
-        </Badge>
-        <h3>{product.name}</h3>
-        <code>{product.offerId || product.externalId}</code>
-        <small>
-          Штрихкоды:{" "}
-          {product.barcodes.length
-            ? product.barcodes.join(", ")
-            : "не переданы"}
-        </small>
-      </div>
+    <div className={styles.productDetail}>
+      <dl className={styles.facts}>
+        <div>
+          <dt>Площадка</dt>
+          <dd>{providerName(product.provider)}</dd>
+        </div>
+        <div>
+          <dt>Артикул</dt>
+          <dd>{product.offerId || product.externalId}</dd>
+        </div>
+        <div>
+          <dt>Штрихкоды</dt>
+          <dd>{product.barcodes.join(", ") || "—"}</dd>
+        </div>
+      </dl>
+      {!skus.length && (
+        <p className={styles.footnote}>Нет доступных тематик склада.</p>
+      )}
       <form
         className={styles.mapping}
         noValidate
@@ -55,7 +60,7 @@ export function ProductMapping({
           Тематика WMS
           <Select
             {...form.register("skuId")}
-            disabled={pending}
+            disabled={pending || !skus.length}
             aria-invalid={!!form.formState.errors.skuId}
           >
             <option value="">Выберите тематику</option>
@@ -81,7 +86,7 @@ export function ProductMapping({
           type="submit"
           variant="secondary"
           size="sm"
-          disabled={pending || !form.formState.isDirty}
+          disabled={pending || !skus.length || !form.formState.isDirty}
         >
           Сохранить
         </Button>
@@ -94,7 +99,7 @@ export function ProductMapping({
         )}
         {!product.skuId && suggestion && (
           <div className={styles.suggestion}>
-            Совпал штрихкод: {suggestion.name}
+            Совпадение по штрихкоду:
             <Button
               variant="ghost"
               size="sm"
@@ -106,12 +111,16 @@ export function ProductMapping({
                 })
               }
             >
-              Выбрать
+              {suggestion.name}
             </Button>
-            <span>Сохраните соответствие вручную.</span>
           </div>
         )}
+        {error && (
+          <span className={styles.error} role="alert">
+            {error}
+          </span>
+        )}
       </form>
-    </article>
+    </div>
   );
 }

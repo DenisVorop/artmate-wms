@@ -48,15 +48,10 @@ export function SkuCreate({
           onSubmit={form.handleSubmit(async (values) => {
             if (actions.pending || !(await actions.create(values))) return;
             form.reset(skuCreateDefaults);
-            form.setFocus("name");
             onCreated(values.name);
+            setOpen(false);
           })}
         >
-          <p className={styles.skuCreateHint}>
-            Создайте одну тематику для одинаковых товаров Ozon и Wildberries,
-            затем выберите её в обеих карточках. Остатки при этом не
-            начисляются.
-          </p>
           <div className={styles.skuCreateFields}>
             <label className="field">
               Название тематики
@@ -128,14 +123,6 @@ export function SkuCreate({
           <div className={styles.actions}>
             <Button type="submit" size="sm" disabled={actions.pending}>
               {actions.pending ? "Сохраняем…" : "Создать тематику"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={actions.pending}
-              onClick={() => setOpen(false)}
-            >
-              Свернуть
             </Button>
           </div>
         </form>

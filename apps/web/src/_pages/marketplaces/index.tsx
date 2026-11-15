@@ -9,7 +9,7 @@ export function MarketplacesPage() {
   const session = useSession();
   if (session.isPending || !session.user) return <LoadingState />;
   return (
-    <WorkspaceShell>
+    <WorkspaceShell theme="light" showFooter={false}>
       {session.isManager ? (
         <MarketplaceIntegrationFeature
           key={`${getAuthIdentityScope()}:${getAuthEpoch()}`}

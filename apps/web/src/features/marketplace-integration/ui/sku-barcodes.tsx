@@ -16,15 +16,8 @@ export function SkuBarcodes({ skus }: { skus: SkuDto[] }) {
   const [selected, setSelected] = useState("");
   const sku = skus.find((item) => item.id === selected);
   return (
-    <details
-      className={`glass-panel ${styles.catalog} ${styles.disclosure}`}
-      id="sku-barcodes"
-    >
+    <details className={styles.disclosure} id="sku-barcodes">
       <summary>Штрихкоды тематик</summary>
-      <p>
-        При сборке WMS принимает основной код и подходящие коды из привязанных
-        карточек. Добавьте вручную коды, которых нет в карточках.
-      </p>
       <label className="field">
         Тематика
         <Select

@@ -1,121 +1,196 @@
+"use client";
+import { useState } from "react";
 import {
   marketplaceDate,
   marketplaceNumber,
   providerName,
   type MarketplaceSupplyDto,
 } from "@/entities/marketplaces";
-import { Badge } from "@/shared/ui";
+import { Modal } from "@/shared/ui";
+import { supplyNumber } from "../lib/catalog-view";
 import styles from "./marketplace-integration.module.css";
 
-const reviewLabel = (count: number) => {
-  const ending = count % 100;
-  if (ending >= 11 && ending <= 14) return `${count} поставок требуют проверки`;
-  if (count % 10 === 1) return `${count} поставка требует проверки`;
-  if (count % 10 >= 2 && count % 10 <= 4)
-    return `${count} поставки требуют проверки`;
-  return `${count} поставок требуют проверки`;
-};
+function supplyKey(supply: MarketplaceSupplyDto) {
+  return `${supply.provider}:${supply.id}`;
+}
+
+function SupplyStatus({ supply }: { supply: MarketplaceSupplyDto }) {
+  return (
+    <>
+      {supply.statusLabel}
+      {supply.calculation === "review" && (
+        <small className={styles.warning}>Нужна проверка</small>
+      )}
+      {supply.calculation === "excluded" && (
+        <small>Не учитывается в плане</small>
+      )}
+    </>
+  );
+}
 
 export function SupplyDocuments({
   supplies,
+  empty,
 }: {
   supplies: MarketplaceSupplyDto[];
+  empty: string;
 }) {
-  const reviewCount = supplies.filter(
-    (supply) => supply.calculation === "review",
-  ).length;
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const selected = supplies.find((supply) => supplyKey(supply) === selectedKey);
   return (
-    <details
-      id="marketplace-supplies-title"
-      className={`glass-panel ${styles.supplies} ${styles.disclosure}`}
+    <section
+      className={styles.panel}
+      aria-labelledby="marketplace-supplies-title"
     >
-      <summary>
-        <span>Поставки · {supplies.length}</span>
-        {reviewCount > 0 && (
-          <span className={styles.warning}>{reviewLabel(reviewCount)}</span>
-        )}
-      </summary>
-      <div className={styles.supplyList}>
-        {!supplies.length && (
-          <p className={styles.footnote}>
-            Поставок пока нет. Обновите данные маркетплейсов.
-          </p>
-        )}
-        {supplies.map((supply) => {
-          const number = supply.id.replace(/^(?:supply|preorder):/, "");
-          return (
-            <details
-              className={styles.supply}
-              key={`${supply.provider}:${supply.id}`}
-            >
-              <summary>
-                <span className={styles.supplyTitle}>
-                  {providerName(supply.provider)} · № {number}
-                  <small>{supply.statusLabel}</small>
-                </span>
-                {supply.calculation === "review" && (
-                  <Badge tone="warning">Нужна проверка</Badge>
-                )}
-              </summary>
-              <dl className={styles.supplyFacts}>
-                <dt>Ожидаемая дата</dt>
-                <dd>
-                  {supply.expectedAt
-                    ? marketplaceDate(supply.expectedAt)
-                    : "Не указана"}
-                </dd>
-                <dt>Передана маркетплейсу</dt>
-                <dd>
-                  {supply.receivedAt
-                    ? marketplaceDate(supply.receivedAt)
-                    : "Дата не указана"}
-                </dd>
-              </dl>
-              {supply.calculation === "review" && (
-                <p className={styles.warning}>
-                  Данные поставки требуют уточнения. Проверьте её в личном
-                  кабинете маркетплейса.
-                </p>
-              )}
-              <div
-                className={styles.supplyTableScroll}
-                role="region"
-                aria-label={`Товары поставки ${number}`}
-                tabIndex={0}
-              >
-                <table className={styles.supplyTable}>
-                  <caption>Товары · {supply.items.length} позиций, шт.</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Товар</th>
-                      <th scope="col">В поставке</th>
-                      <th scope="col">Принято</th>
-                      <th scope="col">В продаже</th>
-                      <th scope="col">Ещё ожидается</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {supply.items.map((item) => (
-                      <tr key={item.externalId}>
-                        <th scope="row">
-                          {item.name}
-                          {!item.skuId && (
-                            <small>Нужно связать с тематикой</small>
-                          )}
-                        </th>
-                        <td>{marketplaceNumber(item.plannedUnits)}</td>
-                        <td>{marketplaceNumber(item.acceptedUnits)}</td>
-                        <td>{marketplaceNumber(item.readyUnits)}</td>
-                        <td>{marketplaceNumber(item.pendingUnits)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          );
-        })}
+      <header className={styles.sectionHeading}>
+        <h2 id="marketplace-supplies-title">
+          Поставки <small>{supplies.length}</small>
+        </h2>
+      </header>
+      <div
+        className={styles.scroll}
+        role="region"
+        aria-label="Таблица поставок"
+        tabIndex={0}
+      >
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th scope="col">Номер</th>
+              <th scope="col">Площадка</th>
+              <th scope="col">Статус</th>
+              <th scope="col">Ожидается</th>
+              <th scope="col" className={styles.numeric}>
+                Позиций
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {supplies.map((supply) => (
+              <tr key={supplyKey(supply)}>
+                <th scope="row">
+                  <button
+                    type="button"
+                    className={styles.document}
+                    aria-haspopup="dialog"
+                    onClick={() => setSelectedKey(supplyKey(supply))}
+                  >
+                    № {supplyNumber(supply.id)}
+                  </button>
+                </th>
+                <td>{providerName(supply.provider)}</td>
+                <td>
+                  <SupplyStatus supply={supply} />
+                </td>
+                <td>
+                  {supply.expectedAt ? marketplaceDate(supply.expectedAt) : "—"}
+                </td>
+                <td className={styles.numeric}>{supply.items.length || "—"}</td>
+              </tr>
+            ))}
+            {!supplies.length && (
+              <tr>
+                <td colSpan={5} className={styles.empty}>
+                  {empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-    </details>
+      <Modal
+        open={!!selected}
+        title={
+          selected
+            ? `${providerName(selected.provider)} · № ${supplyNumber(selected.id)}`
+            : "Поставка"
+        }
+        onClose={() => setSelectedKey(null)}
+      >
+        {selected && (
+          <div className={styles.productDetail}>
+            <dl className={styles.facts}>
+              <div>
+                <dt>Статус</dt>
+                <dd>
+                  <SupplyStatus supply={selected} />
+                </dd>
+              </div>
+              <div>
+                <dt>Ожидается</dt>
+                <dd>
+                  {selected.expectedAt
+                    ? marketplaceDate(selected.expectedAt)
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>Передана площадке</dt>
+                <dd>
+                  {selected.receivedAt
+                    ? marketplaceDate(selected.receivedAt)
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
+            <div
+              className={styles.scroll}
+              role="region"
+              aria-label={`Товары поставки ${supplyNumber(selected.id)}`}
+              tabIndex={0}
+            >
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col">Товар</th>
+                    <th scope="col" className={styles.numeric}>
+                      В поставке, шт.
+                    </th>
+                    <th scope="col" className={styles.numeric}>
+                      Принято
+                    </th>
+                    <th scope="col" className={styles.numeric}>
+                      В продаже
+                    </th>
+                    <th scope="col" className={styles.numeric}>
+                      Ожидается
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.items.map((item) => (
+                    <tr key={item.externalId}>
+                      <th scope="row">
+                        {item.name}
+                        {!item.skuId && <small>Без тематики</small>}
+                      </th>
+                      <td className={styles.numeric}>
+                        {marketplaceNumber(item.plannedUnits)}
+                      </td>
+                      <td className={styles.numeric}>
+                        {marketplaceNumber(item.acceptedUnits)}
+                      </td>
+                      <td className={styles.numeric}>
+                        {marketplaceNumber(item.readyUnits)}
+                      </td>
+                      <td className={styles.numeric}>
+                        {marketplaceNumber(item.pendingUnits)}
+                      </td>
+                    </tr>
+                  ))}
+                  {!selected.items.length && (
+                    <tr>
+                      <td colSpan={5} className={styles.empty}>
+                        Состав поставки недоступен.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </section>
   );
 }
