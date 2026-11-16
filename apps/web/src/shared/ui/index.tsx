@@ -10,13 +10,7 @@ import {
   type SelectHTMLAttributes,
   type ReactNode,
 } from "react";
-import {
-  AlertCircle,
-  ArrowRight,
-  LoaderCircle,
-  PackageOpen,
-  X,
-} from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 
 const cx = (...classes: (string | false | undefined)[]) =>
   classes.filter(Boolean).join(" ");
@@ -152,45 +146,53 @@ export function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <span className="empty-state-icon">
-        <PackageOpen size={26} />
-      </span>
       <h3>{title}</h3>
       {description && <p>{description}</p>}
       {action}
     </div>
   );
 }
-export function LoadingState({
-  label = "Загружаем данные склада…",
-}: {
-  label?: string;
-}) {
+export function LoadingState({ label = "Загрузка…" }: { label?: string }) {
   return (
-    <div className="state-panel glass-panel" role="status">
-      <LoaderCircle className="spin" size={24} />
+    <div className="state-panel state-loading" role="status">
+      <LoaderCircle className="spin" size={18} aria-hidden="true" />
       <p>{label}</p>
     </div>
   );
 }
 export function ErrorState({
-  message = "Не удалось загрузить данные. Проверьте соединение с сервером.",
+  message = "Не удалось загрузить данные",
   onRetry,
 }: {
   message?: string;
   onRetry?: () => void;
 }) {
   return (
-    <div className="state-panel glass-panel" role="alert">
-      <AlertCircle size={26} />
-      <h3>Нет соединения со складом</h3>
-      <p>{message}</p>
+    <div className="state-panel">
+      <p role="alert">{message}</p>
       {onRetry && (
         <Button variant="secondary" onClick={onRetry}>
-          Повторить <ArrowRight size={16} />
+          Повторить
         </Button>
       )}
     </div>
+  );
+}
+
+export function StatusPage({
+  title,
+  action,
+}: {
+  title: string;
+  action: ReactNode;
+}) {
+  return (
+    <main className="state-page">
+      <div className="state-panel">
+        <h1>{title}</h1>
+        {action}
+      </div>
+    </main>
   );
 }
 

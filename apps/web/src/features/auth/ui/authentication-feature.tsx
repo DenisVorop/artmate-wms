@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Package, ShieldCheck } from "lucide-react";
+import { Package } from "lucide-react";
 import { useSession } from "@/entities/session";
 import { Button, Input } from "@/shared/ui";
 import {
@@ -14,14 +14,14 @@ import {
 import { useAuthActions } from "../model/use-auth-actions";
 import { PasswordChangeForm } from "./password-change-form";
 import styles from "./auth.module.css";
-export function AuthFrame({ children }: { children: React.ReactNode }) {
+function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
     <main className={styles.surface}>
       <section className={styles.card}>
         <div className={styles.brand}>
-          <Package size={27} strokeWidth={1.5} />
+          <Package size={22} strokeWidth={1.7} aria-hidden="true" />
           <span>
-            artmate<small>WAREHOUSE SYSTEM</small>
+            artmate <small>WMS</small>
           </span>
         </div>
         {children}
@@ -31,18 +31,14 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
 }
 function LoginForm() {
   const actions = useAuthActions();
+  const id = useId();
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { login: "", password: "" },
   });
   return (
     <>
-      <p className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p>
-      <h1>Вход на склад</h1>
-      <p className={styles.description}>
-        Используйте личный логин и пароль. Смена и рабочие задания будут связаны
-        с вашим сотрудником.
-      </p>
+      <h1>Вход в WMS</h1>
       <form
         noValidate
         className={styles.form}
@@ -52,35 +48,45 @@ function LoginForm() {
         })}
       >
         <fieldset className={styles.fieldset} disabled={actions.pending}>
-          <label className="field">
-            Логин
+          <div className="field">
+            <label htmlFor={`${id}-login`}>Логин</label>
             <Input
+              id={`${id}-login`}
               autoComplete="username"
               autoCapitalize="off"
               spellCheck={false}
               {...form.register("login")}
               aria-invalid={!!form.formState.errors.login}
+              aria-describedby={
+                form.formState.errors.login ? `${id}-login-error` : undefined
+              }
             />
             {form.formState.errors.login && (
-              <span className={styles.error}>
+              <span className={styles.error} id={`${id}-login-error`}>
                 {form.formState.errors.login.message}
               </span>
             )}
-          </label>
-          <label className="field">
-            Пароль
+          </div>
+          <div className="field">
+            <label htmlFor={`${id}-password`}>Пароль</label>
             <Input
+              id={`${id}-password`}
               type="password"
               autoComplete="current-password"
               {...form.register("password")}
               aria-invalid={!!form.formState.errors.password}
+              aria-describedby={
+                form.formState.errors.password
+                  ? `${id}-password-error`
+                  : undefined
+              }
             />
             {form.formState.errors.password && (
-              <span className={styles.error}>
+              <span className={styles.error} id={`${id}-password-error`}>
                 {form.formState.errors.password.message}
               </span>
             )}
-          </label>
+          </div>
         </fieldset>
         {actions.error && (
           <p className={styles.error} role="alert">
@@ -91,31 +97,24 @@ function LoginForm() {
           type="submit"
           disabled={actions.pending}
           aria-busy={actions.pending}
-          className={styles.primary}
         >
-          Войти
+          {actions.pending ? "Вход…" : "Войти"}
         </Button>
       </form>
-      <p className={styles.help} style={{ marginTop: 18 }}>
-        Нет доступа или забыли пароль — обратитесь к руководителю склада.
-      </p>
+      <p className={styles.help}>Забыли пароль? Обратитесь к руководителю.</p>
     </>
   );
 }
 function SetupForm() {
   const actions = useAuthActions();
+  const id = useId();
   const form = useForm<SetupValues>({
     resolver: zodResolver(setupSchema),
     defaultValues: { name: "", login: "", password: "", repeatPassword: "" },
   });
   return (
     <>
-      <p className="eyebrow">ПЕРВЫЙ ЗАПУСК</p>
-      <h1>Доступ руководителя</h1>
-      <p className={styles.description}>
-        Создайте свою учётную запись для управления складом и доступом
-        сотрудников. Общего пароля по умолчанию нет.
-      </p>
+      <h1>Создайте учётную запись руководителя</h1>
       <form
         noValidate
         className={styles.form}
@@ -138,26 +137,32 @@ function SetupForm() {
               ],
             ] as const
           ).map(([field, label, type, autoComplete]) => (
-            <label className="field" key={field}>
-              {label}
+            <div className="field" key={field}>
+              <label htmlFor={`${id}-${field}`}>{label}</label>
               <Input
+                id={`${id}-${field}`}
                 type={type}
                 autoComplete={autoComplete}
                 autoCapitalize={field === "login" ? "off" : undefined}
                 {...form.register(field)}
                 aria-invalid={!!form.formState.errors[field]}
+                aria-describedby={
+                  form.formState.errors[field]
+                    ? `${id}-${field}-error`
+                    : undefined
+                }
               />
               {form.formState.errors[field] && (
-                <span className={styles.error}>
+                <span className={styles.error} id={`${id}-${field}-error`}>
                   {form.formState.errors[field]?.message}
                 </span>
               )}
-            </label>
+            </div>
           ))}
         </fieldset>
         <p className={styles.help}>
-          Пароль — от 12 символов. Логин — латиница, цифры, точка, дефис или
-          подчёркивание.
+          Пароль от 12 символов. Для логина используйте латиницу, цифры, точку,
+          дефис или подчёркивание.
         </p>
         {actions.error && (
           <p className={styles.error} role="alert">
@@ -169,8 +174,7 @@ function SetupForm() {
           disabled={actions.pending}
           aria-busy={actions.pending}
         >
-          <ShieldCheck size={16} />
-          Создать доступ руководителя
+          Создать учётную запись
         </Button>
       </form>
     </>
@@ -184,20 +188,15 @@ export function AuthenticationFeature() {
     <AuthFrame>
       {session.user?.mustChangePassword ? (
         <>
-          <p className="eyebrow">ЛИЧНЫЙ ДОСТУП</p>
-          <h1>Задайте свой пароль</h1>
-          <p className={styles.description}>
-            {session.user.name}, временный пароль нужно заменить перед работой
-            со складом.
-          </p>
+          <h1>Смените временный пароль</h1>
           <PasswordChangeForm required onBusyChange={setPasswordBusy} />
           <Button
             variant="ghost"
             disabled={actions.pending || passwordBusy}
             onClick={() => void actions.logout()}
-            style={{ marginTop: 14 }}
+            className={styles.signOut}
           >
-            Выйти из учётной записи
+            Выйти
           </Button>
           {actions.error && (
             <p className={styles.error} role="alert">

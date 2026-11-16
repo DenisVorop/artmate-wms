@@ -3,7 +3,6 @@ import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { ChevronDown, Package, X } from "lucide-react";
 import { navigationGroups } from "./navigation";
 import styles from "./workspace-sidebar.module.css";
-import themeStyles from "./workspace-theme.module.css";
 
 export function WorkspaceSidebar({
   sidebarRef,
@@ -33,7 +32,7 @@ export function WorkspaceSidebar({
     <aside
       id="workspace-sidebar"
       ref={sidebarRef}
-      className={`sidebar ${styles.panel} ${themeStyles.light}${mobileOpen ? " sidebar--open" : ""}`}
+      className={`sidebar ${styles.panel}${mobileOpen ? " sidebar--open" : ""}`}
       aria-label="Левая панель"
     >
       <div className={styles.header}>

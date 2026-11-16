@@ -299,7 +299,7 @@ export function WorkQueuePage() {
   if (!user) return <LoadingState />;
   if (user.role === "employee") return <EmployeeWorkspace />;
   return (
-    <WorkspaceShell showFooter={false} theme="light">
+    <WorkspaceShell>
       <ManagerWorkQueue />
     </WorkspaceShell>
   );

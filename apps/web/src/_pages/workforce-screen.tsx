@@ -7,7 +7,7 @@ export function WorkforceScreen({
   initialEmployeeId?: string;
 }) {
   return (
-    <WorkspaceShell theme="light" showFooter={false}>
+    <WorkspaceShell>
       <WorkforceReportFeature
         key={initialEmployeeId}
         initialEmployeeId={initialEmployeeId}

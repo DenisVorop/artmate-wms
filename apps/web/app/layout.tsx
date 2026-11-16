@@ -3,8 +3,7 @@ import { AppProviders } from "@/app/providers";
 import "./globals.css";
 import "@/shared/ui/operations.css";
 export const metadata: Metadata = {
-  title: "Artmate WMS — склад под контролем",
-  description: "Адресное хранение, FIFO и работа склада в одной системе.",
+  title: "Artmate WMS",
 };
 export default function RootLayout({
   children,

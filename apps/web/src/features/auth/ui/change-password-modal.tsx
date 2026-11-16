@@ -17,7 +17,6 @@ export function ChangePasswordModal({
         if (!busy) onClose();
       }}
       title="Сменить пароль"
-      description="Изменение пароля завершит остальные сеансы входа."
     >
       {open && <PasswordChangeForm onDone={onClose} onBusyChange={setBusy} />}
     </Modal>

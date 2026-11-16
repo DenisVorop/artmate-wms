@@ -17,7 +17,7 @@ export function StocktakesScreen({
       />
     );
   return (
-    <WorkspaceShell showFooter={false} theme="light">
+    <WorkspaceShell>
       <StocktakesFeature
         key={initialDocumentId ?? ""}
         initialDocumentId={initialDocumentId}

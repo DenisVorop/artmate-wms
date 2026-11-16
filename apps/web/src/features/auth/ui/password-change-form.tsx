@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, Input } from "@/shared/ui";
@@ -19,6 +19,7 @@ export function PasswordChangeForm({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const actions = useAuthActions();
+  const id = useId();
   useEffect(() => {
     onBusyChange?.(actions.pending);
   }, [actions.pending, onBusyChange]);
@@ -51,25 +52,30 @@ export function PasswordChangeForm({
             ["repeatPassword", "Повторите новый пароль", "new-password"],
           ] as const
         ).map(([field, label, autoComplete]) => (
-          <label className="field" key={field}>
-            {label}
+          <div className="field" key={field}>
+            <label htmlFor={`${id}-${field}`}>{label}</label>
             <Input
+              id={`${id}-${field}`}
               type="password"
               autoComplete={autoComplete}
               {...form.register(field)}
               aria-invalid={!!form.formState.errors[field]}
+              aria-describedby={
+                form.formState.errors[field]
+                  ? `${id}-${field}-error`
+                  : undefined
+              }
             />
             {form.formState.errors[field] && (
-              <span className={styles.error}>
+              <span className={styles.error} id={`${id}-${field}-error`}>
                 {form.formState.errors[field]?.message}
               </span>
             )}
-          </label>
+          </div>
         ))}
       </fieldset>
       <p className={styles.help}>
-        Минимум 12 символов. После смены пароля остальные сеансы входа будут
-        завершены.
+        Пароль от 12 символов. Смена пароля завершит вход на других устройствах.
       </p>
       {actions.error && (
         <p className={styles.error} role="alert">
@@ -81,7 +87,7 @@ export function PasswordChangeForm({
         disabled={actions.pending}
         aria-busy={actions.pending}
       >
-        Сменить пароль
+        Сохранить пароль
       </Button>
     </form>
   );

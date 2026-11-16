@@ -1,15 +1,4 @@
 .surface {
-  color-scheme: light;
-  --bg: oklch(0.975 0.008 155);
-  --surface: white;
-  --surface-raised: oklch(0.95 0.014 152);
-  --text: oklch(0.23 0.014 155);
-  --muted: oklch(0.45 0.018 155);
-  --accent: oklch(0.47 0.117 153);
-  --accent-ink: white;
-  --border: oklch(0.87 0.018 154);
-  --danger: oklch(0.44 0.17 25);
-  --warning: oklch(0.43 0.09 63);
   min-height: 100dvh;
   padding: 0 max(16px, env(safe-area-inset-right));
   background: var(--bg);

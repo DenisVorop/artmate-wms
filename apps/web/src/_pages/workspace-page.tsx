@@ -14,7 +14,7 @@ import { TeamScreen } from "./team-screen";
 import { useSession } from "@/entities/session";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { AccessDenied } from "./access-denied";
 import { LoadingState } from "@/shared/ui";
 import { canOpenWorkspaceView, landingForRole } from "./workspace-access";
 const views = {
@@ -36,24 +36,8 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
   useEffect(() => {
     if (workerLanding) router.replace(landingForRole("employee"));
   }, [workerLanding, router]);
-  if (!user || workerLanding)
-    return <LoadingState label="Открываем рабочее пространство…" />;
-  if (!canOpenWorkspaceView(user.role, view))
-    return (
-      <WorkspaceShell>
-        <section className="glass-panel ops-panel">
-          <p className="eyebrow">ДОСТУП К РАЗДЕЛУ</p>
-          <h1 className="page-heading">Раздел доступен руководителю</h1>
-          <p className="page-description">
-            Ваши задания, приёмка и смена доступны в рабочем меню. Для изменения
-            прав обратитесь к руководителю.
-          </p>
-          <Link href="/work" className="button button--primary">
-            Перейти к работе
-          </Link>
-        </section>
-      </WorkspaceShell>
-    );
+  if (!user || workerLanding) return <LoadingState />;
+  if (!canOpenWorkspaceView(user.role, view)) return <AccessDenied />;
   const workerModes: Partial<Record<WorkspaceView, EmployeeMode>> = {
     assembly: "assembly",
     receiving: "receiving",
@@ -63,18 +47,8 @@ export function WorkspacePage({ view }: { view: WorkspaceView }) {
   if (user.role === "employee" && workerModes[view])
     return <EmployeeWorkspace key={view} initialMode={workerModes[view]} />;
   const Feature = views[view];
-  const light =
-    view === "overview" ||
-    view === "warehouse" ||
-    view === "inventory" ||
-    view === "stock-ledger" ||
-    view === "receiving" ||
-    view === "assembly" ||
-    view === "movements" ||
-    view === "shipments" ||
-    view === "team";
   return (
-    <WorkspaceShell showFooter={!light} theme={light ? "light" : "dark"}>
+    <WorkspaceShell>
       <Feature />
     </WorkspaceShell>
   );
