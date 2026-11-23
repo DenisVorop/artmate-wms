@@ -4,6 +4,8 @@ import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
 export const warehouseOperations = new Set([
+  "recordTaskScan",
+  "getTaskHistory",
   "getWorkAutomation",
   "updateWorkAutomationSettings",
   "getForecastHistory",
@@ -133,6 +135,7 @@ const workerReads = new Set([
   "getPutawayPlacementOptions",
 ]);
 const workerWrites = new Set([
+  "recordTaskScan",
   "startZoneWork",
   "leaveZoneWork",
   "claimShipmentWork",

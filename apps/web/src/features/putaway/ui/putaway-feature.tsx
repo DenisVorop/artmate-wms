@@ -1,4 +1,5 @@
 "use client";
+import { TaskHistory } from "@/entities/task-history";
 import { useSession } from "@/entities/session";
 import { useLayoutEffect, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
@@ -103,6 +104,11 @@ export function PutawayFeature() {
           </Button>
         )}
       </header>
+      {selected && (
+        <div>
+          <TaskHistory kind="putaway" id={selected.id} code={selected.code} />
+        </div>
+      )}
       {ui.notice && (
         <p className={styles.notice} role="status">
           {ui.notice}

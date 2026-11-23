@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { TaskHistory } from "@/entities/task-history";
 import type {
   StocktakeDto,
   StocktakeRowDto,
@@ -131,6 +132,9 @@ export function StocktakeDocument({
             </div>
           </div>
           <div className={styles.subtle}>
+            {isManager && (
+              <TaskHistory kind="stocktake" id={doc.id} code={doc.code} />
+            )}
             {doc.locationsCounted} / {doc.locationsTotal} адресов
             {!archived && doc.staleLocations > 0
               ? ` · устарело: ${doc.staleLocations}`

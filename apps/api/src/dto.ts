@@ -2430,3 +2430,74 @@ export class BindReceiptPalletLabelDto extends CommandDto {
   @MaxLength(200)
   labelCode!: string;
 }
+
+export const TASK_HISTORY_KINDS = [
+  "assembly",
+  "receiving",
+  "putaway",
+  "movement",
+  "shipping",
+  "stocktake",
+] as const;
+export type TaskHistoryKind = (typeof TASK_HISTORY_KINDS)[number];
+
+export class TaskHistoryQueryDto {
+  @ApiProperty({ enum: TASK_HISTORY_KINDS, type: String })
+  @IsIn(TASK_HISTORY_KINDS)
+  kind!: TaskHistoryKind;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  id!: string;
+  @ApiPropertyOptional({ type: Number, minimum: 1, maximum: 1000000 })
+  @ValidateIf((_o, v) => v !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  page?: number;
+}
+export class RecordTaskScanDto extends CommandDto {
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  declare requestId: string;
+  @ApiProperty({ enum: TASK_HISTORY_KINDS, type: String })
+  @IsIn(TASK_HISTORY_KINDS)
+  kind!: TaskHistoryKind;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  id!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  value!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(150)
+  step!: string;
+}
+export class TaskHistoryEntryDto {
+  @ApiProperty({ type: String }) id!: string;
+  @ApiProperty({ type: String, format: "date-time" }) receivedAt!: string;
+  @ApiProperty({ type: String, format: "date-time" }) recordedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) employeeName!: string | null;
+  @ApiProperty({ type: String }) action!: string;
+  @ApiProperty({ type: String, nullable: true }) scanValue!: string | null;
+  @ApiProperty({ type: String, enum: ["accepted", "rejected", "observed"] })
+  result!: "accepted" | "rejected" | "observed";
+  @ApiProperty({ type: String }) detail!: string;
+}
+export class TaskHistoryPageDto {
+  @ApiProperty({ type: String, format: "date-time" }) since!: string;
+  @ApiProperty({ type: Number }) total!: number;
+  @ApiProperty({ type: Number }) page!: number;
+  @ApiProperty({ type: Number }) pageSize!: number;
+  @ApiProperty({ type: [TaskHistoryEntryDto] }) items!: TaskHistoryEntryDto[];
+}

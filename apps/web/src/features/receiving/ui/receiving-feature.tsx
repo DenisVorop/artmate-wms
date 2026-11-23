@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { TaskHistory } from "@/entities/task-history";
 import { useSession } from "@/entities/session";
 import { ArrowLeft, Plus } from "lucide-react";
 import { useWorkspace } from "@/entities/workspace";
@@ -117,6 +118,11 @@ export function ReceivingFeature() {
           )
         )}
       </header>
+      {selected && (
+        <div>
+          <TaskHistory kind="receiving" id={selected.id} code={selected.code} />
+        </div>
+      )}
       {state.notice && (
         <p className={styles.notice} role="status">
           {state.notice}

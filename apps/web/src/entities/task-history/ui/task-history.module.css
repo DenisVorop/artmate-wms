@@ -1,0 +1,80 @@
+.content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.table {
+  width: 100%;
+  min-width: 480px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+  line-height: 1.5;
+}
+.table th,
+.table td {
+  padding: 9px 10px;
+  vertical-align: top;
+}
+.table th:nth-child(1) {
+  width: 25%;
+}
+.table th:nth-child(2) {
+  width: 22%;
+}
+.table th:nth-child(3) {
+  width: 30%;
+}
+.table th:nth-child(4) {
+  width: 23%;
+}
+.table thead {
+  background: var(--surface-raised);
+}
+.table tbody tr {
+  border-top: 1px solid var(--border);
+}
+.table td {
+  overflow-wrap: anywhere;
+}
+.table code {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.table small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.time {
+  font-variant-numeric: tabular-nums;
+  min-width: 92px;
+}
+.error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}

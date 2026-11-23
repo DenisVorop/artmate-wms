@@ -3,6 +3,7 @@
 import { useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { ChevronDown, Search } from "lucide-react";
+import { TaskHistory } from "@/entities/task-history";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import {
@@ -74,6 +75,9 @@ function WorkQueueRow({ job }: { job: WorkQueueJob }) {
         <span className={styles.status} data-state={job.state}>
           {job.statusLabel}
         </span>
+      </td>
+      <td>
+        <TaskHistory kind={job.kind} id={job.referenceId} code={job.code} />
       </td>
     </tr>
   );
@@ -246,6 +250,7 @@ function ManagerWorkQueue() {
                     <th scope="col">Вид работы</th>
                     <th scope="col">Исполнитель</th>
                     <th scope="col">Статус</th>
+                    <th scope="col">Журнал</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -255,7 +260,7 @@ function ManagerWorkQueue() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={4} className={styles.empty}>
+                      <td colSpan={5} className={styles.empty}>
                         {awaitingStocktakes
                           ? "Загрузка инвентаризаций…"
                           : showStocktakes && stocktakes.isError

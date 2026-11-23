@@ -11,6 +11,8 @@ import { useEmployeeScanGateway } from "./employee-scan-gateway";
 import { EmployeeCamera } from "./employee-camera";
 import { useEmployeeScanFeedback } from "./employee-work-device";
 import { scanWithFeedback } from "../lib/scan-feedback";
+import { recordTaskScan } from "../api/generated/client";
+import { useEmployeeTaskScanLog } from "./employee-task-scan-log";
 import styles from "./employee-scan.module.css";
 const schema = z.object({
   code: z
@@ -42,6 +44,7 @@ export function EmployeeScan({
   onProblem,
 }: EmployeeScanProps) {
   const activity = useEmployeeScanActivity();
+  const task = useEmployeeTaskScanLog();
   const gateway = useEmployeeScanGateway();
   const feedback = useEmployeeScanFeedback();
   const sound = useRef(feedback);
@@ -72,6 +75,8 @@ export function EmployeeScan({
     onProblem,
     disabled,
     epoch: getAuthEpoch(),
+    task,
+    label,
   });
   live.current = {
     contextKey,
@@ -79,6 +84,8 @@ export function EmployeeScan({
     onProblem,
     disabled,
     epoch: getAuthEpoch(),
+    task,
+    label,
   };
   const queue = useRef<ReturnType<typeof createScanQueue> | null>(null);
   useEffect(() => {
@@ -92,7 +99,23 @@ export function EmployeeScan({
         !live.current.disabled,
       accept: async (value) =>
         scanWithFeedback(
-          () => live.current.onScan(value),
+          async () => {
+            const current = live.current;
+            if (current.task) {
+              await recordTaskScan({
+                ...current.task,
+                requestId: crypto.randomUUID(),
+                value,
+                step: current.label,
+              });
+              if (
+                getAuthEpoch() !== epoch ||
+                live.current.contextKey !== contextKey
+              )
+                return false;
+            }
+            return current.onScan(value);
+          },
           (accepted) => (accepted ? "success" : "error"),
           // A confirmed final scan can advance/unmount its form before resolving.
           () => getAuthEpoch() === epoch,

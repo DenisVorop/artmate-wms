@@ -1,6 +1,7 @@
 "use client";
 import { useLayoutEffect, useRef } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
+import { TaskHistory } from "@/entities/task-history";
 import { useSession } from "@/entities/session";
 import { useWorkspace } from "@/entities/workspace";
 import { Button, ErrorState, LoadingState, Modal } from "@/shared/ui";
@@ -99,6 +100,11 @@ function ManagerShipmentsFeature() {
           </div>
         )}
       </header>
+      {selected && (
+        <div>
+          <TaskHistory kind="shipping" id={selected.id} code={selected.code} />
+        </div>
+      )}
       {ui.notice && (
         <p className={styles.notice} role="status">
           {ui.notice}
