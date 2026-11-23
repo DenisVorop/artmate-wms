@@ -36,6 +36,8 @@ import { useAuthActions, ChangePasswordModal } from "@/features/auth";
 import {
   Button,
   EmployeeScanBoundary,
+  EmployeeTaskScanLog,
+  type ScanTaskReference,
   EmployeeScanGateway,
   EmployeeWorkDevice,
   EmployeeDeviceControls,
@@ -188,6 +190,45 @@ function EmployeeWorkspaceBody({
   if (!blocked || displayed.current.userId !== user?.id)
     displayed.current = nextDisplay;
   const { mode, zone: currentZone, key } = displayed.current;
+  const scanTask: ScanTaskReference | undefined = (() => {
+    if (mode === "stocktakes" && stocktakeId)
+      return { kind: "stocktake", id: stocktakeId };
+    if (mode === "movements" && movement)
+      return { kind: "movement", id: movement.id };
+    const assignment = currentZone?.assignment;
+    if (
+      assignment?.jobId &&
+      assignment.jobKind &&
+      ["assembly", "putaway", "receiving", "shipping"].includes(
+        assignment.jobKind,
+      )
+    )
+      return {
+        kind: assignment.jobKind as ScanTaskReference["kind"],
+        id: assignment.jobId,
+      };
+    if (!data || !employee) return;
+    const own = (row: { employeeId?: string | null }) =>
+      row.employeeId === employee.id;
+    if (mode === "assembly") {
+      const task = data.tasks.find(
+        (row) => own(row) && row.status === "active",
+      );
+      if (task) return { kind: "assembly", id: task.id };
+    }
+    if (mode === "putaway") {
+      const task = data.putawayTasks.find(
+        (row) => own(row) && ["claimed", "in_transit"].includes(row.status),
+      );
+      if (task) return { kind: "putaway", id: task.id };
+    }
+    if (mode === "shipping") {
+      const task = data.shipments.find(
+        (row) => own(row) && row.status === "draft",
+      );
+      if (task) return { kind: "shipping", id: task.id };
+    }
+  })();
   const jobLocked =
     !!(currentZone?.assignment.locked && currentZone.assignment.jobId) ||
     (mode === "movements" &&
@@ -605,7 +646,7 @@ function EmployeeWorkspaceBody({
                       onProblem={setProblem}
                     />
                   ) : (
-                    <>
+                    <EmployeeTaskScanLog task={scanTask}>
                       {mode === "assembly" && (
                         <EmployeeAssembly
                           key={key}
@@ -668,7 +709,7 @@ function EmployeeWorkspaceBody({
                           onProblem={setProblem}
                         />
                       )}
-                    </>
+                    </EmployeeTaskScanLog>
                   )}
                 </>
               )}

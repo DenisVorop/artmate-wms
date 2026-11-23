@@ -1,3 +1,11 @@
+import {
+  initializeTaskHistory,
+  recordCreatedTasks,
+  recordObservedScan,
+  readTaskHistory,
+  taskReference,
+  withTaskHistory,
+} from "./task-history";
 import { locationMatches } from "./stocktake-plan";
 import type { WbPackage } from "./marketplaces/providers/wb-package-manifest";
 import { isBoxOnHand } from "./box-stock";
@@ -375,6 +383,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           ["schema_version", "18"],
         );
       await initializePalletLabels(tx);
+      await initializeTaskHistory(tx);
       if (Number(version.rows[0]?.value ?? 1) < 19)
         await tx.query(
           "INSERT INTO metadata(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
@@ -792,11 +801,13 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     body: D.CommandDto,
     mutate: (state: D.WorkspaceDto, tx: Queryable) => void | Promise<void>,
   ): Promise<D.WorkspaceDto> {
+    const receivedAt =
+      requestAuth.getStore()?.receivedAt ?? new Date().toISOString();
     await this.ready;
     if (!body.requestId?.trim())
       fail("Для операции нужен уникальный requestId");
     const context = requestAuth.getStore();
-    return this._enqueue(() =>
+    const result = await this._enqueue(() =>
       this.db.transaction(async (tx) => {
         const state = await this._load(tx);
         if (context?.http) await authorizeWarehouse(tx, operation, body, state);
@@ -839,19 +850,54 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
             throw new ConflictException(
               "Этот requestId уже использован для другой операции",
             );
-          return this._workView(previous.rows[0].response, context);
+          return { value: this._workView(previous.rows[0].response, context) };
         }
-        const before = structuredClone(state);
-        await mutate(state, tx);
-        await closeBoxLabels(tx, before, state);
-        await this._commitState(tx, before, state, operation, body);
-        await tx.query(
-          "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
-          [body.requestId, fingerprint, JSON.stringify(state)],
+        return withTaskHistory(
+          tx,
+          () => taskReference(state, operation, body),
+          state,
+          operation,
+          body,
+          receivedAt,
+          async () => {
+            const before = structuredClone(state);
+            await mutate(state, tx);
+            await closeBoxLabels(tx, before, state);
+            await this._commitState(tx, before, state, operation, body);
+            await tx.query(
+              "INSERT INTO commands(request_id,fingerprint,response) VALUES ($1,$2,$3)",
+              [body.requestId, fingerprint, JSON.stringify(state)],
+            );
+            return this._workView(state, context);
+          },
         );
-        return this._workView(state, context);
       }),
     );
+    if ("error" in result) throw result.error;
+    return result.value;
+  }
+  async getTaskHistory(query: D.TaskHistoryQueryDto) {
+    return this.authTransaction(async (tx) => {
+      const actor = await requireAuth(tx);
+      if (actor.role !== "manager")
+        throw new ForbiddenException("Нужны права руководителя");
+      return readTaskHistory(tx, query);
+    });
+  }
+  async recordTaskScan(body: D.RecordTaskScanDto) {
+    const receivedAt =
+      requestAuth.getStore()?.receivedAt ?? new Date().toISOString();
+    return this.authTransaction(async (tx) => {
+      const actor = await requireAuth(tx, true);
+      await recordObservedScan(
+        tx,
+        await this._load(tx),
+        body,
+        actor.employee_id,
+        receivedAt,
+      );
+      return { recorded: true };
+    });
   }
   private async _commitState(
     tx: Queryable,
@@ -906,6 +952,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     }
     await advanceCellVersions(tx, cellFingerprints(before), state);
     await recordWorkforce(tx, workforceBefore(before), state, body);
+    await recordCreatedTasks(tx, before, state, body);
   }
   private async _persist(tx: Queryable, state: D.WorkspaceDto) {
     for (const table of tables) {

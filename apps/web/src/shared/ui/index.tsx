@@ -221,3 +221,7 @@ export { LocationRollLabel } from "./location-roll-label";
 export { WorkZoneRollLabel } from "./work-zone-roll-label";
 
 export { StockLabel } from "./stock-label";
+export {
+  EmployeeTaskScanLog,
+  type ScanTaskReference,
+} from "./employee-task-scan-log";

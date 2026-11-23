@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import * as D from "./dto";
 export interface RequestAuthContext {
   http: true;
+  receivedAt?: string;
   tokenHash: string | null;
   csrfToken: string | null;
   origin: string | null;

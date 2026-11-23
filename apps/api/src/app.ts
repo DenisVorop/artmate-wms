@@ -108,6 +108,49 @@ export class WarehouseController {
   ) {
     return this.warehouse.getWorkRoute(query);
   }
+  @Get("task-history")
+  @ApiOperation({ operationId: "getTaskHistory" })
+  @ApiQuery({ name: "kind", enum: D.TASK_HISTORY_KINDS })
+  @ApiQuery({ name: "id", type: String })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiOkResponse({ type: D.TaskHistoryPageDto })
+  getTaskHistory(
+    @Query(
+      new ValidationPipe({
+        expectedType: D.TaskHistoryQueryDto,
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    )
+    query: D.TaskHistoryQueryDto,
+  ) {
+    return this.warehouse.getTaskHistory(query);
+  }
+  @Post("task-scans")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "recordTaskScan" })
+  @ApiBody({ type: D.RecordTaskScanDto })
+  @ApiOkResponse({
+    schema: {
+      type: "object",
+      properties: { recorded: { type: "boolean" } },
+      required: ["recorded"],
+    },
+  })
+  recordTaskScan(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.RecordTaskScanDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.RecordTaskScanDto,
+  ) {
+    return this.warehouse.recordTaskScan(body);
+  }
   @Get("performance")
   @ApiOperation({ operationId: "getPerformance" })
   @workforceFilters()
@@ -1402,6 +1445,7 @@ export async function createApp() {
     requestAuth.run(
       {
         http: true,
+        receivedAt: new Date().toISOString(),
         tokenHash: token ? hashToken(token) : null,
         csrfToken:
           typeof request.headers["x-wms-csrf"] === "string"

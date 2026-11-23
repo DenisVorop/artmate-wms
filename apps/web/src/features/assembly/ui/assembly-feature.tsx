@@ -1,4 +1,5 @@
 "use client";
+import { TaskHistory } from "@/entities/task-history";
 import { useSession } from "@/entities/session";
 import { useEffect, useRef } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
@@ -167,6 +168,11 @@ export function AssemblyFeature() {
           )
         )}
       </header>
+      {selected && (
+        <div>
+          <TaskHistory kind="assembly" id={selected.id} code={selected.code} />
+        </div>
+      )}
       {ui.notice && (
         <p className={styles.notice} role="status">
           {ui.notice}

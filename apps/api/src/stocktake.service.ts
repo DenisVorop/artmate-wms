@@ -1,3 +1,5 @@
+import { appendTaskHistory, withTaskHistory } from "./task-history";
+import { requestAuth } from "./auth-context";
 import { hasConsumables } from "./consumables";
 import {
   Injectable,
@@ -194,7 +196,9 @@ export class StocktakeService {
       data: Awaited<ReturnType<StocktakeService["_load"]>> | null,
     ) => Promise<string>,
   ) {
-    return this.warehouse.authTransaction(async (tx) => {
+    const receivedAt =
+      requestAuth.getStore()?.receivedAt ?? new Date().toISOString();
+    const result = await this.warehouse.authTransaction(async (tx) => {
       const op = operation.split("/")[0];
       const a = await requireAuth(tx, true),
         s = await this.warehouse.stocktakeState(tx),
@@ -249,24 +253,50 @@ export class StocktakeService {
           throw new ConflictException(
             "Этот requestId уже использован для другой операции",
           );
-        return cached.rows[0].response;
+        return { value: cached.rows[0].response };
       }
-      if (data) {
-        if (!active(data.doc))
-          throw new ConflictException("Документ уже завершён");
-        if (data.doc.revision !== (b as D.StocktakeCommandDto).expectedRevision)
-          throw new ConflictException(
-            "Документ изменился. Обновите данные перед продолжением",
+      return withTaskHistory(
+        tx,
+        () => (id ? { kind: "stocktake", id } : undefined),
+        s,
+        operation,
+        b,
+        receivedAt,
+        async () => {
+          if (data) {
+            if (!active(data.doc))
+              throw new ConflictException("Документ уже завершён");
+            if (
+              data.doc.revision !==
+              (b as D.StocktakeCommandDto).expectedRevision
+            )
+              throw new ConflictException(
+                "Документ изменился. Обновите данные перед продолжением",
+              );
+          }
+          const resultId = await mutate(tx, a, s, data),
+            response = await this._render(tx, resultId, s, a);
+          if (op === "createStocktake")
+            await appendTaskHistory(
+              tx,
+              { kind: "stocktake", id: resultId },
+              s,
+              "createTaskHistory",
+              b,
+              receivedAt,
+              "accepted",
+              "Инвентаризация создана",
+            );
+          await tx.query(
+            "INSERT INTO stocktake_commands(request_id,fingerprint,response) VALUES($1,$2,$3)",
+            [b.requestId, fingerprint, JSON.stringify(response)],
           );
-      }
-      const resultId = await mutate(tx, a, s, data),
-        response = await this._render(tx, resultId, s, a);
-      await tx.query(
-        "INSERT INTO stocktake_commands(request_id,fingerprint,response) VALUES($1,$2,$3)",
-        [b.requestId, fingerprint, JSON.stringify(response)],
+          return response;
+        },
       );
-      return response;
     });
+    if ("error" in result) throw result.error;
+    return result.value;
   }
   private async _save(
     tx: Queryable,
