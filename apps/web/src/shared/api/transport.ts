@@ -15,6 +15,7 @@ import { isBoxLabelBatchResponse } from "./box-label-response";
 import { isPalletLabelBatchResponse } from "./pallet-label-response";
 import { isWorkAutomationResponse } from "./work-automation-response";
 import { isStocktakeCommandResponse } from "./stocktake-response";
+import { isTaskScanResponse } from "./task-scan-response";
 import { commandFingerprint, fetchReplaySafeCommand } from "./command-replay";
 import {
   getAuthEpoch,
@@ -85,6 +86,9 @@ export function createApiFetch(ports: Ports) {
           storage: ports.storage,
           fetch: send,
           fingerprint: commandFingerprint,
+          ...(/\/api\/task-scans(?:\?|$)/.test(url)
+            ? { isResponseConfirmed: isTaskScanResponse }
+            : {}),
           ...(/\/api\/box-label-batches(?:\?|$)/.test(url)
             ? { isResponseConfirmed: isBoxLabelBatchResponse }
             : {}),
