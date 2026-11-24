@@ -7,3 +7,5 @@ export {
 } from "./lib/workday";
 export { isWorkZoneScan, ownZoneWork, workZonePrefix } from "./lib/zone-work";
 export { useEmployeeZone } from "./model/use-employee-zone";
+
+export { employeeScanTask } from "./lib/scan-task";
