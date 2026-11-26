@@ -195,9 +195,9 @@ function contextFor(
     pallet?.id,
   );
   if (baseProblemAtLocation) return reject(baseProblemAtLocation);
-  // A retained EMPTY wooden pallet must not force an obsolete box profile on
-  // future work after the catalog was measured. Prefer actual next work, then
-  // an existing SKU using the current default; never invent missing SKU data.
+  // The retained wooden base does not describe the next box. Existing box
+  // snapshots still constrain the mixed load; an obsolete base profile must
+  // not add a hypothetical legacy box after the catalog was measured.
   const currentDefault = [...state.skus]
     .sort((a, b) => a.code.localeCompare(b.code))
     .map((sku) => sku.packaging)
@@ -205,12 +205,10 @@ function contextFor(
       (profile) =>
         !profileError(profile) && samePackaging(profile, DEFAULT_PACKAGING),
     );
-  const candidateOrdinary = candidate ?? nextTaskProfile ?? currentDefault;
+  const candidateOrdinary =
+    candidate ?? profiles[0] ?? nextTaskProfile ?? currentDefault;
   const ordinary =
-    physicalBoxes.length === 0 &&
-    incoming.length === 0 &&
-    candidateOrdinary &&
-    !profileError(candidateOrdinary)
+    candidateOrdinary && !profileError(candidateOrdinary)
       ? candidateOrdinary
       : fixedBase;
   result.context = {
