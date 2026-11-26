@@ -454,3 +454,70 @@ test("a retained empty legacy pallet uses measured current SKU packing without r
   assert.equal(JSON.stringify(state.pallets[0]), original);
   assert.equal(state.pallets[0].packagingSnapshot!.boxHeightMm, 300);
 });
+
+test("a loaded legacy base uses actual box snapshots through the 42-box boundary", () => {
+  const state = fixture(42);
+  state.locations[0].availableDepthMm = 900;
+  state.locations[0].maxHeightMm = 2200;
+  for (const sku of state.skus) sku.packaging = { ...DEFAULT_PACKAGING };
+  addBoxes(state, 36);
+  const before = JSON.stringify(state);
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyPressure(state).level, "near_full");
+  assert.equal(assemblyAcceptanceError(state, "cats"), null);
+  assert.equal(JSON.stringify(state), before);
+  addBoxes(state, 5);
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyPressure(state).level, "near_full");
+  assert.equal(assemblyAcceptanceError(state, "cats"), null);
+  addBoxes(state, 1);
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyPressure(state).level, "full");
+  assert.match(
+    assemblyAcceptanceError(state, "cats")!,
+    /вместимость|заполнена/,
+  );
+  assert.equal(state.pallets[0].packagingSnapshot!.maxLayers, 6);
+});
+
+test("actual legacy boxes and location height still restrict a measured load", () => {
+  const state = fixture(42);
+  state.locations[0].availableDepthMm = 900;
+  state.locations[0].maxHeightMm = 2200;
+  state.skus[0].packaging = { ...DEFAULT_PACKAGING };
+  addBoxes(state, 35);
+  addBoxes(state, 1, "other");
+  const before = JSON.stringify(state);
+  assert.equal(assemblyPressure(state).capacityBoxes, 36);
+  assert.equal(assemblyPressure(state).level, "full");
+  assert.match(assemblyAcceptanceError(state, "cats")!, /заполнена/);
+  assert.equal(JSON.stringify(state), before);
+
+  const measured = fixture(42);
+  measured.locations[0].availableDepthMm = 900;
+  measured.locations[0].maxHeightMm = 1350;
+  measured.skus[0].packaging = { ...DEFAULT_PACKAGING };
+  addBoxes(measured, 36);
+  assert.equal(assemblyPressure(measured).capacityBoxes, 36);
+  assert.equal(assemblyPressure(measured).level, "full");
+  assert.match(assemblyAcceptanceError(measured, "cats")!, /высоте/);
+});
+
+test("started boxes reserve the remaining six slots on a loaded legacy base", () => {
+  const state = fixture(42);
+  state.locations[0].availableDepthMm = 900;
+  state.locations[0].maxHeightMm = 2200;
+  state.skus[0].packaging = { ...DEFAULT_PACKAGING };
+  addBoxes(state, 36);
+  for (let index = 0; index < 6; index++) task(state, `open-${index}`);
+  const before = JSON.stringify(state);
+  assert.equal(assemblyPressure(state).capacityBoxes, 42);
+  assert.equal(assemblyPressure(state).committedBoxes, 6);
+  assert.equal(assemblyPressure(state).level, "full");
+  assert.match(
+    assemblyAcceptanceError(state, "cats")!,
+    /вместимость|заполнена/,
+  );
+  assert.equal(assemblyAcceptanceError(state, "cats", "open-0"), null);
+  assert.equal(JSON.stringify(state), before);
+});
