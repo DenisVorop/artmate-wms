@@ -371,3 +371,71 @@ test("transport accepts optional loaded dimensions but rejects null, strings and
       pipe.transform({ ...overhanging, ...patch }, { type: "body" }),
     );
 });
+
+test("starting stock consolidates stored and incoming boxes across opening inventories while new receipts and capacity stay separate", () => {
+  const { state, location } = storage();
+  state.receipts = [];
+  state.lots = ["raw", "finished", "unknown"].map((id) => ({
+    id,
+    skuId: "animals",
+    name: "7 November",
+    receivedAt: "2026-11-06T21:00:00.000Z",
+    ...(id !== "unknown"
+      ? { openingStocktakeId: id === "raw" ? "INV-0001" : "INV-0002" }
+      : {}),
+  }));
+  const box = (id: string) => ({
+    id: `box-${id}`,
+    skuId: "animals",
+    lotContents: [{ lotId: id, quantity: 20 }],
+    packagingSnapshot: overhanging,
+  });
+  const pallet = {
+    id: "target",
+    skuId: "animals",
+    kind: "finished",
+    status: "stored",
+    locationId: location.id,
+    returnLocationId: null,
+    quantity: 24,
+    packagingSnapshot: overhanging,
+    ...finishedMetrics(overhanging, 24),
+  } as D.PalletDto;
+  state.pallets = [pallet];
+  state.boxes = [
+    {
+      ...box("finished"),
+      palletId: pallet.id,
+      locationId: location.id,
+      status: "stored",
+    },
+  ] as D.BoxDto[];
+  const before = structuredClone(state);
+  assert.equal(putawayPlacementError(state, location, box("raw")), null);
+  assert.match(
+    putawayPlacementError(state, location, box("unknown"))!,
+    /другого тиража/,
+  );
+  assert.deepEqual(state, before);
+  location.maxBoxes = 24;
+  assert.match(
+    putawayPlacementError(state, location, box("raw"))!,
+    /вместимость/,
+  );
+  location.maxBoxes = 42;
+  state.pallets = [];
+  state.boxes[0].status = "in_transit";
+  state.putawayTasks = [
+    {
+      id: "incoming",
+      boxId: "box-finished",
+      toLocationId: location.id,
+      status: "in_transit",
+    },
+  ] as D.PutawayTaskDto[];
+  assert.equal(putawayPlacementError(state, location, box("raw")), null);
+  assert.match(
+    putawayPlacementError(state, location, box("unknown"))!,
+    /для другого тиража/,
+  );
+});

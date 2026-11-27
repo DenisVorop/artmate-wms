@@ -41,7 +41,7 @@ test("legacy lots from two raw pallets of the same receipt are one print run wit
   assert.equal(JSON.stringify(state), before);
 });
 
-test("equal dates and names never merge different receipts or unlinked opening lots", () => {
+test("equal dates and names never merge different receipts or lots with unknown provenance", () => {
   const state = fixture();
   assert.equal(samePrintRun(state, "a", "c"), false);
   state.receipts = [];
@@ -61,4 +61,47 @@ test("different SKUs, mismatched receipt rows and ambiguous receipt provenance r
   state.receipts[0].pallets[1].skuId = "cats";
   state.receipts[1].pallets.push(state.receipts[0].pallets[1]);
   assert.equal(samePrintRun(state, "a", "b"), false);
+});
+
+test("opening stock of one SKU shares a starting print run across documents, addresses and FIFO dates", () => {
+  const state = fixture();
+  state.receipts = [];
+  state.lots[0].openingStocktakeId = "INV-0001";
+  state.lots[1].openingStocktakeId = "INV-0002";
+  state.lots[1].receivedAt = "2026-10-01T09:00:00.000Z";
+  const before = structuredClone(state);
+  assert.equal(samePrintRun(state, "a", "b"), true);
+  assert.equal(samePrintRun(state, "b", "a"), true);
+  assert.equal(
+    samePrintRun(state, "a", "c"),
+    false,
+    "unknown provenance is not opening stock",
+  );
+  assert.deepEqual(
+    state,
+    before,
+    "stock lots and real FIFO dates remain intact",
+  );
+  state.lots[1].skuId = "dogs";
+  assert.equal(samePrintRun(state, "a", "b"), false);
+  state.lots[1].skuId = "cats";
+  state.lots[1].openingStocktakeId = "";
+  assert.equal(
+    samePrintRun(state, "a", "b"),
+    false,
+    "an empty origin never claims opening stock",
+  );
+});
+
+test("new receipts stay separate from starting stock and from each other even on the same date", () => {
+  const state = fixture();
+  state.lots[0].openingStocktakeId = "INV-0001";
+  assert.equal(
+    samePrintRun(state, "a", "b"),
+    false,
+    "opening provenance wins over a misleading legacy receipt link",
+  );
+  state.receipts[0].pallets = [state.receipts[0].pallets[1]];
+  assert.equal(samePrintRun(state, "a", "b"), false);
+  assert.equal(samePrintRun(state, "b", "c"), false);
 });
