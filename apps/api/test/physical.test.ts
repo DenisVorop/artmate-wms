@@ -248,6 +248,88 @@ test("finished putaway keeps a mixed box with the oldest receipt lot", () => {
   );
 });
 
+test("putaway accepts legacy pallet lots of one receipt and rejects other receipts for stored and incoming stock", () => {
+  const { state, location } = storage();
+  state.lots = ["a", "b", "other"].map((id) => ({
+    id,
+    skuId: "cats",
+    name: "Same name",
+    receivedAt: "2026-11-16T14:32:00.000Z",
+  }));
+  state.receipts = [
+    {
+      id: "receipt-one",
+      pallets: [
+        { palletId: "raw-a", skuId: "cats" },
+        { palletId: "raw-b", skuId: "cats" },
+      ],
+    },
+    {
+      id: "receipt-other",
+      pallets: [{ palletId: "raw-other", skuId: "cats" }],
+    },
+  ] as D.ReceiptDto[];
+  state.pallets = ["a", "b", "other"].map((id) => ({
+    id: `raw-${id}`,
+    kind: "raw",
+    status: "retired",
+    skuId: "cats",
+    lotId: id,
+    quantity: 0,
+  })) as D.PalletDto[];
+  const box = (lotId: string) => ({
+    id: `box-${lotId}`,
+    skuId: "cats",
+    lotContents: [{ lotId, quantity: 20 }],
+    packagingSnapshot: overhanging,
+  });
+  const target = {
+    id: "target",
+    kind: "finished",
+    status: "stored",
+    skuId: "cats",
+    locationId: location.id,
+    returnLocationId: null,
+    packagingSnapshot: overhanging,
+    ...finishedMetrics(overhanging, 1),
+    quantity: 1,
+  } as D.PalletDto;
+  state.pallets.push(target);
+  state.boxes.push({
+    ...box("a"),
+    palletId: target.id,
+    status: "stored",
+  } as D.BoxDto);
+  const before = JSON.stringify(state);
+  assert.equal(putawayPlacementError(state, location, box("b")), null);
+  assert.match(
+    putawayPlacementError(state, location, box("other"))!,
+    /другого тиража/,
+  );
+  assert.equal(JSON.stringify(state), before);
+  location.maxBoxes = 1;
+  assert.match(
+    putawayPlacementError(state, location, box("b"))!,
+    /вместимость/,
+  );
+  location.maxBoxes = 42;
+  state.pallets = state.pallets.filter((p) => p.id !== target.id);
+  state.boxes[0] = { ...box("a"), status: "in_transit" } as D.BoxDto;
+  state.putawayTasks = [
+    {
+      id: "incoming",
+      boxId: "box-a",
+      toLocationId: location.id,
+      status: "in_transit",
+    },
+  ] as D.PutawayTaskDto[];
+  assert.equal(putawayPlacementError(state, location, box("b")), null);
+  assert.match(
+    putawayPlacementError(state, location, box("other"))!,
+    /для другого тиража/,
+  );
+});
+
 test("mixed accumulator includes explicit loaded dimensions but an empty pallet keeps its wooden base", () => {
   const base = { ...DEMO_PACKAGING };
   const profiles = Array.from({ length: 42 }, () => ({ ...overhanging }));

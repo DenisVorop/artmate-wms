@@ -20,6 +20,7 @@ import { usePutaway } from "../model/use-putaway";
 import { PutawayDetails } from "./putaway-details";
 import { PutawayTaskList } from "./putaway-task-list";
 import styles from "./putaway.module.css";
+import { CreateBoxTransfers } from "./create-box-transfers";
 export function PutawayFeature() {
   const { user, isManager } = useSession();
   const actorId = user?.employeeId ?? "";
@@ -104,6 +105,7 @@ export function PutawayFeature() {
           </Button>
         )}
       </header>
+      {isManager && !selected && <CreateBoxTransfers data={data} />}
       {selected && (
         <div>
           <TaskHistory kind="putaway" id={selected.id} code={selected.code} />

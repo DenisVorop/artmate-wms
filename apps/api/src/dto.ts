@@ -549,6 +549,7 @@ export class ReceiptLabelsDto {
   @ApiProperty({ type: [ReceiptLabelDto] }) labels!: ReceiptLabelDto[];
 }
 export class PutawayTaskDto {
+  @ApiPropertyOptional({ type: String }) transferZoneId?: string;
   @ApiProperty({ type: String }) id!: string;
   @ApiProperty({ type: String }) code!: string;
   @ApiProperty({ type: String }) boxId!: string;
@@ -1014,6 +1015,26 @@ export class ClaimTaskDto extends CommandDto {
   @ApiProperty({ type: String }) @IsString() @MinLength(1) employeeId!: string;
 }
 export class ClaimPutawayTaskDto extends ClaimTaskDto {}
+export class CreateBoxTransfersDto extends CommandDto {
+  @ApiProperty({ type: [String], minItems: 1, maxItems: 100 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(160, { each: true })
+  boxIds!: string[];
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  toLocationId!: string;
+  @ApiProperty({ type: String })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  zoneId!: string;
+}
 export class TakePutawayBoxDto extends ClaimTaskDto {
   @ApiProperty({
     type: String,

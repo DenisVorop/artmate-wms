@@ -233,7 +233,11 @@ export function buildWorkQueue(
         task.completedAt ?? task.takenAt ?? task.claimedAt ?? task.createdAt,
       href: "/putaway",
       urgentPutaway,
-      title: urgentPutaway ? "Разобрать сборочную паллету" : undefined,
+      title: task.transferZoneId
+        ? "Перенести короб"
+        : urgentPutaway
+          ? "Разобрать сборочную паллету"
+          : undefined,
     });
   }
   for (const movement of workspace.movements) {

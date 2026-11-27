@@ -3,6 +3,7 @@ import * as D from "./dto";
 import { Queryable } from "./database";
 import { requestAuth } from "./auth-context";
 import { sessionRow } from "./auth-storage";
+import { putawayInZone } from "./putaway-zone";
 export const warehouseOperations = new Set([
   "recordTaskScan",
   "getTaskHistory",
@@ -86,6 +87,7 @@ export const warehouseOperations = new Set([
   "updateLocation",
   "createSku",
   "createReceipt",
+  "createBoxTransfers",
   "bindReceiptPalletLabel",
   "placeReceiptPallet",
   "createEmployee",
@@ -372,7 +374,7 @@ export async function authorizeWarehouse(
           "Сначала отсканируйте QR зоны размещения",
         );
         const task = state.putawayTasks.find((t) => t.id === id);
-        if (task && !zone.locationIds.includes(task.fromLocationId))
+        if (task && !putawayInZone(task, zone))
           throw new ForbiddenException("Короб находится в другой рабочей зоне");
       }
     }

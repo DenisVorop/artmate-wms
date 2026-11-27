@@ -15,6 +15,8 @@ import {
   ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU,
 } from "./work-automation/planning";
 import { reconcileOpeningStock } from "./marketplaces/opening-stock-reconciliation";
+import { samePrintRun } from "./print-run";
+import { putawayInZone, putawayReservesDestination } from "./putaway-zone";
 import { initializeWorkAutomationStorage } from "./work-automation/storage";
 import {
   assemblyPressure,
@@ -1082,6 +1084,18 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     for (const t of s.putawayTasks) {
       const box = find(s.boxes, t.boxId, "Короб размещения");
       if (t.skuId !== box.skuId) fail("Нарушен SKU задания размещения");
+      if (t.transferZoneId && t.status !== "completed") {
+        const zone = s.warehouse.workZones.find(
+          (z) => z.id === t.transferZoneId,
+        );
+        if (
+          !zone ||
+          zone.archived ||
+          zone.kind !== "putaway" ||
+          !t.toLocationId
+        )
+          fail("Нарушены зона или адрес переноса короба");
+      }
       if (t.status !== "completed") {
         if (unfinishedBoxes.has(t.boxId))
           fail("У короба несколько незавершённых размещений");
@@ -1793,14 +1807,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         completedAt: null,
         pallets: [],
       };
+      const receiptLots = new Map<string, D.LotDto>();
       for (const row of b.pallets) {
         const sku = this._receiptSku(s, row);
-        const lot: D.LotDto = {
-          id: randomUUID(),
-          skuId: sku.id,
-          receivedAt,
-          name: `${receipt.code} · ${sku.name}`,
-        };
+        let lot = receiptLots.get(sku.id);
+        if (!lot) {
+          lot = {
+            id: randomUUID(),
+            skuId: sku.id,
+            receivedAt,
+            name: `${receipt.code} · ${sku.name}`,
+          };
+          receiptLots.set(sku.id, lot);
+          s.lots.push(lot);
+        }
         const pallet: D.PalletDto = {
           id: randomUUID(),
           code: nextCode("PLT"),
@@ -1817,7 +1837,6 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           returnLocationId: null,
           packagingSnapshot: null,
         };
-        s.lots.push(lot);
         s.pallets.push(pallet);
         receipt.pallets.push({
           palletId: pallet.id,
@@ -2617,9 +2636,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   private _incomingPutaway(s: D.WorkspaceDto, locationId: string) {
     return s.putawayTasks.filter(
-      (t) =>
-        t.toLocationId === locationId &&
-        ["claimed", "in_transit"].includes(t.status),
+      (t) => t.toLocationId === locationId && putawayReservesDestination(t),
     );
   }
   private _putawayPalletGuard(s: D.WorkspaceDto, p: D.PalletDto) {
@@ -2662,6 +2679,61 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       depthMm: metrics.depthMm,
       heightMm: metrics.heightMm,
       weightKg: metrics.weightKg,
+    });
+  }
+  createBoxTransfers(b: D.CreateBoxTransfersDto) {
+    return this._command("createBoxTransfers", b, (s) => {
+      if (
+        !Array.isArray(b.boxIds) ||
+        !b.boxIds.length ||
+        b.boxIds.length > 100 ||
+        new Set(b.boxIds).size !== b.boxIds.length
+      )
+        fail("Выберите от 1 до 100 разных коробов");
+      const zone = find(s.warehouse.workZones, b.zoneId, "Зона размещения");
+      if (zone.archived || zone.kind !== "putaway")
+        fail("Нужна действующая зона размещения");
+      validateWorkZone(s, zone);
+      const target = this._activeLocation(s, b.toLocationId);
+      for (const id of b.boxIds) {
+        const box = find(s.boxes, id, "Короб");
+        const source = this._shipmentBoxSource(s, box);
+        if (!source || !["rack", "floor"].includes(source.location.kind))
+          fail("Короб недоступен на месте хранения");
+        if (source.location.id === target.id)
+          fail("Выберите другой адрес назначения");
+        if (
+          s.shipments.some(
+            (shipment) =>
+              shipment.status === "draft" && shipment.boxIds.includes(box.id),
+          )
+        )
+          fail("Короб зарезервирован отгрузкой");
+        const problem = putawayPlacementError(s, target, box);
+        if (problem) fail(problem);
+        s.putawayTasks.push({
+          id: randomUUID(),
+          code: nextCode("PUT"),
+          boxId: box.id,
+          skuId: box.skuId,
+          status: "queued",
+          employeeId: null,
+          transferZoneId: zone.id,
+          fromPalletId: source.pallet.id,
+          fromLocationId: source.location.id,
+          toLocationId: target.id,
+          createdAt: now(),
+          claimedAt: null,
+          takenAt: null,
+          completedAt: null,
+        });
+      }
+      activity(
+        s,
+        "Созданы переносы коробов",
+        `${b.boxIds.length} кор. → ${target.code}`,
+        "putaway",
+      );
     });
   }
   private _enqueuePutaway(s: D.WorkspaceDto, box: D.BoxDto) {
@@ -2717,10 +2789,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       box.locationId !== location.id ||
       pallet.status !== "stored" ||
       pallet.locationId !== location.id ||
-      location.kind !== "assembly" ||
+      (t.transferZoneId
+        ? !["rack", "floor"].includes(location.kind)
+        : location.kind !== "assembly") ||
       location.blocked
     )
-      fail("Короб недоступен на исходном месте сборки");
+      fail("Короб недоступен на исходном месте");
     if (
       s.movements.some(
         (m) =>
@@ -2757,9 +2831,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     );
     // Once assigned, physical carry and its reserved destination are authoritative.
     // Read-only polling must never suggest a new address after a layout change.
-    const fixed = ["claimed", "in_transit"].includes(t.status)
-      ? t.toLocationId
-      : null;
+    const fixed =
+      t.transferZoneId || ["claimed", "in_transit"].includes(t.status)
+        ? t.toLocationId
+        : null;
     const ranked = rankPlacementLocations(
       s,
       fixed ? s.locations.filter((l) => l.id === fixed) : candidates,
@@ -2855,7 +2930,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       const task = s.putawayTasks.find(
         (t) => t.boxId === box.id && t.status !== "completed",
       );
-      if (!task || !zone.locationIds.includes(task.fromLocationId))
+      if (!task || !putawayInZone(task, zone))
         fail("Этот короб не ожидает размещения в текущей зоне");
       const locked = this._lockedZoneJob(s, b.employeeId);
       if (locked && locked.jobId !== task.id && locked.jobId !== zone.id)
@@ -2890,6 +2965,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   ) {
     const t = find(s.putawayTasks, id, "Задание размещения");
     this._putawayActor(s, t, employeeId, "claimed");
+    if (t.transferZoneId && !locationCode)
+      fail("Для переноса отсканируйте QR исходного адреса и короб");
     const { box, pallet, location } = this._putawaySource(s, t);
     if (
       !this._scanEntity(boxCode, "box", box.code, box.code) ||
@@ -2982,7 +3059,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   private _releasePutaway(t: D.PutawayTaskDto) {
     t.status = "queued";
     t.employeeId = null;
-    t.toLocationId = null;
+    if (!t.transferZoneId) t.toLocationId = null;
     t.claimedAt = null;
     t.takenAt = null;
     t.completedAt = null;
@@ -4098,6 +4175,9 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
   }
   private _zoneEditGuard(s: D.WorkspaceDto, id: string) {
     if (
+      s.putawayTasks.some(
+        (t) => t.transferZoneId === id && t.status !== "completed",
+      ) ||
       s.warehouse.zoneWork.some(
         (w) => w.zoneId === id && this._zoneJobActive(s, w),
       )
@@ -4355,9 +4435,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
               t.status !== "completed" &&
               (t.scannedUnits > 0 || t.boxCodeConfirmed),
           )) ||
-          (zone.kind === "putaway" &&
-            !!carry &&
-            zone.locationIds.includes(carry.fromLocationId)) ||
+          (zone.kind === "putaway" && !!carry && putawayInZone(carry, zone)) ||
           (zone.kind === "shipping" &&
             s.shipments.some(
               (x) =>
@@ -4368,7 +4446,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (
         carry &&
         (zone.kind !== "putaway" ||
-          !zone.locationIds.includes(carry.fromLocationId) ||
+          !putawayInZone(carry, zone) ||
           (current && current.zoneId !== zone.id))
       )
         fail("Сначала подтвердите размещение короба в пути");
@@ -4603,7 +4681,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (movement) return [];
       const tasks = s.putawayTasks.filter((t) => {
         if (
-          !zone.locationIds.includes(t.fromLocationId) ||
+          !putawayInZone(t, zone) ||
           !(
             t.status === "queued" ||
             (t.status === "claimed" && t.employeeId === employeeId)
@@ -4633,7 +4711,8 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           return false;
         return s.locations.some(
           (l) =>
-            (t.status !== "claimed" || l.id === t.toLocationId) &&
+            ((!t.transferZoneId && t.status !== "claimed") ||
+              l.id === t.toLocationId) &&
             !putawayPlacementError(s, l, box, t.id),
         );
       });
@@ -4643,7 +4722,12 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         (work) =>
           work.zoneId === zone.id && work.jobId === zone.id && work.locked,
       ).length;
-      return tasks.length > pendingScans ? [offer(zone.id)] : [];
+      return [
+        ...tasks.filter((t) => !!t.transferZoneId).map((t) => offer(t.id)),
+        ...(tasks.filter((t) => !t.transferZoneId).length > pendingScans
+          ? [offer(zone.id)]
+          : []),
+      ];
     }
     if (zone.kind === "shipping") {
       const own = s.shipments.find(
@@ -4721,6 +4805,10 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     if (zone.kind === "assembly") {
       const task = find(s.tasks, offer.jobId, "Задание");
       if (task.status !== "active") this._claimTask(s, task, employeeId);
+    }
+    if (zone.kind === "putaway" && offer.jobId !== zone.id) {
+      const task = find(s.putawayTasks, offer.jobId, "Задание размещения");
+      if (task.status === "queued") this._claimPutaway(s, task.id, employeeId);
     }
     const binding = this._setZoneJob(
       s,
@@ -4809,7 +4897,7 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
     } else if (zone.kind === "putaway") {
       const own = this._activePutaway(s, employeeId);
       if (own) {
-        if (!zone.locationIds.includes(own.fromLocationId))
+        if (!putawayInZone(own, zone))
           fail("Ваше размещение относится к другой рабочей зоне");
         assign("putaway", own.id, null, "Продолжите размещение своего короба");
         return;
@@ -5117,8 +5205,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (candidate.skuId !== box.skuId || candidate.units !== box.units)
         fail("Нужен короб указанной тематики и количества");
       if (
-        oldestBoxLot(s.lots, candidate.lotContents)?.id !==
-        oldestBoxLot(s.lots, box.lotContents)?.id
+        !samePrintRun(
+          s,
+          oldestBoxLot(s.lots, candidate.lotContents)?.id,
+          oldestBoxLot(s.lots, box.lotContents)?.id,
+        )
       )
         fail(
           "На этой паллете есть другой тираж. Возьмите короб указанного тиража",

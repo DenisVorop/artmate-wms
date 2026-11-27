@@ -57,8 +57,12 @@ function offerDetails(
     const box = data.boxes.find((row) => row.id === task?.boxId);
     return box
       ? {
-          title: `Разместить короб ${box.code}`,
-          note: data.skus.find((sku) => sku.id === task?.skuId)?.name,
+          title: task?.transferZoneId
+            ? `Перенести «${data.skus.find((sku) => sku.id === task.skuId)?.name ?? "Короб"}»`
+            : `Разместить короб ${box.code}`,
+          note: task?.transferZoneId
+            ? `${data.locations.find((location) => location.id === task.fromLocationId)?.code} → ${data.locations.find((location) => location.id === task.toLocationId)?.code} · 1 короб`
+            : data.skus.find((sku) => sku.id === task?.skuId)?.name,
         }
       : null;
   }
