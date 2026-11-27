@@ -15,6 +15,7 @@ import {
   ASSEMBLY_QUEUE_MAX_TASKS_PER_SKU,
 } from "./work-automation/planning";
 import { reconcileOpeningStock } from "./marketplaces/opening-stock-reconciliation";
+import { samePrintRun } from "./print-run";
 import { initializeWorkAutomationStorage } from "./work-automation/storage";
 import {
   assemblyPressure,
@@ -1793,14 +1794,20 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
         completedAt: null,
         pallets: [],
       };
+      const receiptLots = new Map<string, D.LotDto>();
       for (const row of b.pallets) {
         const sku = this._receiptSku(s, row);
-        const lot: D.LotDto = {
-          id: randomUUID(),
-          skuId: sku.id,
-          receivedAt,
-          name: `${receipt.code} · ${sku.name}`,
-        };
+        let lot = receiptLots.get(sku.id);
+        if (!lot) {
+          lot = {
+            id: randomUUID(),
+            skuId: sku.id,
+            receivedAt,
+            name: `${receipt.code} · ${sku.name}`,
+          };
+          receiptLots.set(sku.id, lot);
+          s.lots.push(lot);
+        }
         const pallet: D.PalletDto = {
           id: randomUUID(),
           code: nextCode("PLT"),
@@ -1817,7 +1824,6 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
           returnLocationId: null,
           packagingSnapshot: null,
         };
-        s.lots.push(lot);
         s.pallets.push(pallet);
         receipt.pallets.push({
           palletId: pallet.id,
@@ -5117,8 +5123,11 @@ export class WarehouseService implements OnModuleDestroy, OnModuleInit {
       if (candidate.skuId !== box.skuId || candidate.units !== box.units)
         fail("Нужен короб указанной тематики и количества");
       if (
-        oldestBoxLot(s.lots, candidate.lotContents)?.id !==
-        oldestBoxLot(s.lots, box.lotContents)?.id
+        !samePrintRun(
+          s,
+          oldestBoxLot(s.lots, candidate.lotContents)?.id,
+          oldestBoxLot(s.lots, box.lotContents)?.id,
+        )
       )
         fail(
           "На этой паллете есть другой тираж. Возьмите короб указанного тиража",

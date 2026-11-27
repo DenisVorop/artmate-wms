@@ -1,5 +1,6 @@
 import * as D from "./dto";
 import { hasConsumables } from "./consumables";
+import { samePrintRun } from "./print-run";
 export const DEMO_PACKAGING: D.PackagingProfileDto = {
   boxWidthMm: 400,
   boxDepthMm: 400,
@@ -291,7 +292,7 @@ export function putawayPlacementError(
       (stored) =>
         stored.palletId === pallet.id &&
         stored.status === "stored" &&
-        oldestBoxLot(s.lots, stored.lotContents)?.id !== lot.id,
+        !samePrintRun(s, oldestBoxLot(s.lots, stored.lotContents)?.id, lot.id),
     )
   )
     return "На паллете короба другого тиража. Выберите отдельное место";
@@ -309,7 +310,14 @@ export function putawayPlacementError(
       !samePackaging(incomingBox.packagingSnapshot, profile)
     )
       return "Адрес зарезервирован размещением другой тематики или профиля";
-    if (lot && oldestBoxLot(s.lots, incomingBox.lotContents)?.id !== lot.id)
+    if (
+      lot &&
+      !samePrintRun(
+        s,
+        oldestBoxLot(s.lots, incomingBox.lotContents)?.id,
+        lot.id,
+      )
+    )
       return "Адрес зарезервирован для другого тиража";
   }
   const quantity = (pallet?.quantity ?? 0) + incoming.length + 1;

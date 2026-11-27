@@ -155,6 +155,43 @@ test("a slightly longer ground route beats a high tier, while a sufficiently lon
   );
 });
 
+test("compatible finished stock fills the fuller pallet before a nearby fragmented one", () => {
+  const source = location("source", { kind: "assembly", x: 1, y: 10 });
+  const nearby = location("A-08-01", { kind: "rack", x: 5, y: 10 });
+  const established = location("F-05", { x: 25, y: 10 });
+  const s = workspace([source, nearby, established]);
+  s.pallets = [
+    {
+      id: "new-small",
+      kind: "finished",
+      skuId: "cats",
+      status: "stored",
+      locationId: nearby.id,
+      quantity: 2,
+    },
+    {
+      id: "existing-large",
+      kind: "finished",
+      skuId: "cats",
+      status: "stored",
+      locationId: established.id,
+      quantity: 29,
+    },
+  ] as D.PalletDto[];
+  const before = structuredClone(s);
+  const ranked = rankPlacementLocations(
+    s,
+    [nearby, established],
+    source.id,
+    "cats",
+  );
+  assert.equal(ranked.suggestedLocationId, established.id);
+  assert.ok(
+    ranked.rows[0].route.distanceMeters! > ranked.rows[1].route.distanceMeters!,
+  );
+  assert.deepEqual(s, before);
+});
+
 test("putaway preserves thematic priority, physical capacity and fixed destinations under competing claims", async () => {
   // A dedicated in-memory database is mandatory: this test must never connect to live PostgreSQL.
   process.env.WMS_DATA_DIR = "memory://";

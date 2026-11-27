@@ -4,6 +4,7 @@ type PlacementRow = {
   location: D.LocationDto;
   route: PlacementRoute;
   sameSkuPallet: boolean;
+  sameSkuBoxes: number;
   levelPenaltyMeters: number;
   score: number | null;
 };
@@ -130,7 +131,7 @@ export function rankPlacementLocations(
     sourceLocationId,
     candidates.map((l) => l.id),
   );
-  const existingSameSku = new Set(
+  const existingSameSku = new Map(
     s.pallets
       .filter(
         (p) =>
@@ -138,7 +139,7 @@ export function rankPlacementLocations(
           p.kind === "finished" &&
           p.skuId === finishedSkuId,
       )
-      .map((p) => p.locationId),
+      .map((p) => [p.locationId, p.quantity ?? 0] as const),
   );
   const rows: PlacementRow[] = candidates.map((location) => {
     const route = routes.get(location.id) ?? {
@@ -151,6 +152,7 @@ export function rankPlacementLocations(
       location,
       route,
       sameSkuPallet: !!finishedSkuId && existingSameSku.has(location.id),
+      sameSkuBoxes: finishedSkuId ? (existingSameSku.get(location.id) ?? 0) : 0,
       levelPenaltyMeters,
       score:
         route.distanceMeters === null
@@ -166,6 +168,9 @@ export function rankPlacementLocations(
         Number(b.route.status === "unreachable") ||
       Number(b.sameSkuPallet) - Number(a.sameSkuPallet) ||
       routeOrder(a.route.status) - routeOrder(b.route.status) ||
+      // Consolidate compatible finished stock before minimizing walking distance.
+      // Physical/print-run eligibility has already filtered these candidates.
+      b.sameSkuBoxes - a.sameSkuBoxes ||
       diversityPenalty(a.location) - diversityPenalty(b.location) ||
       (a.score !== null && b.score !== null
         ? a.score - b.score
