@@ -398,6 +398,24 @@ export class WarehouseController {
   ) {
     return this.warehouse.createEmployee(body);
   }
+  @Post("box-transfers")
+  @HttpCode(200)
+  @ApiOperation({ operationId: "createBoxTransfers" })
+  @ApiOkResponse({ type: D.WorkspaceDto })
+  @ApiBody({ type: D.CreateBoxTransfersDto })
+  createBoxTransfers(
+    @Body(
+      new ValidationPipe({
+        expectedType: D.CreateBoxTransfersDto,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    )
+    body: D.CreateBoxTransfersDto,
+  ) {
+    return this.warehouse.createBoxTransfers(body);
+  }
   @Get("putaway-tasks/:id/placement-options")
   @ApiOperation({ operationId: "getPutawayPlacementOptions" })
   @ApiOkResponse({ type: D.PutawayPlacementOptionsDto })

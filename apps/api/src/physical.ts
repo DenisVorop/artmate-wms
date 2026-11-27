@@ -1,6 +1,7 @@
 import * as D from "./dto";
 import { hasConsumables } from "./consumables";
 import { samePrintRun } from "./print-run";
+import { putawayReservesDestination } from "./putaway-zone";
 export const DEMO_PACKAGING: D.PackagingProfileDto = {
   boxWidthMm: 400,
   boxDepthMm: 400,
@@ -126,8 +127,7 @@ export function placementError(
   if (
     !ignorePutawayReservations &&
     (s.putawayTasks ?? []).some(
-      (t) =>
-        ["claimed", "in_transit"].includes(t.status) && t.toLocationId === l.id,
+      (t) => putawayReservesDestination(t) && t.toLocationId === l.id,
     )
   )
     return "Адрес зарезервирован размещением коробов";
@@ -300,7 +300,7 @@ export function putawayPlacementError(
     (t) =>
       t.id !== ignoreTaskId &&
       t.toLocationId === l.id &&
-      ["claimed", "in_transit"].includes(t.status),
+      putawayReservesDestination(t),
   );
   for (const task of incoming) {
     const incomingBox = s.boxes.find((b) => b.id === task.boxId);

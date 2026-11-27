@@ -157,7 +157,7 @@ export function workRoute(
       return unavailable("Размещение завершено.");
     const box = find(s.boxes, task.boxId, "Короб");
     sourceLocationId = active(s, task.fromLocationId);
-    if (["claimed", "in_transit"].includes(task.status))
+    if (task.transferZoneId || ["claimed", "in_transit"].includes(task.status))
       targetLocationId = active(s, task.toLocationId);
     else
       targetLocationId = rankPlacementLocations(

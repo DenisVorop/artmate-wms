@@ -3,7 +3,7 @@ import { useState } from "react";
 import { LocationMapButton } from "@/entities/warehouse-map";
 import { Button, EmployeeScan, useEmployeeScanActivity } from "@/shared/ui";
 import type { WorkspaceDto } from "@/shared/api/generated/model";
-import { putawayWork, workBlock } from "../lib/handling";
+import { matchesScan, putawayWork, workBlock } from "../lib/handling";
 import { useHandling } from "../model/use-handling";
 import { HandlingFrame } from "./handling-parts";
 import styles from "./handling.module.css";
@@ -22,6 +22,7 @@ export function EmployeePutaway({
   const { employeeId, commands, execute } = useHandling();
   const { pending: scanPending } = useEmployeeScanActivity();
   const [placed, setPlaced] = useState(false);
+  const [sourceScan, setSourceScan] = useState<string | null>(null);
   // The server is the sole source of which box is physically in this employee's hands.
   const work = putawayWork(data, employeeId);
   const carrying = work.kind === "place" ? work.task : undefined;
@@ -34,6 +35,12 @@ export function EmployeePutaway({
     (item) => item.id === carrying?.toLocationId,
   );
   const zone = work.kind === "take" ? work.zone : undefined;
+  const transfer = claimed?.transferZoneId ? claimed : undefined;
+  const transferBox = data.boxes.find((item) => item.id === transfer?.boxId);
+  const transferSource = data.locations.find(
+    (item) => item.id === transfer?.fromLocationId,
+  );
+  const sourceConfirmed = !!transfer && sourceScan === transfer.id;
   // A work zone may cover several sources. Never direct the employee to an
   // arbitrary first box or address before they have chosen a box by scanning it.
   const commonSource =
@@ -58,8 +65,12 @@ export function EmployeePutaway({
   ).length;
   return (
     <HandlingFrame
-      title="Размещение коробов"
-      code={carrying?.code}
+      title={
+        carrying?.transferZoneId || transfer
+          ? "Перенос короба"
+          : "Размещение коробов"
+      }
+      code={carrying?.code ?? transfer?.code}
       onIdle={onIdle}
       locked={locked}
       carrying={!!carrying}
@@ -76,7 +87,9 @@ export function EmployeePutaway({
         box && target ? (
           <>
             <div className={styles.instruction}>
-              <span className={styles.eyebrow}>2 из 2 · адрес хранения</span>
+              <span className={styles.eyebrow}>
+                {carrying.transferZoneId ? "3 из 3" : "2 из 2"} · адрес хранения
+              </span>
               <h2>Поставьте короб</h2>
               <strong className={styles.destinationCode}>{target.code}</strong>
               <p>{target.name}</p>
@@ -119,6 +132,66 @@ export function EmployeePutaway({
             руководителя: повторно сканировать короб не нужно.
           </p>
         )
+      ) : transfer && transferBox && transferSource ? (
+        <>
+          <div className={styles.instruction}>
+            <span className={styles.eyebrow}>
+              {sourceConfirmed ? "2 из 3 · короб" : "1 из 3 · исходный адрес"}
+            </span>
+            <h2>{sourceConfirmed ? "Возьмите короб" : "Подойдите к месту"}</h2>
+            <strong className={styles.destinationCode}>
+              {transferSource.code}
+            </strong>
+            <p>
+              {data.skus.find((item) => item.id === transfer.skuId)?.name} ·{" "}
+              {transferBox.code}
+            </p>
+          </div>
+          <LocationMapButton
+            data={data}
+            locationId={transferSource.id}
+            routeRequest={{ kind: "putaway", id: transfer.id }}
+            intent="take"
+            contextKey={`transfer:${transfer.id}:source`}
+          />
+          <EmployeeScan
+            compact
+            key={`${transfer.id}:${sourceConfirmed ? "box" : "source"}`}
+            contextKey={`${transfer.id}:${sourceConfirmed ? "box" : "source"}`}
+            label={
+              sourceConfirmed
+                ? "Сканируйте QR короба"
+                : "Сканируйте QR исходного адреса"
+            }
+            pending={commands.pending}
+            error={commands.error}
+            disabled={!!block}
+            onProblem={onProblem}
+            onScan={async (value) => {
+              if (!sourceConfirmed) {
+                if (
+                  !matchesScan(
+                    value.toLowerCase(),
+                    "location",
+                    transferSource.id.toLowerCase(),
+                    transferSource.code.toLowerCase(),
+                  )
+                )
+                  return false;
+                setSourceScan(transfer.id);
+                return true;
+              }
+              return execute(() =>
+                commands.takePutawayTask(transfer.id, {
+                  requestId: crypto.randomUUID(),
+                  employeeId,
+                  boxCode: value,
+                  locationCode: transferSource.code,
+                }),
+              );
+            }}
+          />
+        </>
       ) : zone ? (
         <>
           <div className={styles.instruction}>

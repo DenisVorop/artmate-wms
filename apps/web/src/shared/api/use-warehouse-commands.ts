@@ -48,6 +48,7 @@ import type {
   UpdateSkuPackagingDto,
   UpdateSkuBarcodesDto,
   CreateMovementDto,
+  CreateBoxTransfersDto,
   ClaimMovementDto,
   ConfirmMovementDto,
   RetireEmptyPalletDto,
@@ -180,6 +181,8 @@ export function useWarehouseCommands() {
       run(() => api.updateSkuPackaging(id, dto)),
     createMovement: (dto: CreateMovementDto) =>
       run(() => api.createMovement(dto)),
+    createBoxTransfers: (dto: CreateBoxTransfersDto) =>
+      run(() => api.createBoxTransfers(dto)),
     claimMovement: (id: string, dto: ClaimMovementDto) =>
       run(() => api.claimMovement(id, dto)),
     takeMovement: (id: string, dto: ConfirmMovementDto) =>
